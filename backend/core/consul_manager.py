@@ -4,11 +4,17 @@ Mantém todas as funcionalidades mas estruturada para API
 Versão async para FastAPI
 """
 import asyncio
+import base64
+import json
+import logging
+import re
 import httpx
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote
 from functools import wraps
 from .config import Config
+
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # UTILITÁRIOS E HELPERS
@@ -62,6 +68,161 @@ class ConsulManager:
             response = await client.request(method, url, **kwargs)
             response.raise_for_status()
             return response
+
+    @staticmethod
+    def sanitize_service_id(raw_id: str) -> str:
+        """
+        Normaliza o ID de serviço para o formato aceito pelo Consul.
+
+        Substitui caracteres inválidos por sublinhado e valida barras.
+        """
+        if raw_id is None:
+            raise ValueError("Service id can not be null")
+
+        candidate = re.sub(r'[[ \]`~!\\#$^&*=|"{}\':;?\t\n]', '_', raw_id.strip())
+
+        if '//' in candidate or candidate.startswith('/') or candidate.endswith('/'):
+            raise ValueError("Service id can not start/end with '/' or contain '//'")
+
+        return candidate
+
+    async def query_agent_services(self, filter_expr: Optional[str] = None) -> Dict[str, Dict]:
+        """Consulta /agent/services com filtro opcional"""
+        params = {"filter": filter_expr} if filter_expr else None
+        try:
+            response = await self._request("GET", "/agent/services", params=params)
+            return response.json()
+        except Exception as exc:
+            logger.error("Failed to query agent services: %s", exc)
+            return {}
+
+    async def get_services_overview(self) -> List[Dict]:
+        """Retorna visão geral dos serviços (similar ao TenSunS)"""
+        try:
+            response = await self._request("GET", "/internal/ui/services")
+            info = response.json()
+            services_list: List[Dict] = []
+
+            for item in info:
+                if item.get("Name") == "consul":
+                    continue
+                services_list.append({
+                    "name": item.get("Name"),
+                    "datacenter": item.get("Datacenter", "unknown"),
+                    "instance_count": item.get("InstanceCount"),
+                    "checks_critical": item.get("ChecksCritical"),
+                    "checks_passing": item.get("ChecksPassing"),
+                    "tags": item.get("Tags", []),
+                    "nodes": list(set(item.get("Nodes", [])))
+                })
+
+            return services_list
+        except httpx.HTTPStatusError as exc:
+            logger.error("Consul returned %s when fetching services overview", exc.response.status_code)
+            return []
+        except Exception as exc:
+            logger.error("Failed to fetch services overview: %s", exc)
+            return []
+
+    async def get_service_names(self) -> List[str]:
+        """Retorna apenas os nomes dos serviços cadastrados"""
+        try:
+            response = await self._request("GET", "/catalog/services")
+            services = response.json()
+            services.pop("consul", None)
+            return sorted(list(services.keys()))
+        except Exception as exc:
+            logger.error("Failed to list service names: %s", exc)
+            return []
+
+    async def get_service_instances(self, service_name: str) -> List[Dict]:
+        """Retorna instâncias e health-checks de um serviço específico"""
+        try:
+            response = await self._request("GET", f"/health/service/{quote(service_name, safe='')}")
+            data = response.json()
+            instances: List[Dict] = []
+
+            for entry in data:
+                service = entry.get("Service", {})
+                checks = entry.get("Checks", [])
+
+                instance_meta = {
+                    "id": service.get("ID"),
+                    "name": service.get("Service"),
+                    "tags": service.get("Tags") or [],
+                    "address": service.get("Address"),
+                    "port": service.get("Port"),
+                    "meta": service.get("Meta") or {},
+                    "status": "unknown",
+                    "output": ""
+                }
+
+                if len(checks) >= 2:
+                    instance_meta["status"] = checks[1].get("Status", "unknown")
+                    instance_meta["output"] = checks[1].get("Output", "")
+                elif checks:
+                    instance_meta["status"] = checks[0].get("Status", "unknown")
+                    instance_meta["output"] = checks[0].get("Output", "")
+
+                if instance_meta["meta"]:
+                    instance_meta["meta_label"] = [
+                        {"prop": key, "label": key} for key in instance_meta["meta"].keys()
+                    ]
+
+                instances.append(instance_meta)
+
+            return instances
+        except httpx.HTTPStatusError as exc:
+            logger.error("Consul returned %s when fetching instances for %s", exc.response.status_code, service_name)
+            return []
+        except Exception as exc:
+            logger.error("Failed to fetch instances for %s: %s", service_name, exc)
+            return []
+
+    async def get_agent_host_info(self) -> Optional[Dict]:
+        """Obtém dados do host em que o agente Consul está rodando"""
+        try:
+            response = await self._request("GET", "/agent/host")
+            info = response.json()
+
+            pmem = round(info["Memory"]["usedPercent"])
+            pdisk = round(info["Disk"]["usedPercent"])
+
+            return {
+                "host": {
+                    "hostname": info["Host"]["hostname"],
+                    "uptime": round(info["Host"]["uptime"] / 3600 / 24),
+                    "os": f'{info["Host"]["platform"]} {info["Host"]["platformVersion"]}',
+                    "kernel": info["Host"]["kernelVersion"]
+                },
+                "cpu": {
+                    "cores": len(info["CPU"]),
+                    "vendorId": info["CPU"][0]["vendorId"] if info["CPU"] else None,
+                    "modelName": info["CPU"][0]["modelName"] if info["CPU"] else None
+                },
+                "memory": {
+                    "total": round(info["Memory"]["total"] / 1024 ** 3),
+                    "available": round(info["Memory"]["available"] / 1024 ** 3),
+                    "used": round(info["Memory"]["used"] / 1024 ** 3),
+                    "usedPercent": pmem
+                },
+                "disk": {
+                    "path": info["Disk"]["path"],
+                    "fstype": info["Disk"]["fstype"],
+                    "total": round(info["Disk"]["total"] / 1024 ** 3),
+                    "free": round(info["Disk"]["free"] / 1024 ** 3),
+                    "used": round(info["Disk"]["used"] / 1024 ** 3),
+                    "usedPercent": pdisk
+                },
+                "pmem": pmem,
+                "pdisk": pdisk
+            }
+        except httpx.HTTPStatusError as exc:
+            logger.error("Consul returned %s when fetching agent host info", exc.response.status_code)
+            return None
+        except Exception as exc:
+            logger.error("Failed to fetch agent host info: %s", exc)
+            return None
 
     async def get_members(self) -> List[Dict]:
         """Obtém membros do cluster via API"""
@@ -302,6 +463,62 @@ class ConsulManager:
             return response.json()
         except:
             return []
+
+    async def get_kv_json(self, key: str) -> Optional[Dict]:
+        """Obtém e decodifica o valor de uma chave no KV"""
+        try:
+            response = await self._request("GET", f"/kv/{key}")
+            payload = response.json()
+            if not payload:
+                return None
+
+            raw_value = payload[0].get("Value")
+            if raw_value is None:
+                return None
+
+            decoded = base64.b64decode(raw_value).decode("utf-8")
+            try:
+                return json.loads(decoded)
+            except json.JSONDecodeError:
+                return decoded
+        except Exception as exc:
+            logger.error("Failed to fetch KV %s: %s", key, exc)
+            return None
+
+    async def put_kv_json(self, key: str, value: Any) -> bool:
+        """Armazena um valor JSON serializável no KV"""
+        try:
+            payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
+            await self._request("PUT", f"/kv/{key}", content=payload)
+            return True
+        except Exception as exc:
+            logger.error("Failed to write KV %s: %s", key, exc)
+            return False
+
+    async def get_kv_tree(self, prefix: str) -> Dict[str, Dict]:
+        """Retorna um dicionário com todas as entradas de um prefixo"""
+        try:
+            response = await self._request("GET", f"/kv/{prefix}", params={"recurse": "true"})
+            entries = response.json()
+            result: Dict[str, Dict] = {}
+
+            for item in entries:
+                value = item.get("Value")
+                if value is None:
+                    continue
+                decoded = base64.b64decode(value).decode("utf-8")
+                try:
+                    result[item["Key"]] = json.loads(decoded)
+                except json.JSONDecodeError:
+                    result[item["Key"]] = decoded
+
+            return result
+        except httpx.HTTPStatusError as exc:
+            logger.error("Consul returned %s when fetching KV tree for %s", exc.response.status_code, prefix)
+            return {}
+        except Exception as exc:
+            logger.error("Failed to fetch KV tree for %s: %s", prefix, exc)
+            return {}
 
     async def search_services(self, filters: Dict[str, str]) -> Dict[str, Dict]:
         """

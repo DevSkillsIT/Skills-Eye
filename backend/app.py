@@ -16,6 +16,12 @@ from core.config import Config
 from api.services import router as services_router
 from api.nodes import router as nodes_router
 from api.config import router as config_router
+from api.blackbox import router as blackbox_router
+from api.kv import router as kv_router
+from api.config_files import router as config_files_router
+from api.presets import router as presets_router
+from api.search import router as search_router
+from api.consul_insights import router as consul_insights_router
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -29,10 +35,10 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    print("🚀 Iniciando Consul Manager API...")
+    print(">> Iniciando Consul Manager API...")
     yield
     # Shutdown
-    print("👋 Desligando Consul Manager API...")
+    print(">> Desligando Consul Manager API...")
 
 # Criar aplicação FastAPI
 app = FastAPI(
@@ -45,7 +51,16 @@ app = FastAPI(
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001", f"http://{Config.MAIN_SERVER}:3001"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:8081",
+        "http://localhost:8082",
+        "http://localhost:8083",
+        "http://localhost:8084",
+        f"http://{Config.MAIN_SERVER}:3001",
+        f"http://{Config.MAIN_SERVER}:8081",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -99,6 +114,12 @@ async def root():
 app.include_router(services_router, prefix="/api/v1/services", tags=["services"])
 app.include_router(nodes_router, prefix="/api/v1/nodes", tags=["nodes"])
 app.include_router(config_router, prefix="/api/v1/config", tags=["config"])
+app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["blackbox"])
+app.include_router(kv_router, prefix="/api/v1/kv", tags=["kv"])
+app.include_router(config_files_router, prefix="/api/v1/config-files", tags=["config-files"])
+app.include_router(presets_router, prefix="/api/v1/presets", tags=["presets"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
+app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["consul"])
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])

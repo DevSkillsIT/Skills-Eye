@@ -1,0 +1,564 @@
+import axios from 'axios';
+
+const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
+
+// ============================================================================
+// Type Definitions
+// ============================================================================
+
+export interface MetadataFilters {
+  module?: string;
+  company?: string;
+  project?: string;
+  env?: string;
+}
+
+export interface ServiceMeta extends MetadataFilters {
+  name?: string;
+  instance?: string;
+  localizacao?: string;
+  tipo?: string;
+  cod_localidade?: string;
+  cidade?: string;
+  notas?: string;
+  provedor?: string;
+  fabricante?: string;
+  modelo?: string;
+  tipo_dispositivo_abrev?: string;
+  glpi_url?: string;
+  datacenter?: string;
+  hostname?: string;
+  [key: string]: string | undefined;
+}
+
+export interface ConsulServiceRecord {
+  ID: string;
+  Service: string;
+  Tags: string[];
+  Meta: ServiceMeta;
+  Address?: string;
+  Port?: number;
+  Datacenter?: string;
+  node?: string;
+}
+
+export interface ServiceQuery extends MetadataFilters {
+  node_addr?: string;
+}
+
+export interface ServiceCreatePayload {
+  id: string;
+  name: string;
+  tags?: string[];
+  port?: number;
+  address?: string;
+  Meta: ServiceMeta;
+  node_addr?: string;
+}
+
+export interface ServiceUpdatePayload {
+  name?: string;
+  tags?: string[];
+  port?: number;
+  address?: string;
+  Meta?: Partial<ServiceMeta>;
+  node_addr?: string;
+}
+
+export interface ServiceListResponse {
+  success: boolean;
+  data: any;
+  total: number;
+  message?: string;
+  node?: string;
+  nodes_count?: number;
+}
+
+export interface MetadataResponse {
+  success: boolean;
+  field: string;
+  values: string[];
+}
+
+// Blackbox Types
+export interface BlackboxTargetPayload {
+  module: string;
+  company: string;
+  project: string;
+  env: string;
+  name: string;
+  instance: string;
+}
+
+export interface BlackboxTargetEnhanced extends BlackboxTargetPayload {
+  group?: string;
+  labels?: Record<string, string>;
+  interval?: string;
+  timeout?: string;
+  enabled?: boolean;
+  notes?: string;
+}
+
+export interface BlackboxTargetRecord {
+  service_id: string;
+  service: string;
+  tags: string[];
+  address?: string;
+  port?: number;
+  meta: BlackboxTargetPayload & Record<string, string | undefined>;
+}
+
+export interface BlackboxListResponse {
+  success: boolean;
+  services: BlackboxTargetRecord[];
+  all_list: BlackboxTargetPayload[];
+  module_list: string[];
+  company_list: string[];
+  project_list: string[];
+  env_list: string[];
+}
+
+// Blackbox Group Types
+export interface BlackboxGroup {
+  id: string;
+  name: string;
+  filters?: Record<string, string>;
+  labels?: Record<string, string>;
+  description?: string;
+  created_at?: string;
+}
+
+export interface BlackboxGroupResponse {
+  success: boolean;
+  group: BlackboxGroup;
+  members: BlackboxTargetRecord[];
+  member_count: number;
+}
+
+// Service Preset Types
+export interface ServicePreset {
+  id: string;
+  name: string;
+  service_name: string;
+  port?: number;
+  tags?: string[];
+  meta_template?: Record<string, string>;
+  checks?: Array<Record<string, any>>;
+  description?: string;
+  category?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RegisterFromPreset {
+  preset_id: string;
+  variables: Record<string, string>;
+  node_addr?: string;
+}
+
+export interface PresetListResponse {
+  success: boolean;
+  presets: ServicePreset[];
+  total: number;
+}
+
+// Advanced Search Types
+export interface SearchCondition {
+  field: string;
+  operator: 'eq' | 'ne' | 'contains' | 'regex' | 'in' | 'not_in' | 'starts_with' | 'ends_with' | 'gt' | 'lt' | 'gte' | 'lte';
+  value: any;
+}
+
+export interface AdvancedSearchRequest {
+  conditions: SearchCondition[];
+  logical_operator?: 'and' | 'or';
+  sort_by?: string;
+  sort_desc?: boolean;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PaginationInfo {
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+  has_previous: boolean;
+  has_next: boolean;
+}
+
+export interface SearchResponse {
+  success: boolean;
+  data: any[];
+  pagination: PaginationInfo;
+  filters_applied?: any;
+}
+
+// KV Store Types
+export interface AuditEvent {
+  timestamp: string;
+  action: string;
+  resource_type: string;
+  resource_id: string;
+  user: string;
+  details: Record<string, any>;
+}
+
+export interface AuditLogResponse {
+  success: boolean;
+  events: AuditEvent[];
+  count: number;
+  filters?: any;
+}
+
+export interface UISettings {
+  [key: string]: any;
+}
+
+// Statistics Types
+export interface Statistics {
+  total_services: number;
+  by_company: Record<string, number>;
+  by_env: Record<string, number>;
+  by_module: Record<string, number>;
+  by_datacenter: Record<string, number>;
+  by_service_name: Record<string, number>;
+}
+
+export interface DashboardMetrics {
+  total_services: number;
+  blackbox_targets: number;
+  exporters: number;
+  health: {
+    passing: number;
+    warning: number;
+    critical: number;
+  };
+  by_env: Record<string, number>;
+  by_datacenter: Record<string, number>;
+  recent_changes: AuditEvent[];
+}
+
+// ============================================================================
+// Axios Instance
+// ============================================================================
+
+const api = axios.create({
+  baseURL: API_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// ============================================================================
+// API Methods
+// ============================================================================
+
+export const consulAPI = {
+  // ========================================
+  // Nodes
+  // ========================================
+  getNodes: () => api.get('/nodes'),
+  getNodeServices: (nodeAddr: string) => api.get(`/nodes/${nodeAddr}/services`),
+
+  // ========================================
+  // Services
+  // ========================================
+  listServices: (params?: ServiceQuery) =>
+    api.get<ServiceListResponse>('/services', { params }),
+
+  getService: (serviceId: string, params?: ServiceQuery) =>
+    api.get(`/services/${encodeURIComponent(serviceId)}`, { params }),
+
+  createService: (serviceData: ServiceCreatePayload) =>
+    api.post('/services', serviceData),
+
+  updateService: (serviceId: string, payload: ServiceUpdatePayload) =>
+    api.put(`/services/${encodeURIComponent(serviceId)}`, payload),
+
+  deleteService: (serviceId: string, params?: ServiceQuery) =>
+    api.delete(`/services/${encodeURIComponent(serviceId)}`, { params }),
+
+  searchServices: (filters: ServiceQuery) =>
+    api.get('/services/search/by-metadata', { params: filters }),
+
+  getUniqueMetadataValues: (field: string) =>
+    api.get<MetadataResponse>('/services/metadata/unique-values', { params: { field } }),
+
+  // ========================================
+  // Blackbox (Basic)
+  // ========================================
+  listBlackboxTargets: (filters?: MetadataFilters) =>
+    api.get<BlackboxListResponse>('/blackbox', { params: filters }),
+
+  listBlackboxSummary: () => api.get<BlackboxListResponse>('/blackbox/summary'),
+
+  createBlackboxTarget: (payload: BlackboxTargetPayload) =>
+    api.post('/blackbox', payload),
+
+  createBlackboxTargetEnhanced: (payload: BlackboxTargetEnhanced, user = 'web-user') =>
+    api.post('/blackbox/enhanced', payload, { params: { user } }),
+
+  updateBlackboxTarget: (current: BlackboxTargetPayload, replacement: BlackboxTargetPayload) =>
+    api.put('/blackbox', { current, replacement }),
+
+  deleteBlackboxTarget: (payload: Omit<BlackboxTargetPayload, 'instance'>) =>
+    api.delete('/blackbox', { data: payload }),
+
+  importBlackboxTargets: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/blackbox/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+
+  getBlackboxRules: () =>
+    api.get('/blackbox/config/rules', { responseType: 'text' }),
+
+  getBlackboxConfig: () =>
+    api.get('/blackbox/config/blackbox', { responseType: 'text' }),
+
+  getBlackboxPrometheusConfig: (consulServer?: string, consulToken?: string) =>
+    api.get('/blackbox/config/prometheus', {
+      params: { consul_server: consulServer, consul_token: consulToken },
+      responseType: 'text',
+    }),
+
+  // ========================================
+  // Blackbox Groups (Phase 1)
+  // ========================================
+  createBlackboxGroup: (group: BlackboxGroup, user = 'web-user') =>
+    api.post('/blackbox/groups', group, { params: { user } }),
+
+  listBlackboxGroups: () =>
+    api.get<{ success: boolean; groups: BlackboxGroup[]; total: number }>('/blackbox/groups'),
+
+  getBlackboxGroup: (groupId: string) =>
+    api.get<BlackboxGroupResponse>(`/blackbox/groups/${groupId}`),
+
+  updateBlackboxGroup: (groupId: string, updates: Partial<BlackboxGroup>, user = 'web-user') =>
+    api.put(`/blackbox/groups/${groupId}`, updates, { params: { user } }),
+
+  deleteBlackboxGroup: (groupId: string, user = 'web-user') =>
+    api.delete(`/blackbox/groups/${groupId}`, { params: { user } }),
+
+  searchBlackboxTargets: (params: any) =>
+    api.get('/search/blackbox', { params }),
+
+  bulkEnableDisable: (
+    groupId?: string,
+    targetIds?: string[],
+    enabled = true,
+    user = 'web-user',
+  ) =>
+    api.post(
+      '/blackbox/bulk/enable-disable',
+      { group_id: groupId, target_ids: targetIds, enabled },
+      { params: { user } },
+    ),
+
+  // ========================================
+  // Service Presets (Phase 2)
+  // ========================================
+  createPreset: (preset: ServicePreset, user = 'web-user') =>
+    api.post('/presets', preset, { params: { user } }),
+
+  listPresets: (category?: string) =>
+    api.get<PresetListResponse>('/presets', { params: { category } }),
+
+  getPreset: (presetId: string) =>
+    api.get<{ success: boolean; preset: ServicePreset }>(`/presets/${presetId}`),
+
+  updatePreset: (presetId: string, updates: Partial<ServicePreset>, user = 'web-user') =>
+    api.put(`/presets/${presetId}`, updates, { params: { user } }),
+
+  deletePreset: (presetId: string, user = 'web-user') =>
+    api.delete(`/presets/${presetId}`, { params: { user } }),
+
+  registerFromPreset: (request: RegisterFromPreset, user = 'web-user') =>
+    api.post('/presets/register', request, { params: { user } }),
+
+  bulkRegisterFromPreset: (
+    presetId: string,
+    registrations: Array<Record<string, string>>,
+    user = 'web-user',
+  ) =>
+    api.post('/presets/bulk/register', registrations, {
+      params: { preset_id: presetId, user },
+    }),
+
+  previewPreset: (request: RegisterFromPreset) =>
+    api.post('/presets/preview', request),
+
+  createBuiltinPresets: (user = 'web-user') =>
+    api.post('/presets/builtin/create', null, { params: { user } }),
+
+  listPresetCategories: () =>
+    api.get<{ success: boolean; categories: Record<string, number>; total_presets: number }>(
+      '/presets/categories',
+    ),
+
+  // ========================================
+  // Advanced Search (Phase 2)
+  // ========================================
+  advancedSearch: (request: AdvancedSearchRequest) =>
+    api.post<SearchResponse>('/search/advanced', request),
+
+  textSearch: (text: string, fields?: string[], page = 1, pageSize = 20) =>
+    api.post<SearchResponse>('/search/text', { text, fields, page, page_size: pageSize }),
+
+  getFilterOptions: () =>
+    api.get<{
+      success: boolean;
+      filters: Record<string, string[]>;
+      total_services: number;
+    }>('/search/filters'),
+
+  getUniqueValues: (field: string) =>
+    api.get<{ success: boolean; field: string; values: string[]; count: number }>(
+      '/search/unique-values',
+      { params: { field } },
+    ),
+
+  searchByCompany: (company: string, page = 1, pageSize = 20) =>
+    api.get<SearchResponse>(`/search/by-company/${company}`, {
+      params: { page, page_size: pageSize },
+    }),
+
+  searchByEnv: (env: string, page = 1, pageSize = 20) =>
+    api.get<SearchResponse>(`/search/by-env/${env}`, {
+      params: { page, page_size: pageSize },
+    }),
+
+  searchByTag: (tag: string, page = 1, pageSize = 20) =>
+    api.get<SearchResponse>(`/search/by-tag/${tag}`, {
+      params: { page, page_size: pageSize },
+    }),
+
+  searchBlackbox: (filters: MetadataFilters & { enabled?: boolean; group?: string }, page = 1, pageSize = 20) =>
+    api.get<SearchResponse>('/search/blackbox', {
+      params: { ...filters, page, page_size: pageSize },
+    }),
+
+  getStatistics: () =>
+    api.get<{ success: boolean; statistics: Statistics }>('/search/stats'),
+
+  // ========================================
+  // KV Store (Phase 1)
+  // ========================================
+  getKV: (key: string) =>
+    api.get<{ success: boolean; key: string; value: any }>('/kv/get', { params: { key } }),
+
+  putKV: (key: string, value: any, metadata?: Record<string, string>, user = 'web-user') =>
+    api.post('/kv/put', { key, value, metadata }, { params: { user } }),
+
+  deleteKV: (key: string, user = 'web-user') =>
+    api.delete('/kv/delete', { params: { key, user } }),
+
+  listKVKeys: (prefix: string) =>
+    api.get<{ success: boolean; prefix: string; keys: string[]; count: number }>(
+      '/kv/list',
+      { params: { prefix } },
+    ),
+
+  getKVTree: (prefix: string, unwrapMetadata = true) =>
+    api.get<{ success: boolean; prefix: string; tree: Record<string, any>; count: number }>(
+      '/kv/tree',
+      { params: { prefix, unwrap_metadata: unwrapMetadata } },
+    ),
+
+  // ========================================
+  // Audit Log (Phase 1)
+  // ========================================
+  getAuditEvents: (
+    startDate?: string,
+    endDate?: string,
+    resourceType?: string,
+    action?: string,
+  ) =>
+    api.get<AuditLogResponse>('/kv/audit/events', {
+      params: {
+        start_date: startDate,
+        end_date: endDate,
+        resource_type: resourceType,
+        action,
+      },
+    }),
+
+  // ========================================
+  // UI Settings (Phase 1)
+  // ========================================
+  getUISettings: (user?: string) =>
+    api.get<{ success: boolean; settings: UISettings; scope: string }>(
+      '/kv/settings/ui',
+      { params: { user } },
+    ),
+
+  putUISettings: (settings: UISettings, user?: string) =>
+    api.post('/kv/settings/ui', settings, { params: { user } }),
+
+  // ========================================
+  // Health & Status
+  // ========================================
+  getHealthStatus: () => api.get('/health/status'),
+
+  getConnectivity: () => api.get('/health/connectivity'),
+
+  // ========================================
+  // Dashboard Metrics (Composed)
+  // ========================================
+  async getDashboardMetrics(): Promise<DashboardMetrics> {
+    try {
+      const [servicesRes, healthRes, statsRes, auditRes] = await Promise.all([
+        consulAPI.listServices(),
+        consulAPI.getHealthStatus().catch(() => ({ data: { summary: { passing: 0, warning: 0, critical: 0 } } })),
+        consulAPI.getStatistics().catch(() => ({ data: { statistics: {} } })),
+        consulAPI.getAuditEvents(undefined, undefined, undefined, undefined).catch(() => ({ data: { events: [] } })),
+      ]);
+
+      const services = servicesRes.data.data || {};
+      const servicesList = Array.isArray(services) ? services : Object.values(services);
+
+      const blackboxTargets = servicesList.filter(
+        (s: any) => s.Service === 'blackbox_exporter',
+      ).length;
+
+      const exporters = servicesList.filter((s: any) =>
+        s.Service?.includes('exporter'),
+      ).length;
+
+      const stats = statsRes.data.statistics || {};
+      const health = healthRes.data.summary || { passing: 0, warning: 0, critical: 0 };
+      const recentEvents = auditRes.data.events?.slice(0, 10) || [];
+
+      return {
+        total_services: servicesList.length,
+        blackbox_targets: blackboxTargets,
+        exporters,
+        health: {
+          passing: health.passing || 0,
+          warning: health.warning || 0,
+          critical: health.critical || 0,
+        },
+        by_env: stats.by_env || {},
+        by_datacenter: stats.by_datacenter || {},
+        recent_changes: recentEvents,
+      };
+    } catch (error) {
+      console.error('Error fetching dashboard metrics:', error);
+      return {
+        total_services: 0,
+        blackbox_targets: 0,
+        exporters: 0,
+        health: { passing: 0, warning: 0, critical: 0 },
+        by_env: {},
+        by_datacenter: {},
+        recent_changes: [],
+      };
+    }
+  },
+};
+
+export default api;

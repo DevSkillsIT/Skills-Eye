@@ -1,0 +1,31 @@
+// Re-export all types from api.ts
+export type {
+  MetadataFilters,
+  ServiceMeta,
+  ConsulServiceRecord,
+  ServiceQuery,
+  ServiceCreatePayload,
+  ServiceUpdatePayload,
+  ServiceListResponse,
+  MetadataResponse,
+  BlackboxTargetPayload,
+  BlackboxTargetRecord,
+  BlackboxTargetEnhanced,
+  BlackboxListResponse,
+  BlackboxGroup,
+  BlackboxGroupResponse,
+  ServicePreset,
+  PresetListResponse,
+  RegisterFromPreset,
+  SearchCondition,
+  SearchQuery,
+  AdvancedSearchRequest,
+  SearchResponse,
+  AuditEvent,
+  AuditLogResponse,
+  UISettings,
+  Statistics,
+  DashboardMetrics,
+} from './api';
+
+export { consulAPI } from './api';
