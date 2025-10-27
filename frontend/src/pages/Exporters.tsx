@@ -304,40 +304,48 @@ const Exporters: React.FC = () => {
   const requestHandler = useCallback(
     async (params: { current?: number; pageSize?: number; keyword?: string }) => {
       try {
-        const queryParams = buildQueryParams();
-        const response = await consulAPI.listServices(queryParams);
-        const payload = response.data;
-        let rows: ExporterTableItem[] = [];
+        // 🚀 USAR ENDPOINT OTIMIZADO - Cache de 20s, processado no backend
+        const response = await consulAPI.getExportersOptimized();
+        const { data: backendRows, summary: backendSummary } = response.data;
 
-        if (queryParams.node_addr === 'ALL') {
-          rows = flattenServices(payload.data || {});
-        } else {
-          const nodeName =
-            payload.node ||
-            selectedNode ||
-            (nodes[0]?.node ? nodes[0].node : 'Servidor principal');
-          const nodeServices = payload.data || {};
-          rows = flattenServices({ [nodeName]: nodeServices });
-        }
+        // Converter para formato esperado pela tabela
+        let rows: ExporterTableItem[] = backendRows.map((item) => ({
+          key: item.key,
+          id: item.id,
+          node: item.node,
+          nodeAddr: item.nodeAddr,
+          service: item.service,
+          tags: item.tags || [],
+          address: item.address,
+          port: item.port,
+          meta: item.meta || {},
+          exporterType: item.exporterType || 'unknown',
+        }));
 
-        // Filtrar apenas exporters
-        rows = filterOnlyExporters(rows);
-
+        // Aplicar filtros avançados (se houver)
         const advancedRows = applyAdvancedFilters(rows);
 
-        // Calcular summary
-        const nextSummary = advancedRows.reduce(
-          (acc, item) => {
-            acc.total += 1;
-            const envKey = item.meta?.env || 'desconhecido';
-            acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
-            const typeKey = item.exporterType || 'desconhecido';
-            acc.byType[typeKey] = (acc.byType[typeKey] || 0) + 1;
-            return acc;
-          },
-          { total: 0, byEnv: {} as Record<string, number>, byType: {} as Record<string, number> },
-        );
-        setSummary(nextSummary);
+        // Usar summary do backend ou recalcular se houve filtros
+        if (advancedRows.length === rows.length && backendSummary) {
+          setSummary({
+            total: backendRows.length,
+            byEnv: backendSummary.by_env || {},
+            byType: backendSummary.by_type || {},
+          });
+        } else {
+          const nextSummary = advancedRows.reduce(
+            (acc, item) => {
+              acc.total += 1;
+              const envKey = item.meta?.env || 'desconhecido';
+              acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
+              const typeKey = item.exporterType || 'desconhecido';
+              acc.byType[typeKey] = (acc.byType[typeKey] || 0) + 1;
+              return acc;
+            },
+            { total: 0, byEnv: {} as Record<string, number>, byType: {} as Record<string, number> },
+          );
+          setSummary(nextSummary);
+        }
 
         // Extrair metadataOptions
         const companies = new Set<string>();
@@ -359,6 +367,7 @@ const Exporters: React.FC = () => {
           types: Array.from(types),
         });
 
+        // Aplicar busca por keyword
         const keywordRaw = (params?.keyword ?? searchValue) || '';
         const keyword = keywordRaw.trim().toLowerCase();
         let searchedRows = advancedRows;
@@ -382,6 +391,7 @@ const Exporters: React.FC = () => {
 
         setTableSnapshot(searchedRows);
 
+        // Paginação
         const current = params?.current ?? 1;
         const pageSize = params?.pageSize ?? 20;
         const start = (current - 1) * pageSize;
@@ -401,7 +411,7 @@ const Exporters: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, filterOnlyExporters, flattenServices, nodes, searchValue, selectedNode],
+    [applyAdvancedFilters, searchValue],
   );
 
   const handleAdvancedSearch = useCallback(
@@ -472,6 +482,10 @@ const Exporters: React.FC = () => {
         node_addr: record.nodeAddr || record.node,
         service_id: record.id,
       });
+
+      // Limpar cache após deletar
+      await consulAPI.clearCache('exporters');
+
       message.success('Exporter removido com sucesso');
       actionRef.current?.reload();
     } catch (error) {
@@ -502,6 +516,10 @@ const Exporters: React.FC = () => {
       };
 
       await consulAPI.updateService(editingExporter.id, updatePayload);
+
+      // Limpar cache após atualizar
+      await consulAPI.clearCache('exporters');
+
       message.success('Exporter atualizado com sucesso');
       setEditModalOpen(false);
       setEditingExporter(null);
@@ -520,6 +538,7 @@ const Exporters: React.FC = () => {
         title: 'Servico',
         dataIndex: 'service',
         key: 'service',
+        width: 200,
         render: (text) => <Text strong>{text}</Text>,
         sorter: (a, b) => a.service.localeCompare(b.service),
       },
@@ -527,6 +546,7 @@ const Exporters: React.FC = () => {
         title: 'Tipo',
         dataIndex: 'exporterType',
         key: 'exporterType',
+        width: 150,
         render: (text) => {
           const colorMap: Record<string, string> = {
             'Node Exporter': 'blue',
@@ -536,6 +556,8 @@ const Exporters: React.FC = () => {
             'PostgreSQL Exporter': 'purple',
             'MongoDB Exporter': 'green',
             'Blackbox Exporter': 'magenta',
+            'SelfNode Exporter': 'blue',
+            'Other Exporter': 'default',
           };
           return <Tag color={colorMap[text] || 'default'}>{text}</Tag>;
         },
@@ -549,36 +571,42 @@ const Exporters: React.FC = () => {
         title: 'No',
         dataIndex: 'node',
         key: 'node',
+        width: 250,
         sorter: (a, b) => a.node.localeCompare(b.node),
       },
       {
         title: 'Endereco',
         dataIndex: 'address',
         key: 'address',
+        width: 150,
         render: (text) => text || '-',
       },
       {
         title: 'Porta',
         dataIndex: 'port',
         key: 'port',
+        width: 80,
         render: (port) => port || '-',
       },
       {
         title: 'Empresa',
         dataIndex: ['meta', 'company'],
         key: 'company',
+        width: 120,
         render: (company) => company || '-',
       },
       {
         title: 'Projeto',
         dataIndex: ['meta', 'project'],
         key: 'project',
+        width: 120,
         render: (project) => project || '-',
       },
       {
         title: 'Ambiente',
         dataIndex: ['meta', 'env'],
         key: 'env',
+        width: 100,
         render: (env) => {
           const colorMap: Record<string, string> = {
             prd: 'red',
@@ -595,6 +623,7 @@ const Exporters: React.FC = () => {
         title: 'Tags',
         dataIndex: 'tags',
         key: 'tags',
+        width: 150,
         render: (tags: string[]) =>
           tags?.length ? (
             <Space size={[4, 4]} wrap>

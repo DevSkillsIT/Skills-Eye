@@ -16,6 +16,7 @@ import {
   Steps,
   Switch,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -50,7 +51,7 @@ const DEFAULT_PRECHECKS: PrecheckItem[] = [
   {
     key: 'connectivity',
     label: 'Conectividade',
-    description: 'Valida conexao SSH, porta e credenciais fornecidas.',
+    description: 'Valida acesso remoto, porta configurada e credenciais fornecidas.',
     status: 'pending',
   },
   {
@@ -62,7 +63,7 @@ const DEFAULT_PRECHECKS: PrecheckItem[] = [
   {
     key: 'ports',
     label: 'Portas reservadas',
-    description: 'Confere disponibilidade das portas 9100/9182.',
+    description: 'Confere disponibilidade da porta do exporter (9100/9182).',
     status: 'pending',
   },
   {
@@ -79,12 +80,66 @@ const DEFAULT_PRECHECKS: PrecheckItem[] = [
   },
 ];
 
-const COLLECTOR_OPTIONS = [
-  { label: 'Node exporter padrao', value: 'node', description: 'Coleta basica de CPU, memoria, disco e rede.' },
-  { label: 'Textfile collector', value: 'textfile', description: 'Permite enviar metricas customizadas via arquivos.' },
-  { label: 'Process collector', value: 'process', description: 'Expande metricas de processos com filtros.' },
-  { label: 'iostat collector (Linux)', value: 'iostat', description: 'Inclui metricas detalhadas de IO.' },
-  { label: 'WMI collectors (Windows)', value: 'wmi', description: 'Coleta metricas especificas do Windows exporter.' },
+type CollectorTarget = 'linux' | 'windows';
+
+interface CollectorOption {
+  label: string;
+  value: string;
+  description: string;
+  metrics: string[];
+  targets: CollectorTarget[];
+}
+
+const COLLECTOR_OPTIONS: CollectorOption[] = [
+  {
+    label: 'Node exporter padrao',
+    value: 'node',
+    description: 'CPU, memoria, rede e recursos base do host.',
+    metrics: ['node_cpu_seconds_total', 'node_memory_Active_bytes'],
+    targets: ['linux'],
+  },
+  {
+    label: 'Filesystem',
+    value: 'filesystem',
+    description: 'Uso de disco por filesystem, inodes e espaco reservado.',
+    metrics: ['node_filesystem_avail_bytes', 'node_filesystem_size_bytes'],
+    targets: ['linux'],
+  },
+  {
+    label: 'Systemd',
+    value: 'systemd',
+    description: 'Estado de unidades systemd e falhas recentes.',
+    metrics: ['node_systemd_unit_state', 'node_systemd_unit_start_time_seconds'],
+    targets: ['linux'],
+  },
+  {
+    label: 'Textfile collector',
+    value: 'textfile',
+    description: 'Permite expor metricas customizadas via arquivos .prom.',
+    metrics: ['node_textfile_mtime_seconds'],
+    targets: ['linux'],
+  },
+  {
+    label: 'Process collector',
+    value: 'process',
+    description: 'Expande metricas de processos, threads e uso de CPU.',
+    metrics: ['node_processes_state', 'node_processes_threads'],
+    targets: ['linux'],
+  },
+  {
+    label: 'iostat collector (Linux)',
+    value: 'iostat',
+    description: 'Metricas detalhadas de IO por dispositivo (requer sysstat).',
+    metrics: ['node_disk_io_time_seconds_total', 'node_disk_reads_completed_total'],
+    targets: ['linux'],
+  },
+  {
+    label: 'WMI collectors (Windows)',
+    value: 'wmi',
+    description: 'Grupos padrao do windows_exporter (CPU, memoria, discos, servicos).',
+    metrics: ['wmi_cpu_time_total', 'wmi_logical_disk_free_megabytes'],
+    targets: ['windows'],
+  },
 ];
 const Installer: React.FC = () => {
   const [form] = Form.useForm();
@@ -95,16 +150,24 @@ const Installer: React.FC = () => {
   const [installLogs, setInstallLogs] = useState<InstallLogEntry[]>([]);
   const [installRunning, setInstallRunning] = useState(false);
   const [installSuccess, setInstallSuccess] = useState<boolean | null>(null);
-  const [selectedCollectors, setSelectedCollectors] = useState<string[]>(['node']);
+  const [selectedCollectors, setSelectedCollectors] = useState<string[]>(['node', 'filesystem', 'systemd']);
+  const [selectedVersion, setSelectedVersion] = useState<string>('latest');
+  const [useBasicAuth, setUseBasicAuth] = useState(true);
+  const [basicAuthUser, setBasicAuthUser] = useState('prometheus');
+  const [basicAuthPassword, setBasicAuthPassword] = useState('');
   const [autoRegister, setAutoRegister] = useState(true);
   const [selectedDatacenter, setSelectedDatacenter] = useState('palmas');
   const [connectionMethod, setConnectionMethod] = useState<'ssh' | 'fallback'>('ssh');
 
   useEffect(() => {
-    if (targetType === 'linux') {
-      setConnectionMethod('ssh');
-    }
-  }, [targetType]);
+    const desired = targetType === 'linux' ? 'ssh' : 'fallback';
+    setConnectionMethod((prev) => (prev === desired ? prev : desired));
+    form.setFieldsValue({
+      authType: 'password',
+      password: undefined,
+      keyPath: undefined,
+    });
+  }, [targetType, form]);
 
   // Atualizar porta padrão quando mudar tipo/método de conexão
   useEffect(() => {
@@ -117,6 +180,15 @@ const Installer: React.FC = () => {
       form.setFieldsValue({ port: defaultPort });
     }
   }, [targetType, connectionMethod, form]);
+
+  useEffect(() => {
+    if (connectionMethod === 'fallback') {
+      form.setFieldsValue({
+        authType: 'password',
+        keyPath: undefined,
+      });
+    }
+  }, [connectionMethod, form]);
   const steps = useMemo(
     () => [
       { key: 'target', title: 'Destino', icon: <CloudServerOutlined /> },
@@ -137,7 +209,14 @@ const Installer: React.FC = () => {
 
   const runPrechecks = async () => {
     try {
-      await form.validateFields(['host', 'port', 'username', 'authType']);
+      const authType = form.getFieldValue('authType');
+      const fields: Array<string> = ['host', 'port', 'username', 'authType'];
+      if (authType === 'password') {
+        fields.push('password');
+      } else if (authType === 'key') {
+        fields.push('keyPath');
+      }
+      await form.validateFields(fields);
     } catch (err) {
       message.error('Preencha os campos obrigatorios do alvo.');
       return;
@@ -176,18 +255,174 @@ const Installer: React.FC = () => {
     setCurrentStep(2);
   };
 
+  const buildInstallPlan = (): string[] => {
+    const host = form.getFieldValue('host') || '<host>';
+    const port = form.getFieldValue('port') || (connectionMethod === 'fallback' ? 5985 : 22);
+    const username = form.getFieldValue('username') || '<usuario>';
+    const exporterPort = targetType === 'windows' ? '9182' : '9100';
+    const sshPrefix = `ssh -p ${port} ${username}@${host}`;
+    const versionToken = selectedVersion === 'latest' ? '\\${VERSION}' : selectedVersion;
+    const plan: string[] = [];
+
+    if (targetType === 'linux') {
+      const extraCollectors = selectedCollectors.filter((collector) => collector !== 'node');
+      if (selectedVersion === 'latest') {
+        plan.push(
+          '[LINUX] Detectar release mais recente: VERSION=$(curl -s https://api.github.com/repos/prometheus/node_exporter/releases/latest | jq -r ".tag_name")',
+        );
+      } else {
+        plan.push(`[LINUX] Utilizar release ${selectedVersion} do node_exporter.`);
+      }
+      plan.push(
+        `[LINUX] Criar usuario dedicado: ${sshPrefix} "sudo useradd --system --no-create-home --shell /usr/sbin/nologin node_exporter || true"`,
+      );
+      plan.push(
+        `[LINUX] Baixar binarios: ${sshPrefix} "curl -fsSL https://github.com/prometheus/node_exporter/releases/download/${selectedVersion === 'latest' ? '\\${VERSION}' : selectedVersion}/node_exporter-${versionToken}.linux-amd64.tar.gz -o /tmp/node_exporter.tar.gz"`,
+      );
+      plan.push(
+        `[LINUX] Instalar binario: ${sshPrefix} "sudo tar -xf /tmp/node_exporter.tar.gz -C /usr/local/bin --strip-components=1 node_exporter-${versionToken}.linux-amd64/node_exporter && sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter"`,
+      );
+      
+      if (useBasicAuth && basicAuthPassword) {
+        plan.push(
+          `[LINUX] Criar diretorio de configuracao: ${sshPrefix} "sudo mkdir -p /etc/node_exporter"`,
+        );
+        plan.push(
+          `[LINUX] Gerar senha bcrypt: ${sshPrefix} "htpasswd -nbBC 10 ${basicAuthUser} '${basicAuthPassword}' | sudo tee /etc/node_exporter/htpasswd"`,
+        );
+        plan.push(
+          `[LINUX] Criar config.yml com Basic Auth: ${sshPrefix} "cat <<'EOF' | sudo tee /etc/node_exporter/config.yml
+basic_auth_users:
+  ${basicAuthUser}: <bcrypt_hash>
+EOF"`,
+        );
+        plan.push(
+          `[LINUX] Ajustar permissoes: ${sshPrefix} "sudo chown -R node_exporter:node_exporter /etc/node_exporter && sudo chmod 640 /etc/node_exporter/config.yml"`,
+        );
+      }
+      
+      plan.push(
+        `[LINUX] Publicar unit systemd: ${sshPrefix} "cat <<'EOF' | sudo tee /etc/systemd/system/node_exporter.service >/dev/null
+[Unit]
+Description=Prometheus Node Exporter
+After=network-online.target
+
+[Service]
+User=node_exporter
+Group=node_exporter
+Type=simple
+ExecStart=/usr/local/bin/node_exporter --web.listen-address=\":${exporterPort}\"${useBasicAuth ? ' --web.config.file=/etc/node_exporter/config.yml' : ''}${extraCollectors.length ? ' --collector.' + extraCollectors.join(' --collector.') : ''}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF"`,
+      );
+      if (extraCollectors.includes('textfile')) {
+        plan.push(
+          `[LINUX] Preparar diretorio textfile: ${sshPrefix} "sudo mkdir -p /var/lib/node_exporter/textfile && sudo chown node_exporter:node_exporter /var/lib/node_exporter/textfile"`,
+        );
+      }
+      if (extraCollectors.includes('iostat')) {
+        plan.push(
+          `[LINUX] Habilitar sysstat para collector iostat: ${sshPrefix} "sudo apt-get install -y sysstat || sudo yum install -y sysstat"`,
+        );
+      }
+      plan.push(
+        `[LINUX] Ativar servico: ${sshPrefix} "sudo systemctl daemon-reload && sudo systemctl enable node_exporter && sudo systemctl start node_exporter"`,
+      );
+      plan.push(
+        `[LINUX] Ajustar firewall (ufw/firewalld): ${sshPrefix} "sudo ufw allow ${exporterPort}/tcp || sudo firewall-cmd --add-port=${exporterPort}/tcp --permanent && sudo firewall-cmd --reload"`,
+      );
+      plan.push(
+        `[LINUX] Validar metricas: ${sshPrefix} "curl ${useBasicAuth ? `-u ${basicAuthUser}:${basicAuthPassword}` : ''} -fsSL http://127.0.0.1:${exporterPort}/metrics | head"`,
+      );
+    } else if (connectionMethod === 'fallback') {
+      const extraCollectors = selectedCollectors
+        .filter((collector) => collector !== 'wmi')
+        .map((collector) => collector.replace(/_/g, ''));
+      const enabledCollectors = ['cpu', 'logical_disk', 'os', 'system'].concat(extraCollectors);
+      if (selectedVersion === 'latest') {
+        plan.push(
+          '[WINRM] Detectar release: $Version = (Invoke-RestMethod -Uri "https://api.github.com/repos/prometheus-community/windows_exporter/releases/latest").tag_name',
+        );
+      } else {
+        plan.push(`[WINRM] Utilizar release ${selectedVersion} do windows_exporter.`);
+      }
+      plan.push(
+        `[WINRM] Validar WinRM: Test-WSMan -ComputerName ${host} -Port ${port} -Authentication Default`,
+      );
+      plan.push(
+        `[WINRM] Garantir diretorio temporario: New-Item -ItemType Directory -Path 'C:\\Temp' -Force`,
+      );
+      plan.push(
+        `[WINRM] Baixar instalador: Invoke-WebRequest -Uri "https://github.com/prometheus-community/windows_exporter/releases/download/${selectedVersion === 'latest' ? '$Version' : selectedVersion}/windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi" -OutFile "C:\\Temp\\windows_exporter.msi"`,
+      );
+      plan.push(
+        `[WINRM] Instalar via msiexec: Start-Process msiexec.exe -Wait -ArgumentList '/i C:\\Temp\\windows_exporter.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} LISTEN_PORT=${exporterPort} /qn'`,
+      );
+      plan.push(
+        `[WINRM] Garantir inicializacao automatica: Set-Service -Name windows_exporter -StartupType Automatic`,
+      );
+      plan.push(
+        `[WINRM] Liberar firewall: New-NetFirewallRule -DisplayName "windows_exporter ${exporterPort}" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${exporterPort}`,
+      );
+      plan.push(
+        `[WINRM] Validar metricas: Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:${exporterPort}/metrics" | Select-Object -First 20`,
+      );
+    } else {
+      const extraCollectors = selectedCollectors
+        .filter((collector) => collector !== 'wmi')
+        .map((collector) => collector.replace(/_/g, ''));
+      const enabledCollectors = ['cpu', 'logical_disk', 'os', 'system'].concat(extraCollectors);
+      if (selectedVersion === 'latest') {
+        plan.push(
+          '[WIN-SSH] Detectar release: $Version = (Invoke-RestMethod -Uri "https://api.github.com/repos/prometheus-community/windows_exporter/releases/latest").tag_name',
+        );
+      } else {
+        plan.push(`[WIN-SSH] Utilizar release ${selectedVersion} do windows_exporter.`);
+      }
+      plan.push(
+        `[WIN-SSH] Criar diretorio temporario: ${sshPrefix} "powershell.exe -Command \\"New-Item -ItemType Directory -Path 'C:/Temp' -Force\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Copiar instalador via SCP: scp -P ${port} windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi ${username}@${host}:"C:/Temp/"`,
+      );
+      plan.push(
+        `[WIN-SSH] Instalar exporter: ${sshPrefix} "powershell.exe -Command \\"Start-Process msiexec.exe -ArgumentList '/i C:\\\\Temp\\\\windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} LISTEN_PORT=${exporterPort} /qn' -Wait\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Abrir firewall: ${sshPrefix} "powershell.exe -Command \\"New-NetFirewallRule -DisplayName 'windows_exporter ${exporterPort}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${exporterPort}\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Validar servico: ${sshPrefix} "powershell.exe -Command \\"Get-Service -Name windows_exporter\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Validar metricas: ${sshPrefix} "powershell.exe -Command \\"Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:${exporterPort}/metrics' | Select-Object -First 10\\""`,
+      );
+    }
+
+    if (autoRegister) {
+      plan.push(
+        `[CONSUL] Registrar servico (datacenter=${selectedDatacenter}): curl -X PUT http://CONSUL_API/v1/agent/service/register -d '{"ID":"${targetType}-exporter-${host}","Name":"${targetType}-exporter","Address":"${host}","Port":${exporterPort},"Meta":{"datacenter":"${selectedDatacenter}"},"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s"}}'`,
+      );
+    }
+
+    plan.push(
+      `[VERIFICACAO] Confirmar scraping no Prometheus apontando para http://${host}:${exporterPort}/metrics.`,
+    );
+
+    return plan;
+  };
+
   const handleInstall = async () => {
     setInstallRunning(true);
     setInstallSuccess(null);
     setInstallLogs([]);
 
-    const stepsLog = [
-      'Iniciando rotina remota...',
-      'Transferindo binarios e configuracoes...',
-      'Aplicando permissoes e serviços...',
-      'Registrando no Consul e validando metricas...',
-    ];
+    const stepsLog = buildInstallPlan();
 
+    appendLog('Iniciando rotina remota...');
     for (const log of stepsLog) {
       appendLog(log);
       // eslint-disable-next-line no-await-in-loop
@@ -202,6 +437,8 @@ const Installer: React.FC = () => {
   };
 
   const handleReset = () => {
+    form.resetFields();
+    setTargetType('linux');
     setCurrentStep(0);
     setPrechecks(
       DEFAULT_PRECHECKS.map((item) => ({
@@ -213,10 +450,20 @@ const Installer: React.FC = () => {
     setInstallLogs([]);
     setInstallSuccess(null);
     setInstallRunning(false);
-    setSelectedCollectors(['node']);
+    setSelectedCollectors(['node', 'filesystem', 'systemd']);
+    setSelectedVersion('latest');
+    setUseBasicAuth(true);
+    setBasicAuthUser('prometheus');
+    setBasicAuthPassword('');
     setAutoRegister(true);
+    setSelectedDatacenter('palmas');
     setConnectionMethod('ssh');
   };
+
+  const availableCollectorOptions = useMemo(
+    () => COLLECTOR_OPTIONS.filter((item) => item.targets.includes(targetType)),
+    [targetType],
+  );
 
   const collectorHelpText = selectedCollectors.length
     ? `${selectedCollectors.length} coletor(es) selecionado(s)`
@@ -230,6 +477,20 @@ const Installer: React.FC = () => {
     [],
   );
 
+  useEffect(() => {
+    const allowedValues = new Set(availableCollectorOptions.map((option) => option.value));
+    setSelectedCollectors((prev) => {
+      const filtered = prev.filter((value) => allowedValues.has(value));
+      if (filtered.length === prev.length && filtered.length > 0) {
+        return prev;
+      }
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      return targetType === 'windows' ? ['wmi'] : ['node'];
+    });
+  }, [availableCollectorOptions, targetType]);
+
   const exporterVersions = useMemo(
     () => [
       { value: 'latest', label: 'Ultima versao estavel' },
@@ -238,68 +499,97 @@ const Installer: React.FC = () => {
     ],
     [],
   );
-  const renderTargetContent = () => (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Paragraph>
-        Escolha o sistema alvo e o metodo de conexao inicial. Esse passo define como os pre-checks serao conduzidos.
-      </Paragraph>
+  const renderTargetContent = () => {
+    const connectionOptions =
+      targetType === 'linux'
+        ? [
+            {
+              value: 'ssh' as const,
+              label: 'SSH (porta 22)',
+            },
+          ]
+        : [
+            {
+              value: 'fallback' as const,
+              label: 'WinRM / PowerShell remoto (recomendado)',
+            },
+            {
+              value: 'ssh' as const,
+              label: 'OpenSSH (porta 22)',
+            },
+          ];
 
-      <Row gutter={16}>
-        <Col xs={24} md={12}>
-          <Card title="Sistema operacional" size="small" variant="borderless" style={{ background: '#fafafa' }}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Select
-                value={targetType}
-                onChange={(value: 'linux' | 'windows') => setTargetType(value)}
-                style={{ width: '100%' }}
-              >
-                <Option value="linux">
-                  <Space>
-                    <LinuxOutlined />
-                    Linux
-                  </Space>
-                </Option>
-                <Option value="windows">
-                  <Space>
-                    <WindowsOutlined />
-                    Windows
-                  </Space>
-                </Option>
-              </Select>
-              <Paragraph type="secondary" style={{ margin: 0 }}>
-                Linux utiliza conexao SSH por padrao. Windows pode operar via SSH ou por um modo de tentativas adicionais.
-              </Paragraph>
-            </Space>
-          </Card>
-        </Col>
+    const connectionHint =
+      targetType === 'linux'
+        ? 'O instalador executa todos os comandos via SSH com privilegios elevados via sudo.'
+        : 'WinRM/PowerShell aplica o instalador MSI e configura o servico automaticamente; use SSH apenas se o Windows OpenSSH estiver configurado.';
 
-        <Col xs={24} md={12}>
-          <Card title="Metodo de conexao" size="small" variant="borderless" style={{ background: '#fafafa' }}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Select
-                value={connectionMethod}
-                onChange={(value: 'ssh' | 'fallback') => setConnectionMethod(value)}
-                style={{ width: '100%' }}
-                disabled={targetType === 'linux'}
-              >
-                <Option value="ssh">SSH direto</Option>
-                <Option value="fallback">Tentativas automaticas</Option>
-              </Select>
-              <Paragraph type="secondary" style={{ margin: 0 }}>
-                O modo de tentativas automaticas executa diferentes metodos suportados (WinRM, PowerShell remoto, script offline).
-              </Paragraph>
-            </Space>
-          </Card>
-        </Col>
-      </Row>
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Paragraph>
+          Escolha o sistema alvo e o metodo de conexao inicial. Esse passo define como os pre-checks serao conduzidos.
+        </Paragraph>
 
-      <Space>
-        <Button type="primary" icon={<CloudServerOutlined />} onClick={() => setCurrentStep(1)}>
-          Ir para pre-checks
-        </Button>
+        <Row gutter={16}>
+          <Col xs={24} md={12}>
+            <Card title="Sistema operacional" size="small" variant="borderless" style={{ background: '#fafafa' }}>
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Select
+                  value={targetType}
+                  onChange={(value: 'linux' | 'windows') => setTargetType(value)}
+                  style={{ width: '100%' }}
+                >
+                  <Option value="linux">
+                    <Space>
+                      <LinuxOutlined />
+                      Linux
+                    </Space>
+                  </Option>
+                  <Option value="windows">
+                    <Space>
+                      <WindowsOutlined />
+                      Windows
+                    </Space>
+                  </Option>
+                </Select>
+                <Paragraph type="secondary" style={{ margin: 0 }}>
+                  Linux utiliza conexao SSH. Windows pode operar via WinRM/PowerShell ou SSH quando previamente habilitado.
+                </Paragraph>
+              </Space>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12}>
+            <Card title="Metodo de conexao" size="small" variant="borderless" style={{ background: '#fafafa' }}>
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Select
+                  value={connectionMethod}
+                  onChange={(value: 'ssh' | 'fallback') => setConnectionMethod(value)}
+                  style={{ width: '100%' }}
+                  disabled={connectionOptions.length === 1}
+                >
+                  {connectionOptions.map((option) => (
+                    <Option value={option.value} key={option.value}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Select>
+                <Paragraph type="secondary" style={{ margin: 0 }}>
+                  {connectionHint}
+                </Paragraph>
+              </Space>
+            </Card>
+          </Col>
+        </Row>
+
+        <Space>
+          <Button type="primary" icon={<CloudServerOutlined />} onClick={() => setCurrentStep(1)}>
+            Ir para pre-checks
+          </Button>
+        </Space>
       </Space>
-    </Space>
-  );
+    );
+  };
 
   const renderPrecheckContent = () => {
     // Determinar labels e placeholders baseado no tipo de conexão
@@ -312,6 +602,17 @@ const Installer: React.FC = () => {
     const portMessage = isWindowsFallback ? 'Informe a porta WinRM' : 'Informe a porta SSH';
 
     const userPlaceholder = isLinux ? 'root' : 'Administrator';
+    const keyPathPlaceholder =
+      targetType === 'windows'
+        ? 'C:\\Users\\Administrator\\.ssh\\id_rsa'
+        : '/home/user/.ssh/id_rsa';
+    const authOptions =
+      isWindowsFallback
+        ? [{ value: 'password', label: 'Senha (WinRM/PowerShell)' }]
+        : [
+            { value: 'password', label: isWindowsSSH ? 'Senha (OpenSSH)' : 'Senha' },
+            { value: 'key', label: 'Chave SSH' },
+          ];
 
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -363,9 +664,12 @@ const Installer: React.FC = () => {
               label="Autenticacao"
               rules={[{ required: true, message: 'Selecione o metodo de autenticacao' }]}
             >
-              <Select>
-                <Option value="password">Senha</Option>
-                <Option value="key">Chave SSH</Option>
+              <Select disabled={authOptions.length === 1}>
+                {authOptions.map((option) => (
+                  <Option value={option.value} key={option.value}>
+                    {option.label}
+                  </Option>
+                ))}
               </Select>
             </Form.Item>
           </Col>
@@ -387,7 +691,7 @@ const Installer: React.FC = () => {
                 label="Caminho da chave privada"
                 rules={[{ required: true, message: 'Informe o caminho da chave' }]}
               >
-                <Input placeholder="/home/user/.ssh/id_rsa" allowClear />
+                <Input placeholder={keyPathPlaceholder} allowClear />
               </Form.Item>
             )
           }
@@ -396,9 +700,11 @@ const Installer: React.FC = () => {
       <Alert
         message="Modo de conexao"
         description={
-          connectionMethod === 'fallback'
+          isWindowsFallback
             ? 'Tentativas automaticas para Windows envolvem WinRM, PowerShell remoto e script auxiliar.'
-            : 'O modo SSH exige porta acessivel e credenciais validas.'
+            : connectionMethod === 'ssh' && isWindowsSSH
+            ? 'SSH no Windows requer o servico OpenSSH Server ativo, porta 22 liberada e credenciais administrativas.'
+            : 'SSH utiliza sudo para aplicar configuracoes; garanta que a porta 22 esteja acessivel.'
         }
         type="info"
         showIcon
@@ -474,7 +780,8 @@ const Installer: React.FC = () => {
               </Select>
 
               <Select
-                defaultValue="latest"
+                value={selectedVersion}
+                onChange={setSelectedVersion}
                 style={{ width: '100%' }}
                 options={exporterVersions}
               />
@@ -504,15 +811,17 @@ const Installer: React.FC = () => {
               placeholder="Selecione coletores adicionais"
               onChange={(value) => setSelectedCollectors(value)}
             >
-              {COLLECTOR_OPTIONS.map((collector) => (
+              {availableCollectorOptions.map((collector) => (
                 <Option value={collector.value} key={collector.value}>
-                  {collector.label}
+                  <Tooltip title={collector.description} placement="right">
+                    <span>{collector.label}</span>
+                  </Tooltip>
                 </Option>
               ))}
             </Select>
             <Divider style={{ margin: '12px 0' }} />
             <List
-              dataSource={COLLECTOR_OPTIONS.filter((item) => selectedCollectors.includes(item.value))}
+              dataSource={availableCollectorOptions.filter((item) => selectedCollectors.includes(item.value))}
               locale={{ emptyText: 'Nenhum coletor selecionado' }}
               renderItem={(item) => (
                 <List.Item key={item.value}>
@@ -527,6 +836,54 @@ const Installer: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {targetType === 'linux' && (
+        <Row gutter={16}>
+          <Col xs={24}>
+            <Card title="Autenticação Basic Auth" size="small" variant="borderless" style={{ background: '#fafafa' }}>
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                <Alert
+                  message="Segurança das Métricas"
+                  description="Basic Auth protege o endpoint /metrics do Node Exporter. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
+                  type="info"
+                  showIcon
+                />
+                <Space style={{ width: '100%' }}>
+                  <Text strong>Habilitar Basic Auth:</Text>
+                  <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
+                </Space>
+                
+                {useBasicAuth && (
+                  <Row gutter={16}>
+                    <Col xs={24} md={12}>
+                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                        <Text>Usuário:</Text>
+                        <Input
+                          value={basicAuthUser}
+                          onChange={(e) => setBasicAuthUser(e.target.value)}
+                          placeholder="prometheus"
+                          disabled={!useBasicAuth}
+                        />
+                      </Space>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                        <Text>Senha:</Text>
+                        <Input.Password
+                          value={basicAuthPassword}
+                          onChange={(e) => setBasicAuthPassword(e.target.value)}
+                          placeholder="Senha forte para acesso às métricas"
+                          disabled={!useBasicAuth}
+                        />
+                      </Space>
+                    </Col>
+                  </Row>
+                )}
+              </Space>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       <Space>
         <Button onClick={() => setCurrentStep(0)}>Voltar</Button>
@@ -557,6 +914,30 @@ const Installer: React.FC = () => {
             <Text strong>Datacenter:</Text> <Text type="secondary">{selectedDatacenter}</Text>
           </List.Item>
           <List.Item>
+            <Text strong>Metodo:</Text>{' '}
+            <Text type="secondary">
+              {connectionMethod === 'fallback' ? 'WinRM / PowerShell' : 'SSH'}
+            </Text>
+          </List.Item>
+          <List.Item>
+            <Text strong>Versao do exporter:</Text>{' '}
+            <Text type="secondary">{selectedVersion}</Text>
+          </List.Item>
+          <List.Item>
+            <Text strong>Coletores:</Text>{' '}
+            <Text type="secondary">
+              {selectedCollectors.length ? selectedCollectors.join(', ') : 'Padrao'}
+            </Text>
+          </List.Item>
+          {targetType === 'linux' && (
+            <List.Item>
+              <Text strong>Basic Auth:</Text>{' '}
+              <Text type="secondary">
+                {useBasicAuth ? `Habilitado (usuario: ${basicAuthUser})` : 'Desabilitado'}
+              </Text>
+            </List.Item>
+          )}
+          <List.Item>
             <Text strong>Auto registrar:</Text> <Text type="secondary">{autoRegister ? 'Sim' : 'Nao'}</Text>
           </List.Item>
         </List>
@@ -583,6 +964,7 @@ const Installer: React.FC = () => {
           borderRadius: 8,
           minHeight: 200,
           fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
           overflowY: 'auto',
         }}>
           {installLogs.length === 0 ? (
@@ -704,6 +1086,8 @@ const Installer: React.FC = () => {
 };
 
 export default Installer;
+
+
 
 
 

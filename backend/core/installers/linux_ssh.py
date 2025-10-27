@@ -225,7 +225,7 @@ class LinuxSSHInstaller(BaseInstaller):
         await self.log("Nenhuma instalação anterior detectada", "success")
         return False
 
-    async def install_exporter(self, collector_profile: str = 'recommended') -> bool:
+    async def install_exporter(self, collector_profile: str = 'recommended', basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:
         """Install Node Exporter"""
         await self.log("=== Instalando Node Exporter ===", "info")
 
@@ -273,7 +273,28 @@ class LinuxSSHInstaller(BaseInstaller):
                 collector_flags.append(f"--no-collector.{col}")
 
         collector_string = ' \\\n    '.join(collector_flags)
+        
+        # Add web.config.file flag if Basic Auth is enabled
+        web_config_flag = ""
+        if basic_auth_user and basic_auth_password:
+            web_config_flag = "--web.config.file=/etc/node_exporter/config.yml \\\n    "
+            await self.log(f"Basic Auth habilitado para usuário: {basic_auth_user}", "info")
+        
         url = f"https://github.com/prometheus/node_exporter/releases/download/v{version}/node_exporter-{version}.linux-{arch_suffix}.tar.gz"
+
+        # Generate bcrypt hash for password if Basic Auth is enabled
+        bcrypt_hash = ""
+        if basic_auth_user and basic_auth_password:
+            try:
+                import bcrypt
+                password_bytes = basic_auth_password.encode('utf-8')
+                salt = bcrypt.gensalt(rounds=10)
+                hash_bytes = bcrypt.hashpw(password_bytes, salt)
+                bcrypt_hash = hash_bytes.decode('utf-8')
+                await self.log("Hash bcrypt gerado com sucesso", "success")
+            except ImportError:
+                await self.log("Módulo bcrypt não disponível, usando htpasswd no servidor remoto", "warning")
+                bcrypt_hash = None
 
         # Installation script
         install_script = f'''#!/bin/bash
@@ -291,7 +312,52 @@ cp "node_exporter-{version}.linux-{arch_suffix}/node_exporter" /usr/local/bin/
 chmod +x /usr/local/bin/node_exporter
 if ! id -u node_exporter > /dev/null 2>&1; then
     useradd --no-create-home --shell /bin/false node_exporter
+fi'''
+
+        # Add Basic Auth configuration if enabled
+        if basic_auth_user and basic_auth_password:
+            if bcrypt_hash:
+                # Use pre-generated hash
+                install_script += f'''
+mkdir -p /etc/node_exporter
+cat > /etc/node_exporter/config.yml << 'EOF'
+basic_auth_users:
+  {basic_auth_user}: {bcrypt_hash}
+EOF
+chown -R node_exporter:node_exporter /etc/node_exporter
+chmod 640 /etc/node_exporter/config.yml
+echo "Configuração Basic Auth criada"
+'''
+            else:
+                # Use htpasswd on remote server
+                install_script += f'''
+mkdir -p /etc/node_exporter
+# Check if htpasswd is available
+if command -v htpasswd >/dev/null 2>&1; then
+    HASH=$(htpasswd -nbBC 10 "" "{basic_auth_password}" | cut -d: -f2)
+    cat > /etc/node_exporter/config.yml << EOF
+basic_auth_users:
+  {basic_auth_user}: $HASH
+EOF
+    chown -R node_exporter:node_exporter /etc/node_exporter
+    chmod 640 /etc/node_exporter/config.yml
+    echo "Configuração Basic Auth criada com htpasswd"
+else
+    echo "AVISO: htpasswd não disponível, instalando apache2-utils..."
+    apt-get update -qq && apt-get install -y apache2-utils 2>/dev/null || yum install -y httpd-tools 2>/dev/null
+    HASH=$(htpasswd -nbBC 10 "" "{basic_auth_password}" | cut -d: -f2)
+    cat > /etc/node_exporter/config.yml << EOF
+basic_auth_users:
+  {basic_auth_user}: $HASH
+EOF
+    chown -R node_exporter:node_exporter /etc/node_exporter
+    chmod 640 /etc/node_exporter/config.yml
+    echo "Configuração Basic Auth criada"
 fi
+'''
+
+        # Continue with systemd service creation
+        install_script += f'''
 cat > /etc/systemd/system/node_exporter.service << 'EOF'
 [Unit]
 Description=Node Exporter
@@ -304,7 +370,7 @@ User=node_exporter
 Group=node_exporter
 ExecStart=/usr/local/bin/node_exporter \\
     --web.listen-address=:9100 \\
-    {collector_string}
+    {web_config_flag}{collector_string}
 Restart=always
 RestartSec=10s
 
@@ -319,6 +385,7 @@ if systemctl is-active --quiet node_exporter; then
     echo "SUCCESS"
 else
     echo "FAILED"
+    journalctl -u node_exporter -n 20 --no-pager
     exit 1
 fi
 cd /
@@ -336,14 +403,18 @@ rm -rf "$TMP_DIR"
 
         if exit_code == 0 and 'SUCCESS' in output:
             await self.log(f"Node Exporter v{version} instalado com sucesso!", "success")
+            if basic_auth_user:
+                await self.log(f"Basic Auth configurado para usuário: {basic_auth_user}", "success")
             await self.execute_command("rm -f /tmp/install_ne.sh")
             return True
         else:
             await self.log("Instalação falhou", "error")
             await self.log(f"Output: {output[:500]}", "debug")
+            if error:
+                await self.log(f"Error: {error[:500]}", "debug")
             return False
 
-    async def validate_installation(self) -> bool:
+    async def validate_installation(self, basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:
         """Validate installation"""
         await self.log("Validando instalação...", "info")
 
@@ -355,8 +426,13 @@ rm -rf "$TMP_DIR"
             await self.log("Serviço node_exporter não está ativo", "error")
             return False
 
-        # Test metrics
-        exit_code, output, _ = await self.execute_command("curl -s http://localhost:9100/metrics | head -5")
+        # Test metrics (with or without auth)
+        curl_cmd = "curl -s"
+        if basic_auth_user and basic_auth_password:
+            curl_cmd = f"curl -s -u {basic_auth_user}:{basic_auth_password}"
+            await self.log("Testando métricas com Basic Auth...", "info")
+        
+        exit_code, output, _ = await self.execute_command(f"{curl_cmd} http://localhost:9100/metrics | head -5")
         if exit_code == 0 and output:
             await self.log("Métricas acessíveis", "success")
         else:

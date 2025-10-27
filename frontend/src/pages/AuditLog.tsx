@@ -246,24 +246,12 @@ const AuditLog: React.FC = () => {
         </Paragraph>
       </Card>
 
-      <Alert
-        message="Funcionalidade em desenvolvimento"
-        description="O endpoint de auditoria ainda não foi implementado no backend. Esta página estará disponível quando o endpoint /api/v1/kv/audit/events for criado."
-        type="info"
-        showIcon
-        style={{ marginTop: 16 }}
-      />
-
       <div style={{ marginTop: 16 }}>
         <ProTable<AuditEvent>
           columns={columns}
           actionRef={actionRef}
           request={async (params) => {
-            // Endpoint /api/v1/kv/audit/events não existe no backend
-            // TODO: Implementar endpoint no backend quando necessário
-            return { data: [], success: true, total: 0 };
-
-            /* try {
+            try {
               const response = await consulAPI.getAuditEvents({
                 start_date: dateRange?.[0],
                 end_date: dateRange?.[1],
@@ -279,7 +267,7 @@ const AuditLog: React.FC = () => {
               };
             } catch (error) {
               return { data: [], success: false, total: 0 };
-            } */
+            }
           }}
           rowKey={(record) => `${record.timestamp}-${record.resource_id}`}
           search={false}

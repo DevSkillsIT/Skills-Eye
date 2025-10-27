@@ -42,6 +42,8 @@ class LinuxSSHInstallRequest(BaseModel):
     collector_profile: str = Field("recommended", description="Perfil de collectors")
     register_in_consul: bool = Field(True, description="Registrar no Consul")
     consul_node: Optional[str] = Field(None, description="Nó Consul (Palmas/Rio)")
+    basic_auth_user: Optional[str] = Field(None, description="Usuário para Basic Auth")
+    basic_auth_password: Optional[str] = Field(None, description="Senha para Basic Auth")
 
 
 class WindowsSSHInstallRequest(BaseModel):
@@ -510,17 +512,32 @@ async def run_installation(installation_id: str, request):
         task_info["progress"] = 30
         task_info["message"] = "Iniciando instalação..."
 
-        # Install
-        success = await installer.install_exporter(request.collector_profile)
+        # Install (pass Basic Auth params for Linux)
+        if isinstance(request, LinuxSSHInstallRequest):
+            success = await installer.install_exporter(
+                request.collector_profile,
+                request.basic_auth_user,
+                request.basic_auth_password
+            )
+        else:
+            success = await installer.install_exporter(request.collector_profile)
+            
         if not success:
             raise Exception("Instalação falhou")
 
         task_info["progress"] = 85
         task_info["message"] = "Validando instalação..."
 
-        # Validate
-        if not await installer.validate_installation():
-            raise Exception("Validação falhou")
+        # Validate (pass Basic Auth params for Linux)
+        if isinstance(request, LinuxSSHInstallRequest):
+            if not await installer.validate_installation(
+                request.basic_auth_user,
+                request.basic_auth_password
+            ):
+                raise Exception("Validação falhou")
+        else:
+            if not await installer.validate_installation():
+                raise Exception("Validação falhou")
 
         task_info["progress"] = 95
         task_info["message"] = "Finalizando..."
@@ -572,26 +589,41 @@ async def register_in_consul(installer, request):
         port = 9100 if request.os_type == "linux" else 9182
         service_id = f"{service_name}/{hostname}@{request.host}"
 
+        # Build metadata
+        service_meta = {
+            "instance": f"{request.host}:{port}",
+            "name": hostname,
+            "company": "Skills IT",
+            "env": "prod",
+            "project": "Monitoring",
+            "module": "node_exporter" if request.os_type == "linux" else "windows_exporter",
+            "tipo": "Server",
+            "os": request.os_type
+        }
+        
+        # Add Basic Auth credentials to metadata for Prometheus scraping
+        if hasattr(request, 'basic_auth_user') and request.basic_auth_user:
+            service_meta["basic_auth_enabled"] = "true"
+            service_meta["basic_auth_user"] = request.basic_auth_user
+            # Store encrypted password or reference to vault
+            # For now, Prometheus will need to be configured separately with credentials
+            await installer.log(f"Basic Auth metadata adicionado ao Consul", "info")
+
         service_data = {
             "id": service_id,
             "name": service_name,
             "tags": [request.os_type, request.method],
             "address": request.host,
             "port": port,
-            "Meta": {
-                "instance": f"{request.host}:{port}",
-                "name": hostname,
-                "company": "Skills IT",
-                "env": "prod",
-                "project": "Monitoring",
-                "module": "node_exporter" if request.os_type == "linux" else "windows_exporter",
-                "tipo": "Server",
-                "os": request.os_type
-            }
+            "Meta": service_meta
         }
 
         await consul.register_service(service_data, target_node)
         await installer.log(f"Registrado no Consul: {service_id}", "success")
+        
+        if hasattr(request, 'basic_auth_user') and request.basic_auth_user:
+            await installer.log(f"IMPORTANTE: Configure o Prometheus para usar Basic Auth ao scrape este target", "warning")
+            await installer.log(f"  Usuário: {request.basic_auth_user}", "info")
 
     except Exception as e:
         logger.error(f"Erro ao registrar no Consul: {e}")

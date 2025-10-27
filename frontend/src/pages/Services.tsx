@@ -262,7 +262,7 @@ const Services: React.FC = () => {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
   // Suporte para filtro via URL (ex: /services?service=nome_do_servico)
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialSearchValue = searchParams.get('service') || '';
 
   const [searchValue, setSearchValue] = useState<string>(initialSearchValue);
@@ -494,22 +494,27 @@ const Services: React.FC = () => {
   const requestHandler = useCallback(
     async (params: { current?: number; pageSize?: number; keyword?: string }) => {
       try {
+        // 🚀 USAR ENDPOINT OTIMIZADO - Processamento no backend!
         const queryParams = buildQueryParams();
-        const response = await consulAPI.listServices(queryParams);
-        const payload = response.data;
-        let rows: ServiceTableItem[] = [];
+        const nodeAddr = queryParams.node_addr === 'ALL' ? undefined : queryParams.node_addr;
 
-        if (queryParams.node_addr === 'ALL') {
-          rows = flattenServices(payload.data || {});
-        } else {
-          const nodeName =
-            payload.node ||
-            selectedNode ||
-            (nodes[0]?.node ? nodes[0].node : 'Servidor principal');
-          const nodeServices = payload.data || {};
-          rows = flattenServices({ [nodeName]: nodeServices });
-        }
+        const response = await consulAPI.getServicesInstancesOptimized(false, nodeAddr);
+        const { data: backendRows, summary: backendSummary } = response.data;
 
+        // Converter para formato esperado pela tabela
+        let rows: ServiceTableItem[] = backendRows.map((item: any) => ({
+          key: item.key,
+          id: item.id,
+          node: item.node,
+          nodeAddr: item.nodeAddr,
+          service: item.service,
+          tags: item.tags || [],
+          address: item.address,
+          port: item.port,
+          meta: item.meta || {},
+        }));
+
+        // Aplicar filtros avançados (se houver)
         const advancedRows = applyAdvancedFilters(rows);
 
         const nextSummary = advancedRows.reduce(
@@ -578,6 +583,15 @@ const Services: React.FC = () => {
     });
     setFormOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      openCreateModal();
+      const next = new URLSearchParams(searchParams);
+      next.delete('create');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, openCreateModal]);
 
   const openEditModal = useCallback((record: ServiceTableItem) => {
     setFormMode('edit');

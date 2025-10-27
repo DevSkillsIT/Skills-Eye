@@ -22,6 +22,9 @@ from api.config_files import router as config_files_router
 from api.presets import router as presets_router
 from api.search import router as search_router
 from api.consul_insights import router as consul_insights_router
+from api.audit import router as audit_router
+from api.dashboard import router as dashboard_router
+from api.optimized_endpoints import router as optimized_router
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -36,6 +39,52 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup
     print(">> Iniciando Consul Manager API...")
+
+    # Inicializar sistema de auditoria com eventos de exemplo
+    from core.audit_manager import audit_manager
+    from datetime import datetime, timedelta
+
+    # Adicionar eventos de exemplo para demonstração
+    base_time = datetime.utcnow()
+
+    # Eventos dos últimos 7 dias
+    for i in range(20):
+        days_ago = i // 3
+        event_time = (base_time - timedelta(days=days_ago)).isoformat() + "Z"
+
+        if i % 3 == 0:
+            event = audit_manager.log_event(
+                action="create",
+                resource_type="service",
+                resource_id=f"blackbox_exporter_{i}",
+                user="admin",
+                details=f"Criado serviço de monitoramento {i}",
+                metadata={"module": "blackbox", "env": "prod"}
+            )
+            event["timestamp"] = event_time
+        elif i % 3 == 1:
+            event = audit_manager.log_event(
+                action="update",
+                resource_type="kv",
+                resource_id=f"config/service_{i}",
+                user="operator",
+                details=f"Atualizada configuração do serviço {i}",
+                metadata={"key": f"config/service_{i}"}
+            )
+            event["timestamp"] = event_time
+        else:
+            event = audit_manager.log_event(
+                action="delete",
+                resource_type="blackbox_target",
+                resource_id=f"target_{i}",
+                user="system",
+                details=f"Removido target de monitoramento {i}",
+                metadata={"reason": "deprecated"}
+            )
+            event["timestamp"] = event_time
+
+    print(f">> Sistema de auditoria inicializado com {len(audit_manager.events)} eventos de exemplo")
+
     yield
     # Shutdown
     print(">> Desligando Consul Manager API...")
@@ -120,6 +169,9 @@ app.include_router(config_files_router, prefix="/api/v1/config-files", tags=["co
 app.include_router(presets_router, prefix="/api/v1/presets", tags=["presets"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["consul"])
+app.include_router(audit_router, prefix="/api/v1", tags=["audit"])
+app.include_router(dashboard_router, prefix="/api/v1", tags=["dashboard"])
+app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])

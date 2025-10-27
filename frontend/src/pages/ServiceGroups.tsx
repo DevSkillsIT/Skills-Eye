@@ -35,20 +35,43 @@ const ServiceGroups: React.FC = () => {
 
   const requestHandler = async () => {
     try {
-      const response = await consulAPI.getConsulServicesOverview();
-      const services = response.data.services || [];
+      // 🚀 USAR ENDPOINT OTIMIZADO - Cache de 30s, processado no backend
+      const response = await consulAPI.getServiceGroupsOptimized();
+      const { data: backendServices, summary: backendSummary } = response.data;
 
-      // Calcular summary
-      const totalInstances = services.reduce((sum, s) => sum + (s.instance_count || 0), 0);
-      const totalPassing = services.reduce((sum, s) => sum + (s.checks_passing || 0), 0);
-      const totalCritical = services.reduce((sum, s) => sum + (s.checks_critical || 0), 0);
+      // Converter para formato esperado pela tabela
+      const services = backendServices.map((item) => ({
+        name: item.Name,
+        datacenter: item.Datacenter,
+        tags: item.Tags || [],
+        nodes: item.Nodes || [],
+        instance_count: item.InstanceCount || 0,
+        checks_passing: item.ChecksPassing || 0,
+        checks_warning: item.ChecksWarning || 0,
+        checks_critical: item.ChecksCritical || 0,
+      }));
 
-      setSummary({
-        total: services.length,
-        totalInstances,
-        healthy: totalPassing,
-        unhealthy: totalCritical,
-      });
+      // Usar summary do backend
+      if (backendSummary) {
+        setSummary({
+          total: backendServices.length,
+          totalInstances: backendSummary.totalInstances || 0,
+          healthy: backendSummary.healthy || 0,
+          unhealthy: backendSummary.unhealthy || 0,
+        });
+      } else {
+        // Fallback: calcular summary
+        const totalInstances = services.reduce((sum, s) => sum + (s.instance_count || 0), 0);
+        const totalPassing = services.reduce((sum, s) => sum + (s.checks_passing || 0), 0);
+        const totalCritical = services.reduce((sum, s) => sum + (s.checks_critical || 0), 0);
+
+        setSummary({
+          total: services.length,
+          totalInstances,
+          healthy: totalPassing,
+          unhealthy: totalCritical,
+        });
+      }
 
       return {
         data: services,
@@ -302,7 +325,7 @@ const ServiceGroups: React.FC = () => {
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
-          scroll={{ x: 1600 }}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: 'Nenhum grupo de serviço disponível' }}
           options={{ density: true, fullScreen: true, reload: false, setting: false }}
         />

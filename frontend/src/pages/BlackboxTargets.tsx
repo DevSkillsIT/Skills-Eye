@@ -52,6 +52,7 @@ import type {
   BlackboxTargetRecord,
   MetadataFilters,
 } from '../services/api';
+import { useSearchParams } from 'react-router-dom';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -203,6 +204,7 @@ const BlackboxTargets: React.FC = () => {
     blackbox: '',
     prometheus: '',
   });
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialFormValues = useMemo<Partial<BlackboxFormValues>>(() => {
     if (formMode === 'edit' && currentRecord) {
       const target = mapRecordToPayload(currentRecord);
@@ -316,28 +318,62 @@ const BlackboxTargets: React.FC = () => {
   const requestHandler = useCallback(
     async (params: { current?: number; pageSize?: number; keyword?: string }) => {
       try {
-        const queryParams = buildQueryParams();
-        const response = await consulAPI.listBlackboxTargets(queryParams);
-        const payload = response.data;
-        const services = (payload.services || []).map<BlackboxTableItem>((item) => ({
-          ...item,
-          key: item.service_id,
+        // 🚀 USAR ENDPOINT OTIMIZADO - Cache de 15s, processado no backend
+        const response = await consulAPI.getBlackboxTargetsOptimized();
+        const { data: backendRows, summary: backendSummary } = response.data;
+
+        // Converter para formato esperado pela tabela
+        const services = backendRows.map<BlackboxTableItem>((item) => ({
+          service_id: item.id,
+          key: item.key,
+          service: item.service,
+          node: item.node,
+          node_addr: item.nodeAddr,
+          tags: item.tags || [],
+          meta: {
+            ...item.meta,
+            module: item.module,
+            instance: item.instance,
+            company: item.company,
+            project: item.project,
+            env: item.env,
+          },
         }));
 
-        setMetadataOptions({
-          modules: Array.from(
-            new Set([
-              ...DEFAULT_BLACKBOX_MODULES,
-              ...(payload.module_list || []),
-            ]),
-          ),
-          companies: payload.company_list || [],
-          projects: payload.project_list || [],
-          envs: payload.env_list || [],
-          groups: payload.group_list || [],
-          nodes: payload.node_list || [],
+        // Extrair metadataOptions
+        const modules = new Set<string>();
+        const companies = new Set<string>();
+        const projects = new Set<string>();
+        const envs = new Set<string>();
+        const groups = new Set<string>();
+        const nodes = new Set<string>();
+
+        backendRows.forEach((item) => {
+          if (item.module) modules.add(item.module);
+          if (item.company) companies.add(item.company);
+          if (item.project) projects.add(item.project);
+          if (item.env) envs.add(item.env);
+          if (item.meta?.group) groups.add(item.meta.group);
+          if (item.node) nodes.add(item.node);
         });
-        setSummary(payload.summary || null);
+
+        setMetadataOptions({
+          modules: Array.from(new Set([...DEFAULT_BLACKBOX_MODULES, ...modules])),
+          companies: Array.from(companies),
+          projects: Array.from(projects),
+          envs: Array.from(envs),
+          groups: Array.from(groups),
+          nodes: Array.from(nodes),
+        });
+
+        // Usar summary do backend
+        if (backendSummary) {
+          setSummary({
+            total: backendRows.length,
+            by_module: backendSummary.by_module || {},
+            by_env: backendSummary.by_env || {},
+          });
+        }
 
         const advancedRows = applyAdvancedFilters(services);
 
@@ -353,7 +389,7 @@ const BlackboxTargets: React.FC = () => {
               item.meta?.company,
               item.meta?.project,
               item.meta?.group,
-              (item as any).node,
+              item.node,
             ];
             return fields.some(
               (field) => field && String(field).toLowerCase().includes(keyword),
@@ -382,7 +418,7 @@ const BlackboxTargets: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, searchValue],
+    [applyAdvancedFilters, searchValue],
   );
   const handleAdvancedSearch = useCallback(
     (conditions: SearchCondition[], operator: string) => {
@@ -408,17 +444,17 @@ const BlackboxTargets: React.FC = () => {
     [],
   );
 
-  const openCreateModal = () => {
+  const openCreateModal = useCallback(() => {
     setFormMode('create');
     setCurrentRecord(null);
     setFormOpen(true);
-  };
+  }, []);
 
-  const openEditModal = (record: BlackboxTargetRecord) => {
+  const openEditModal = useCallback((record: BlackboxTargetRecord) => {
     setFormMode('edit');
     setCurrentRecord(record);
     setFormOpen(true);
-  };
+  }, []);
 
   const handleSubmit = async (values: BlackboxFormValues) => {
     try {
@@ -446,6 +482,9 @@ const BlackboxTargets: React.FC = () => {
         message.success('Alvo blackbox atualizado');
       }
 
+      // Limpar cache após criar/atualizar
+      await consulAPI.clearCache('blackbox-targets');
+
       setFormOpen(false);
       setCurrentRecord(null);
       actionRef.current?.reload();
@@ -471,6 +510,10 @@ const BlackboxTargets: React.FC = () => {
         name: record.meta?.name || '',
         group: record.meta?.group || undefined,
       });
+
+      // Limpar cache após deletar
+      await consulAPI.clearCache('blackbox-targets');
+
       message.success('Alvo removido com sucesso');
       actionRef.current?.reload();
     } catch (error: any) {
@@ -579,6 +622,15 @@ const BlackboxTargets: React.FC = () => {
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      openCreateModal();
+      const next = new URLSearchParams(searchParams);
+      next.delete('create');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, openCreateModal]);
 
   const openConfigDrawer = async () => {
     try {

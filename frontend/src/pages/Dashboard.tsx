@@ -381,17 +381,17 @@ const Dashboard: React.FC = () => {
                 block
                 icon={<PlusOutlined />}
                 size="large"
-                onClick={() => navigate('/blackbox-targets')}
+                onClick={() => navigate('/blackbox?create=true')}
               >
-                Novo Alvo Blackbox
+                Novo alvo Blackbox
               </Button>
               <Button
                 block
                 icon={<PlusOutlined />}
                 size="large"
-                onClick={() => navigate('/services')}
+                onClick={() => navigate('/services?create=true')}
               >
-                Registrar Servico
+                Registrar servico
               </Button>
               <Button
                 block
@@ -407,7 +407,7 @@ const Dashboard: React.FC = () => {
                 size="large"
                 onClick={() => navigate('/services')}
               >
-                Ver Todos os Serviços
+                Ver todos os servicos
               </Button>
             </Space>
           </ProCard>

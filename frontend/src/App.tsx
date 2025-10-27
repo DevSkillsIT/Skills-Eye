@@ -40,12 +40,12 @@ const App: React.FC = () => {
     },
     {
       path: '/services',
-      name: 'Serviços',
+      name: 'Servicos',
       icon: <DatabaseOutlined />,
     },
     {
       path: '/service-groups',
-      name: 'Grupos de Serviços',
+      name: 'Grupos de Servicos',
       icon: <AppstoreOutlined />,
     },
     {
@@ -70,12 +70,12 @@ const App: React.FC = () => {
     },
     {
       path: '/presets',
-      name: 'Presets de Serviços',
+      name: 'Presets de Servicos',
       icon: <AppstoreOutlined />,
     },
     {
       path: '/config-files',
-      name: 'Arquivos de Configuração',
+      name: 'Arquivos de configuracao',
       icon: <FileTextOutlined />,
     },
     {
@@ -144,6 +144,7 @@ const App: React.FC = () => {
 };
 
 export default App;
+
 
 
 

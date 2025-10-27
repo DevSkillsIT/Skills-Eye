@@ -13,7 +13,12 @@
       "Bash(npx tsc:*)",
       "Bash(node:*)",
       "Bash(ren:*)",
-      "Bash(python app.py:*)"
+      "Bash(python app.py:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(Select-String -Pattern \"exporterType\")",
+      "Bash(Select-Object -First 5)",
+      "Bash(curl.exe:*)"
     ],
     "deny": [],
     "ask": []
