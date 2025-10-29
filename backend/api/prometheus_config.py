@@ -652,7 +652,10 @@ async def get_file_content(file_path: str = Query(..., description="Path do arqu
 
 
 @router.get("/file/structure")
-async def get_file_structure(file_path: str = Query(..., description="Path do arquivo")):
+async def get_file_structure(
+    file_path: str = Query(..., description="Path do arquivo"),
+    hostname: Optional[str] = Query(None, description="Hostname do servidor (OTIMIZAÇÃO - evita SSH em múltiplos servidores)")
+):
     """
     Retorna a estrutura completa de um arquivo, detectando automaticamente o tipo
 
@@ -664,12 +667,13 @@ async def get_file_structure(file_path: str = Query(..., description="Path do ar
 
     Args:
         file_path: Path completo do arquivo
+        hostname: Hostname do servidor (opcional, para otimização de performance)
 
     Returns:
         Estrutura detectada com type, items, editable_sections
     """
     try:
-        structure = multi_config.get_config_structure(file_path)
+        structure = multi_config.get_config_structure(file_path, hostname=hostname)
 
         # Não retornar raw_config completo (pode ser muito grande)
         structure_response = {

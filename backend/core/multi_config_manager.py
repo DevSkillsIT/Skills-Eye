@@ -96,6 +96,7 @@ class MultiConfigManager:
         # Cache de configurações
         self._config_cache: Dict[str, Dict[str, Any]] = {}
         self._fields_cache: Optional[List[MetadataField]] = None
+        self._files_cache: Dict[str, List[ConfigFile]] = {}  # OTIMIZAÇÃO: Cache para list_config_files
 
         logger.info(f"MultiConfigManager inicializado com {len(self.hosts)} host(s)")
         for host in self.hosts:
@@ -203,6 +204,16 @@ class MultiConfigManager:
         Returns:
             Lista de ConfigFile
         """
+        # OTIMIZAÇÃO: Cache key baseado em service+hostname
+        cache_key = f"{service or 'all'}:{hostname or 'all'}"
+
+        # Verificar cache
+        if cache_key in self._files_cache:
+            print(f"[PROFILING] list_config_files: CACHE HIT para {cache_key}")
+            return self._files_cache[cache_key]
+
+        print(f"[PROFILING] list_config_files: CACHE MISS para {cache_key}")
+
         all_files = []
 
         services_to_check = [service] if service else self.DEFAULT_PATHS.keys()
@@ -254,6 +265,10 @@ class MultiConfigManager:
                     logger.error(f"Erro ao listar arquivos de {host.hostname}: {e}")
 
         logger.info(f"Encontrados {len(all_files)} arquivos de configuração")
+
+        # OTIMIZAÇÃO: Armazenar no cache
+        self._files_cache[cache_key] = all_files
+
         return all_files
 
     def read_config_file(self, config_file: ConfigFile) -> Dict[str, Any]:
@@ -412,12 +427,13 @@ class MultiConfigManager:
 
         Args:
             file_path: Path do arquivo
-            hostname: Hostname do servidor (opcional, para desambiguar arquivos com mesmo path)
+            hostname: Hostname do servidor (opcional, OTIMIZAÇÃO para evitar SSH em múltiplos servidores)
 
         Returns:
             ConfigFile ou None
         """
-        files = self.list_config_files()
+        # OTIMIZAÇÃO: Passar hostname para list_config_files para usar cache + SSH apenas no servidor correto
+        files = self.list_config_files(hostname=hostname)
         for f in files:
             if f.path == file_path:
                 # Se hostname foi especificado, verificar se bate
@@ -457,13 +473,14 @@ class MultiConfigManager:
             logger.error(f"Erro ao ler arquivo {file_path}: {e}")
             raise
 
-    def get_config_structure(self, file_path: str) -> Dict[str, Any]:
+    def get_config_structure(self, file_path: str, hostname: Optional[str] = None) -> Dict[str, Any]:
         """
         Retorna a estrutura completa de um arquivo de configuração,
         detectando automaticamente o tipo
 
         Args:
             file_path: Path do arquivo
+            hostname: Hostname do servidor (opcional, OTIMIZAÇÃO para evitar SSH em múltiplos servidores)
 
         Returns:
             Dict com: type, main_key, items, raw_config
@@ -473,7 +490,7 @@ class MultiConfigManager:
 
         # PROFILING: Medir get_file_by_path
         start_step = time.time()
-        config_file = self.get_file_by_path(file_path)
+        config_file = self.get_file_by_path(file_path, hostname=hostname)
         print(f"[PROFILING] get_file_by_path: {(time.time() - start_step)*1000:.2f}ms")
 
         if not config_file:
