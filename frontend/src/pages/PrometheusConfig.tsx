@@ -1840,7 +1840,7 @@ const PrometheusConfig: React.FC = () => {
               </span>
             ),
             children: (
-              <Card style={{ minHeight: 400 }}>
+              <Card style={{ minHeight: 600 }}>
                 <Alert
                   message="📋 Visualização dos Jobs - Somente Leitura"
                   description={
@@ -1858,7 +1858,8 @@ const PrometheusConfig: React.FC = () => {
                   closable
                   style={{ marginBottom: 16 }}
                 />
-                <ProTable
+                <div style={{ minHeight: 500 }}>
+                  <ProTable
                   columns={visibleColumns}
                   dataSource={processedJobs}
                   rowKey={fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey}
@@ -1886,6 +1887,7 @@ const PrometheusConfig: React.FC = () => {
                     ),
                   }}
                 />
+                </div>
               </Card>
             ),
           },

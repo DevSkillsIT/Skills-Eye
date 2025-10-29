@@ -636,8 +636,11 @@ class WindowsPSExecInstaller(BaseInstaller):
 
         exit_code, output, error = await self.execute_command(install_cmd, powershell=True)
         
+        print(f"[DEBUG 1] execute_command retornou: exit_code={exit_code}, output_len={len(output) if output else 0}")
+        
         # Log instalação
         if output:
+            print(f"[DEBUG 2] Processando {len(output.splitlines())} linhas de output")
             for line in output.splitlines():
                 if line.strip():
                     if "INSTALL_SUCCESS" in line:
@@ -649,17 +652,25 @@ class WindowsPSExecInstaller(BaseInstaller):
                     elif "MSIEXEC_CMD" in line or "MSIEXEC_EXITCODE" in line:
                         await self.log(f"  {line}", "info")
         
+        print(f"[DEBUG 3] Saiu do loop de output")
+        
         if error:
+            print(f"[DEBUG 4] Processando error output")
             error_lines = [l for l in error.splitlines() if l.strip() and not l.strip().startswith("#< CLIXML")]
             if error_lines:
                 for line in error_lines:
                     await self.log(f"  [stderr] {line}", "warning")
-                    
+        
+        print(f"[DEBUG 5] Verificando exit_code: {exit_code}")
+        
         if exit_code != 0:
+            print(f"[DEBUG 6] exit_code != 0, lançando erro")
             await self.log(f"❌ MSI retornou código {exit_code}", "error")
             combined_text = "\n".join(part for part in [output, error] if part).strip()
             reason, error_code, error_category = self._classify_install_failure(combined_text)
             self._raise_install_error(error_code, reason, error_category, output, error)
+        
+        print(f"[DEBUG 7] Passando para bloco try do log de sucesso")
         
         try:
             await self.log("✅ MSI instalado com sucesso - prosseguindo para configuração...", "success")
