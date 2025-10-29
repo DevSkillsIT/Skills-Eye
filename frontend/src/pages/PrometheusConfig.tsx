@@ -1555,6 +1555,16 @@ const PrometheusConfig: React.FC = () => {
     // Se columnConfig ainda está vazio, retornar todas as colunas
     if (columnConfig.length === 0) return allColumns;
 
+    // IMPORTANTE: Verificar se columnConfig corresponde ao tipo de arquivo atual
+    // Comparar a primeira coluna (exceto actions) para verificar compatibilidade
+    const firstConfigKey = columnConfig.find(c => c.key !== 'actions')?.key;
+    const firstColumnKey = allColumns.find(c => c.key !== 'actions')?.key;
+
+    // Se as keys não correspondem, retornar todas as colunas (arquivo mudou de tipo)
+    if (firstConfigKey && firstColumnKey && firstConfigKey !== firstColumnKey) {
+      return allColumns;
+    }
+
     // Filtrar apenas colunas visíveis baseado em columnConfig
     return columnConfig
       .filter(config => config.visible)
