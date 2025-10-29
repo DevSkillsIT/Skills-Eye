@@ -670,11 +670,13 @@ class WindowsPSExecInstaller(BaseInstaller):
             await self.log("🔐 INICIANDO configuração de Basic Auth...", "info")
             await self.progress(65, 100, "Configurando autenticação...")
             
-            # Criar arquivo config.yml com Basic Auth
-            config_content = f"""basic_auth_users:
-  {basic_auth_user}: {bcrypt_hash}
-"""
-            await self.log(f"📄 Config content preparado ({len(config_content)} bytes)", "info")
+            # Criar arquivo config.yaml com Basic Auth usando Base64 para evitar problemas com caracteres especiais
+            import base64
+            config_content = f"basic_auth_users:\n  {basic_auth_user}: {bcrypt_hash}\n"
+            config_content_bytes = config_content.encode('utf-8')
+            config_content_b64 = base64.b64encode(config_content_bytes).decode('ascii')
+            
+            await self.log(f"📄 Preparando config.yaml (hash bcrypt: {len(bcrypt_hash)} chars)", "info")
             
             config_cmd = dedent(rf"""
                 $ErrorActionPreference = 'Stop'
@@ -687,44 +689,96 @@ class WindowsPSExecInstaller(BaseInstaller):
                     New-Item -Path $configDir -ItemType Directory -Force | Out-Null
                 }}
                 
-                # Criar arquivo config.yml
-                $configPath = Join-Path $configDir 'config.yml'
+                # Criar arquivo config.yaml usando Base64 para evitar problemas com caracteres especiais
+                $configPath = Join-Path $configDir 'config.yaml'
                 Write-Host "Creating config file: $configPath"
                 
-                $configContent = @"
-{config_content}
-"@
+                # Decodificar conteúdo Base64
+                $base64Content = '{config_content_b64}'
+                $bytes = [System.Convert]::FromBase64String($base64Content)
+                $content = [System.Text.Encoding]::UTF8.GetString($bytes)
                 
-                $configContent | Out-File -FilePath $configPath -Encoding UTF8 -Force
-                Write-Host "CONFIG_FILE_CREATED: $configPath"
+                # Escrever arquivo
+                [System.IO.File]::WriteAllText($configPath, $content, [System.Text.Encoding]::UTF8)
+                
+                if (Test-Path $configPath) {{
+                    Write-Host "CONFIG_FILE_CREATED: $configPath"
+                    $fileSize = (Get-Item $configPath).Length
+                    Write-Host "CONFIG_FILE_SIZE: $fileSize bytes"
+                    
+                    # Verificar conteúdo (mostrar apenas estrutura, não a senha)
+                    $lines = Get-Content $configPath
+                    Write-Host "CONFIG_LINES: $($lines.Count)"
+                    foreach ($i in 0..($lines.Count-1)) {{
+                        $line = $lines[$i]
+                        if ($line -like '*basic_auth_users*') {{
+                            Write-Host "CONFIG_LINE$i`: $line"
+                        }} elseif ($line.Trim().StartsWith('{basic_auth_user}:')) {{
+                            # Mostrar só usuário e início do hash
+                            $preview = $line.Substring(0, [Math]::Min(40, $line.Length))
+                            Write-Host "CONFIG_LINE$i`: $preview..."
+                        }} else {{
+                            Write-Host "CONFIG_LINE$i`: $line"
+                        }}
+                    }}
+                }} else {{
+                    Write-Host "ERROR: Failed to create config file"
+                    exit 1
+                }}
                 
                 # Parar serviço
                 Write-Host 'Stopping windows_exporter service...'
                 Stop-Service -Name 'windows_exporter' -Force -ErrorAction SilentlyContinue
                 Start-Sleep -Seconds 2
                 
-                # Modificar parâmetros do serviço para incluir --web.config.file
+                # Modificar parâmetros do serviço para incluir --config.file
                 Write-Host 'Updating service parameters...'
                 $service = Get-WmiObject Win32_Service -Filter "Name='windows_exporter'"
                 if ($service) {{
                     $currentPath = $service.PathName
                     Write-Host "Current PathName: $currentPath"
                     
-                    # Adicionar --web.config.file se não existir
-                    if ($currentPath -notlike '*--web.config.file*') {{
-                        $newPath = $currentPath + ' --web.config.file="' + $configPath + '"'
-                        Write-Host "New PathName: $newPath"
-                        
-                        $result = $service.Change($null, $newPath)
-                        if ($result.ReturnValue -eq 0) {{
-                            Write-Host 'SERVICE_PARAMS_UPDATED: OK'
-                        }} else {{
-                            Write-Host "SERVICE_PARAMS_UPDATE_FAILED: ReturnValue=$($result.ReturnValue)"
-                            exit 1
-                        }}
+                    # Extrair apenas o executável (antes dos argumentos)
+                    if ($currentPath -match '^"([^"]+)"(.*)$') {{
+                        $exePath = $matches[1]
+                        $existingArgs = $matches[2].Trim()
+                    }} elseif ($currentPath -match '^([^\s]+)(.*)$') {{
+                        $exePath = $matches[1]
+                        $existingArgs = $matches[2].Trim()
                     }} else {{
-                        Write-Host 'SERVICE_PARAMS_ALREADY_CONFIGURED'
+                        $exePath = $currentPath
+                        $existingArgs = ""
                     }}
+                    
+                    Write-Host "Extracted EXE: $exePath"
+                    Write-Host "Existing args: $existingArgs"
+                    
+                    # Remover --web.config.file ou --config.file existentes dos argumentos
+                    $cleanArgs = $existingArgs -replace '--web\.config\.file="[^"]*"', '' -replace '--config\.file="[^"]*"', ''
+                    $cleanArgs = $cleanArgs.Trim()
+                    
+                    # Construir novo PathName com config.file como PRIMEIRO argumento
+                    $newPath = "`"$exePath`" --config.file=`"$configPath`""
+                    if ($cleanArgs) {{
+                        $newPath += " $cleanArgs"
+                    }}
+                    
+                    Write-Host "New PathName: $newPath"
+                    
+                    $result = $service.Change($null, $newPath)
+                    if ($result.ReturnValue -eq 0) {{
+                        Write-Host 'SERVICE_PARAMS_UPDATED: OK'
+                        
+                        # Verificar o resultado final
+                        $updatedService = Get-WmiObject Win32_Service -Filter "Name='windows_exporter'"
+                        Write-Host "FINAL_SERVICE_PATH: $($updatedService.PathName)"
+                    }} else {{
+                        Write-Host "SERVICE_PARAMS_UPDATE_FAILED: ReturnValue=$($result.ReturnValue)"
+                        exit 1
+                    }}
+                }} else {{
+                    Write-Host 'ERROR: Service not found'
+                    exit 1
                 }}
                 
                 # Reiniciar serviço
@@ -736,7 +790,42 @@ class WindowsPSExecInstaller(BaseInstaller):
                 Write-Host "Service Status: $serviceStatus"
                 
                 if ($serviceStatus -eq 'Running') {{
-                    Write-Host 'BASIC_AUTH_CONFIGURED: OK'
+                    Write-Host 'SERVICE_RESTARTED: OK'
+                    
+                    # Validar que Basic Auth está funcionando
+                    Write-Host 'Validating Basic Auth...'
+                    Start-Sleep -Seconds 2
+                    
+                    # Testar sem autenticação (deve falhar com 401)
+                    try {{
+                        $response = Invoke-WebRequest -Uri 'http://localhost:9182/metrics' -UseBasicParsing -ErrorAction Stop
+                        Write-Host 'WARNING: Metrics accessible WITHOUT auth (expected 401)'
+                    }} catch {{
+                        if ($_.Exception.Response.StatusCode -eq 401) {{
+                            Write-Host 'BASIC_AUTH_VALIDATION: 401 Unauthorized (correct)'
+                        }} else {{
+                            Write-Host "WARNING: Unexpected error: $($_.Exception.Message)"
+                        }}
+                    }}
+                    
+                    # Testar com autenticação (deve funcionar com 200)
+                    $pair = "{basic_auth_user}:{basic_auth_password}"
+                    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
+                    $base64 = [System.Convert]::ToBase64String($bytes)
+                    $headers = @{{ Authorization = "Basic $base64" }}
+                    
+                    try {{
+                        $response = Invoke-WebRequest -Uri 'http://localhost:9182/metrics' -Headers $headers -UseBasicParsing -ErrorAction Stop
+                        if ($response.StatusCode -eq 200) {{
+                            Write-Host 'BASIC_AUTH_VALIDATION: 200 OK (authentication working)'
+                            Write-Host 'BASIC_AUTH_CONFIGURED: OK'
+                        }} else {{
+                            Write-Host "WARNING: Unexpected status code: $($response.StatusCode)"
+                        }}
+                    }} catch {{
+                        Write-Host "ERROR: Failed to access metrics with auth: $($_.Exception.Message)"
+                        exit 1
+                    }}
                 }} else {{
                     Write-Host 'SERVICE_START_FAILED'
                     exit 1

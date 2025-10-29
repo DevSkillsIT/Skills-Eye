@@ -1446,14 +1446,14 @@ EOF"`,
         datacenter: selectedNodeAddress,
         module: targetType === 'linux' ? 'selfnode_exporter' : 'windows_exporter',
         env: 'production',
-        ...(useBasicAuth && basicAuthUser && basicAuthPassword && targetType === 'linux' ? {
+        ...(useBasicAuth && basicAuthUser && basicAuthPassword ? {
           basic_auth_enabled: 'true',
           basic_auth_user: basicAuthUser
         } : {})
       };
       
-      // Health check com ou sem autenticação
-      const healthCheckConfig = useBasicAuth && basicAuthUser && basicAuthPassword && targetType === 'linux'
+      // Health check com ou sem autenticação (funciona para Linux e Windows)
+      const healthCheckConfig = useBasicAuth && basicAuthUser && basicAuthPassword
         ? `"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s","Header":{"Authorization":["Basic $(echo -n '${basicAuthUser}:${basicAuthPassword}' | base64)"]}}`
         : `"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s"}`;
       
@@ -1463,7 +1463,7 @@ EOF"`,
     }
 
     plan.push(
-      `[VERIFICACAO] Confirmar scraping no Prometheus apontando para http://${host}:${exporterPort}/metrics${useBasicAuth && targetType === 'linux' ? ` (com Basic Auth: ${basicAuthUser})` : ''}.`,
+      `[VERIFICACAO] Confirmar scraping no Prometheus apontando para http://${host}:${exporterPort}/metrics${useBasicAuth ? ` (com Basic Auth: ${basicAuthUser})` : ''}.`,
     );
 
     return plan;
@@ -2351,53 +2351,60 @@ EOF"`,
         </Col>
       </Row>
 
-      {targetType === 'linux' && (
-        <Row gutter={16}>
-          <Col xs={24}>
-            <Card title="Autenticação Basic Auth" size="small" variant="borderless" style={{ background: '#fafafa' }}>
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Alert
-                  message="Segurança das Métricas"
-                  description="Basic Auth protege o endpoint /metrics do Node Exporter. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
-                  type="info"
-                  showIcon
-                />
-                <Space style={{ width: '100%' }}>
-                  <Text strong>Habilitar Basic Auth:</Text>
-                  <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
-                </Space>
-                
-                {useBasicAuth && (
-                  <Row gutter={16}>
-                    <Col xs={24} md={12}>
-                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                        <Text>Usuário:</Text>
-                        <Input
-                          value={basicAuthUser}
-                          onChange={(e) => setBasicAuthUser(e.target.value)}
-                          placeholder="prometheus"
-                          disabled={!useBasicAuth}
-                        />
-                      </Space>
-                    </Col>
-                    <Col xs={24} md={12}>
-                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                        <Text>Senha:</Text>
-                        <Input.Password
-                          value={basicAuthPassword}
-                          onChange={(e) => setBasicAuthPassword(e.target.value)}
-                          placeholder="Senha forte para acesso às métricas"
-                          disabled={!useBasicAuth}
-                        />
-                      </Space>
-                    </Col>
-                  </Row>
-                )}
+      <Row gutter={16}>
+        <Col xs={24}>
+          <Card 
+            title={`Autenticação Basic Auth (${targetType === 'linux' ? 'Node Exporter' : 'Windows Exporter'})`} 
+            size="small" 
+            variant="borderless" 
+            style={{ background: '#fafafa' }}
+          >
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Alert
+                message="Segurança das Métricas"
+                description={
+                  targetType === 'linux' 
+                    ? "Basic Auth protege o endpoint /metrics do Node Exporter. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
+                    : "Basic Auth protege o endpoint /metrics do Windows Exporter na porta 9182. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
+                }
+                type="info"
+                showIcon
+              />
+              <Space style={{ width: '100%' }}>
+                <Text strong>Habilitar Basic Auth:</Text>
+                <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
               </Space>
-            </Card>
-          </Col>
-        </Row>
-      )}
+              
+              {useBasicAuth && (
+                <Row gutter={16}>
+                  <Col xs={24} md={12}>
+                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                      <Text>Usuário:</Text>
+                      <Input
+                        value={basicAuthUser}
+                        onChange={(e) => setBasicAuthUser(e.target.value)}
+                        placeholder="prometheus"
+                        disabled={!useBasicAuth}
+                      />
+                    </Space>
+                  </Col>
+                  <Col xs={24} md={12}>
+                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                      <Text>Senha:</Text>
+                      <Input.Password
+                        value={basicAuthPassword}
+                        onChange={(e) => setBasicAuthPassword(e.target.value)}
+                        placeholder="Senha forte para acesso às métricas"
+                        disabled={!useBasicAuth}
+                      />
+                    </Space>
+                  </Col>
+                </Row>
+              )}
+            </Space>
+          </Card>
+        </Col>
+      </Row>
 
       {existingInstallation?.detected && (
         <Alert
@@ -2469,14 +2476,12 @@ EOF"`,
               {selectedCollectors.length ? selectedCollectors.join(', ') : 'Padrao'}
             </Text>
           </List.Item>
-          {targetType === 'linux' && (
-            <List.Item>
-              <Text strong>Basic Auth:</Text>{' '}
-              <Text type="secondary">
-                {useBasicAuth ? `Habilitado (usuario: ${basicAuthUser})` : 'Desabilitado'}
-              </Text>
-            </List.Item>
-          )}
+          <List.Item>
+            <Text strong>Basic Auth:</Text>{' '}
+            <Text type="secondary">
+              {useBasicAuth ? `Habilitado (usuario: ${basicAuthUser})` : 'Desabilitado'}
+            </Text>
+          </List.Item>
           <List.Item>
             <Text strong>Auto registrar:</Text> <Text type="secondary">{autoRegister ? 'Sim' : 'Nao'}</Text>
           </List.Item>
