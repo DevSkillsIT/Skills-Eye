@@ -232,8 +232,6 @@ const PrometheusConfig: React.FC = () => {
       const hostname = selectedServer.split(':')[0]; // Extrai IP de "172.16.1.26:5522"
       const url = `${API_URL}/prometheus-config/files?hostname=${encodeURIComponent(hostname)}`;
 
-      console.log(`[fetchFiles] Carregando arquivos do servidor: ${hostname}`);
-
       const response = await axios.get<FilesResponse>(url, {
         timeout: 30000, // 30 segundos (SSH pode ser lento)
       });
@@ -685,8 +683,6 @@ const PrometheusConfig: React.FC = () => {
       // CRÍTICO: Extrair hostname do selectedServer para garantir que abre arquivo do servidor correto
       // selectedServer tem formato: "172.16.1.26:5522" -> extrair apenas "172.16.1.26"
       const hostname = selectedServer.split(':')[0];
-
-      console.log('[MONACO] Abrindo arquivo:', selectedFile, 'do servidor:', hostname);
 
       const response = await consulAPI.getRawFileContent(selectedFile, hostname);
 
