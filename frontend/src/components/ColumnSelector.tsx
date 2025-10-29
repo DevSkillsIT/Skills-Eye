@@ -44,6 +44,7 @@ interface ColumnSelectorProps {
   onChange: (columns: ColumnConfig[]) => void;
   onSave?: (columns: ColumnConfig[]) => void; // Salvar preferencias
   storageKey?: string; // Chave para localStorage
+  buttonSize?: 'small' | 'middle' | 'large'; // Tamanho do botão
 }
 
 // Componente de item arrastavel
@@ -102,6 +103,7 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   onChange,
   onSave,
   storageKey,
+  buttonSize = 'middle',
 }) => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [localColumns, setLocalColumns] = useState<ColumnConfig[]>(columns);
@@ -204,6 +206,7 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
         <Button
           icon={<SettingOutlined />}
           onClick={() => setDrawerVisible(true)}
+          size={buttonSize}
         >
           Colunas ({visibleCount}/{totalCount})
         </Button>

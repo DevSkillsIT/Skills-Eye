@@ -1012,13 +1012,7 @@ const PrometheusConfig: React.FC = () => {
 
   // Atualizar columnConfig quando o tipo de arquivo ou modo de visão mudar
   useEffect(() => {
-    const presets = getColumnPresets();
-    console.log('[PrometheusConfig] Atualizando columnConfig:', {
-      fileType,
-      alertViewMode,
-      presets,
-    });
-    setColumnConfig(presets);
+    setColumnConfig(getColumnPresets());
   }, [fileType, alertViewMode, getColumnPresets]);
 
   // NOVO: Colunas dinâmicas baseadas no tipo de arquivo
@@ -1558,33 +1552,8 @@ const PrometheusConfig: React.FC = () => {
   const visibleColumns = useMemo(() => {
     const allColumns = getColumnsForType();
 
-    console.log('[PrometheusConfig] visibleColumns calculando:', {
-      fileType,
-      alertViewMode,
-      columnConfigLength: columnConfig.length,
-      allColumnsCount: allColumns.length,
-      columnConfigKeys: columnConfig.map(c => c.key),
-      allColumnKeys: allColumns.map(c => c.key),
-    });
-
-    // Se columnConfig está vazio OU se as keys não correspondem (mudou o tipo de arquivo)
-    if (columnConfig.length === 0) {
-      console.log('[PrometheusConfig] columnConfig vazio, retornando todas as colunas');
-      return allColumns;
-    }
-
-    // Verificar se columnConfig tem keys que existem nas colunas atuais
-    const hasValidKeys = columnConfig.some(config =>
-      allColumns.some(col => col.key === config.key)
-    );
-
-    console.log('[PrometheusConfig] hasValidKeys:', hasValidKeys);
-
-    // Se não tem keys válidas, retornar todas as colunas (arquivo mudou)
-    if (!hasValidKeys) {
-      console.log('[PrometheusConfig] Sem keys válidas, retornando todas as colunas');
-      return allColumns;
-    }
+    // Se columnConfig ainda está vazio, retornar todas as colunas
+    if (columnConfig.length === 0) return allColumns;
 
     // Filtrar apenas colunas visíveis baseado em columnConfig
     return columnConfig
@@ -1606,7 +1575,7 @@ const PrometheusConfig: React.FC = () => {
         };
       })
       .filter(Boolean) as ProColumns<any>[];
-  }, [columnConfig, columnWidths, handleResize, getColumnsForType, fileType, alertViewMode]);
+  }, [columnConfig, columnWidths, handleResize, getColumnsForType]);
 
   // Colunas da tabela de campos
   const fieldsColumns = [
@@ -1800,24 +1769,27 @@ const PrometheusConfig: React.FC = () => {
       <Tabs
         defaultActiveKey="jobs"
         tabBarExtraContent={
-          <Space size="middle" style={{ marginBottom: 8 }}>
+          <Space size="middle" align="center" style={{ marginBottom: 8, marginRight: 8 }}>
             <ColumnSelector
               key={`column-selector-${fileType}-${alertViewMode}`}
               columns={columnConfig}
               onChange={setColumnConfig}
               storageKey={`prometheus-columns-${fileType}`}
+              buttonSize="large"
             />
 
             {fileType === 'rules' && (
-              <Space.Compact>
+              <Space.Compact size="large">
                 <Button
                   type={alertViewMode === 'group' ? 'primary' : 'default'}
+                  size="large"
                   onClick={() => setAlertViewMode('group')}
                 >
                   Visão Grupo
                 </Button>
                 <Button
                   type={alertViewMode === 'individual' ? 'primary' : 'default'}
+                  size="large"
                   onClick={() => setAlertViewMode('individual')}
                 >
                   Visão Alerta
@@ -1836,7 +1808,7 @@ const PrometheusConfig: React.FC = () => {
                 selectedKeys: [tableSize],
               }}
             >
-              <Button icon={<ColumnHeightOutlined />}>
+              <Button icon={<ColumnHeightOutlined />} size="large">
                 Densidade
               </Button>
             </Dropdown>
