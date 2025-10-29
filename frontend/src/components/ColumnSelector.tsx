@@ -108,7 +108,7 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [localColumns, setLocalColumns] = useState<ColumnConfig[]>(columns);
 
-  // Carregar preferencias do localStorage ao montar
+  // Carregar preferencias do localStorage ao montar ou quando columns mudarem
   React.useEffect(() => {
     if (storageKey) {
       const saved = localStorage.getItem(storageKey);
@@ -121,19 +121,28 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
             return savedCol ? { ...col, visible: savedCol.visible } : col;
           });
           setLocalColumns(merged);
-          onChange(merged);
+          // IMPORTANTE: Só chama onChange se realmente mudou para evitar loop
+          const isDifferent = JSON.stringify(merged) !== JSON.stringify(localColumns);
+          if (isDifferent) {
+            onChange(merged);
+          }
         } catch (e) {
           console.error('Error loading column preferences:', e);
+          setLocalColumns(columns);
+          onChange(columns);
         }
       } else {
         // Se não tem preferencias salvas, usar as colunas iniciais
         setLocalColumns(columns);
+        onChange(columns);
       }
     } else {
       // Se não tem storageKey, usar as colunas iniciais
       setLocalColumns(columns);
+      onChange(columns);
     }
-  }, [storageKey]); // So executar uma vez ao montar
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, columns]); // Reagir quando storageKey OU columns mudarem
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
