@@ -214,7 +214,8 @@ const PrometheusConfig: React.FC = () => {
   const reloadFields = loadPrometheusFields;
 
   // Carregar lista de arquivos
-  const fetchFiles = async () => {
+  // OTIMIZAÇÃO: useCallback previne recriação da função a cada render
+  const fetchFiles = useCallback(async () => {
     // CRÍTICO: Garantir que servidor está selecionado antes de buscar arquivos
     // Isso previne chamadas sem hostname que causariam SSH em TODOS os servidores (5+ segundos)
     if (!selectedServer) {
@@ -257,10 +258,11 @@ const PrometheusConfig: React.FC = () => {
     } finally {
       setLoadingFiles(false);
     }
-  };
+  }, [selectedServer, selectedFile]); // Dependências: re-criar apenas quando selectedServer ou selectedFile mudar
 
   // Carregar estrutura de um arquivo (NOVO - usa /file/structure)
-  const fetchJobs = async (filePath: string) => {
+  // OTIMIZAÇÃO: useCallback previne recriação da função a cada render
+  const fetchJobs = useCallback(async (filePath: string) => {
     setLoadingJobs(true);
     try {
       const response = await axios.get(
@@ -280,7 +282,7 @@ const PrometheusConfig: React.FC = () => {
     } finally {
       setLoadingJobs(false);
     }
-  };
+  }, []); // Sem dependências: função estável que não depende de props/state (recebe tudo via parâmetro)
 
   // Processar dados para visão de alertas (grupo vs individual)
   const processedJobs = useMemo(() => {
@@ -382,14 +384,16 @@ const PrometheusConfig: React.FC = () => {
       setJobs([]);
       fetchFiles();
     }
+    // CORREÇÃO: Adicionar fetchFiles nas dependências agora que é useCallback
+    // Mantém eslint-disable para servers (usado apenas para feedback visual)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedServer]);
+  }, [selectedServer, fetchFiles]);
 
   useEffect(() => {
     if (selectedFile) {
       fetchJobs(selectedFile);
     }
-  }, [selectedFile]);
+  }, [selectedFile, fetchJobs]); // Adicionar fetchJobs nas dependências pois é useCallback
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
