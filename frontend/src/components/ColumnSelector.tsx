@@ -108,41 +108,39 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [localColumns, setLocalColumns] = useState<ColumnConfig[]>(columns);
 
-  // Carregar preferencias do localStorage ao montar ou quando columns mudarem
+  // Sincronizar com a prop columns quando ela mudar
   React.useEffect(() => {
-    if (storageKey) {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const savedColumns = JSON.parse(saved) as ColumnConfig[];
-          // Merge com colunas atuais para lidar com novas colunas
-          const merged = columns.map((col) => {
-            const savedCol = savedColumns.find((s) => s.key === col.key);
-            return savedCol ? { ...col, visible: savedCol.visible } : col;
-          });
-          setLocalColumns(merged);
-          // IMPORTANTE: Só chama onChange se realmente mudou para evitar loop
-          const isDifferent = JSON.stringify(merged) !== JSON.stringify(localColumns);
-          if (isDifferent) {
-            onChange(merged);
-          }
-        } catch (e) {
-          console.error('Error loading column preferences:', e);
-          setLocalColumns(columns);
-          onChange(columns);
-        }
-      } else {
-        // Se não tem preferencias salvas, usar as colunas iniciais
-        setLocalColumns(columns);
-        onChange(columns);
-      }
-    } else {
-      // Se não tem storageKey, usar as colunas iniciais
-      setLocalColumns(columns);
+    setLocalColumns(columns);
+  }, [columns]);
+
+  // Carregar preferencias do localStorage apenas quando storageKey mudar
+  React.useEffect(() => {
+    if (!storageKey) {
+      return;
+    }
+
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) {
+      // Não tem preferências salvas, usar as colunas atuais
+      onChange(columns);
+      return;
+    }
+
+    try {
+      const savedColumns = JSON.parse(saved) as ColumnConfig[];
+      // Merge: manter apenas visibility das colunas salvas que ainda existem
+      const merged = columns.map((col) => {
+        const savedCol = savedColumns.find((s) => s.key === col.key);
+        return savedCol ? { ...col, visible: savedCol.visible } : col;
+      });
+      setLocalColumns(merged);
+      onChange(merged);
+    } catch (e) {
+      console.error('Error loading column preferences:', e);
       onChange(columns);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey, columns]); // Reagir quando storageKey OU columns mudarem
+  }, [storageKey]); // Apenas storageKey, columns via closure
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

@@ -1781,7 +1781,6 @@ const PrometheusConfig: React.FC = () => {
         tabBarExtraContent={
           <Space size="middle" align="center" style={{ marginBottom: 8, marginRight: 8 }}>
             <ColumnSelector
-              key={`column-selector-${fileType}-${alertViewMode}`}
               columns={columnConfig}
               onChange={setColumnConfig}
               storageKey={`prometheus-columns-${fileType}`}
