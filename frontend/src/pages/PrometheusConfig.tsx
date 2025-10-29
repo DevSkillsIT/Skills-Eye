@@ -123,6 +123,7 @@ const PrometheusConfig: React.FC = () => {
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [alertViewMode, setAlertViewMode] = useState<'group' | 'individual'>('group'); // Toggle para visões de alertas
+  const [tableSize, setTableSize] = useState<'small' | 'middle' | 'large'>('middle'); // Densidade da tabela
 
   // Monaco Editor states
   const [monacoEditorVisible, setMonacoEditorVisible] = useState(false);
@@ -979,8 +980,9 @@ const PrometheusConfig: React.FC = () => {
           { key: 'group', title: 'Grupo', visible: true },
           { key: 'severity', title: 'Severity', visible: true },
           { key: 'for', title: 'For', visible: true },
-          { key: 'expr', title: 'Expression', visible: true },
           { key: 'summary', title: 'Resumo', visible: true },
+          { key: 'description', title: 'Description', visible: true },
+          { key: 'expr', title: 'Expression', visible: true },
           { key: 'actions', title: 'Ações', visible: true, locked: true },
         ];
       }
@@ -1451,19 +1453,6 @@ const PrometheusConfig: React.FC = () => {
             ) : <Tag>-</Tag>,
           },
           {
-            title: 'Expression',
-            dataIndex: 'expr',
-            key: 'expr',
-            width: 400,
-            ellipsis: true,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            render: (_: any, record: any) => (
-              <Tooltip title={record.expr}>
-                <code style={{ fontSize: 11 }}>{record.expr}</code>
-              </Tooltip>
-            ),
-          },
-          {
             title: 'Resumo',
             dataIndex: ['annotations', 'summary'],
             key: 'summary',
@@ -1473,6 +1462,34 @@ const PrometheusConfig: React.FC = () => {
             render: (_: any, record: any) => (
               <Tooltip title={record.annotations?.description}>
                 {record.annotations?.summary || '-'}
+              </Tooltip>
+            ),
+          },
+          {
+            title: 'Description',
+            dataIndex: ['annotations', 'description'],
+            key: 'description',
+            width: 400,
+            ellipsis: true,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tooltip title={record.annotations?.description}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {record.annotations?.description || '-'}
+                </Text>
+              </Tooltip>
+            ),
+          },
+          {
+            title: 'Expression',
+            dataIndex: 'expr',
+            key: 'expr',
+            width: 400,
+            ellipsis: true,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tooltip title={record.expr}>
+                <code style={{ fontSize: 11 }}>{record.expr}</code>
               </Tooltip>
             ),
           }
@@ -1721,44 +1738,57 @@ const PrometheusConfig: React.FC = () => {
         </Row>
       </Card>
 
-      {/* Card de Ações e Filtros (padrão Blackbox) - ALTURA FIXA 72px */}
-      <Card size="small" style={{ marginBottom: 16, minHeight: 72, overflow: 'hidden' }}>
-        <Space wrap>
-          <ColumnSelector
-            columns={columnConfig}
-            onChange={setColumnConfig}
-            storageKey={`prometheus-columns-${fileType}`}
-          />
-
-          {fileType === 'rules' && (
-            <>
-              <Button
-                type={alertViewMode === 'group' ? 'primary' : 'default'}
-                onClick={() => setAlertViewMode('group')}
-              >
-                Visão por Grupo
-              </Button>
-              <Button
-                type={alertViewMode === 'individual' ? 'primary' : 'default'}
-                onClick={() => setAlertViewMode('individual')}
-              >
-                Visão por Alerta
-              </Button>
-            </>
-          )}
-
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => selectedFile && fetchJobs(selectedFile)}
-            disabled={!selectedFile}
-          >
-            Recarregar Tabela
-          </Button>
-        </Space>
-      </Card>
-
       <Tabs
         defaultActiveKey="jobs"
+        tabBarExtraContent={
+          <Space wrap size="small" style={{ marginBottom: 8 }}>
+            <ColumnSelector
+              columns={columnConfig}
+              onChange={setColumnConfig}
+              storageKey={`prometheus-columns-${fileType}`}
+            />
+
+            {fileType === 'rules' && (
+              <>
+                <Button
+                  type={alertViewMode === 'group' ? 'primary' : 'default'}
+                  size="small"
+                  onClick={() => setAlertViewMode('group')}
+                >
+                  Visão Grupo
+                </Button>
+                <Button
+                  type={alertViewMode === 'individual' ? 'primary' : 'default'}
+                  size="small"
+                  onClick={() => setAlertViewMode('individual')}
+                >
+                  Visão Alerta
+                </Button>
+              </>
+            )}
+
+            <Button
+              icon={<ReloadOutlined />}
+              size="small"
+              onClick={() => selectedFile && fetchJobs(selectedFile)}
+              disabled={!selectedFile}
+            >
+              Recarregar
+            </Button>
+
+            <Select
+              size="small"
+              value={tableSize}
+              onChange={setTableSize}
+              style={{ width: 100 }}
+              options={[
+                { label: 'Compacto', value: 'small' },
+                { label: 'Médio', value: 'middle' },
+                { label: 'Grande', value: 'large' },
+              ]}
+            />
+          </Space>
+        }
         onChange={(activeKey) => {
           // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
           if (activeKey === 'fields' && fields.length === 0 && !loadingFields) {
@@ -1800,9 +1830,8 @@ const PrometheusConfig: React.FC = () => {
                   rowKey={fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey}
                   loading={loadingJobs}
                   search={false}
-                  options={{
-                    reload: () => selectedFile && fetchJobs(selectedFile),
-                  }}
+                  size={tableSize}
+                  options={false}
                   pagination={{
                     defaultPageSize: 20,
                     showSizeChanger: true,
