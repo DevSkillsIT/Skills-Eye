@@ -2053,7 +2053,7 @@ const PrometheusConfig: React.FC = () => {
                   rowKey="name"
                   loading={loadingFields}
                   pagination={{
-                    defaultPageSize: 15,
+                    defaultPageSize: 30,
                     showSizeChanger: true,
                     pageSizeOptions: ['10', '20', '30', '50', '100'],
                     showTotal: (total) => `Total: ${total} campos`,
