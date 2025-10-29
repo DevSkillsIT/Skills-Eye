@@ -222,12 +222,12 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
       <Drawer
         title="Configuracao de Colunas"
         placement="right"
-        width={400}
+        width={500}
         open={drawerVisible}
         onClose={() => setDrawerVisible(false)}
         extra={
           <Space>
-            <Button icon={<ReloadOutlined />} onClick={handleReset} size="small">
+            <Button icon={<ReloadOutlined />} onClick={handleReset}>
               Redefinir
             </Button>
           </Space>
@@ -235,10 +235,10 @@ const ColumnSelector: React.FC<ColumnSelectorProps> = ({
         footer={
           <Space style={{ width: '100%', justifyContent: 'space-between' }}>
             <Space>
-              <Button size="small" onClick={handleShowAll}>
+              <Button onClick={handleShowAll}>
                 Mostrar Todas
               </Button>
-              <Button size="small" onClick={handleHideAll}>
+              <Button onClick={handleHideAll}>
                 Ocultar Todas
               </Button>
             </Space>
