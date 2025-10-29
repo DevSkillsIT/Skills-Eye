@@ -108,10 +108,10 @@ NODE_EXPORTER_COLLECTOR_DETAILS = {
 
 WINDOWS_EXPORTER_COLLECTORS = {
     'recommended': [
-        'cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system',
+    'cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system',
     ],
     'full': [
-        'cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system',
+    'cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system',
         'service', 'tcp', 'thermalzone'
     ],
     'minimal': ['cpu', 'memory', 'logical_disk', 'os']
@@ -119,11 +119,11 @@ WINDOWS_EXPORTER_COLLECTORS = {
 
 WINDOWS_EXPORTER_COLLECTOR_DETAILS = {
     'cpu': 'Uso de CPU',
-    'cs': 'Informações do computador',
-    'logical_disk': 'Uso de disco',
+    'logical_disk': 'Uso de disco lógico',
     'memory': 'Uso de memória',
     'net': 'Tráfego de rede',
     'os': 'Informações do SO',
+    'physical_disk': 'I/O de discos físicos',
     'system': 'Sistema geral',
     'service': 'Serviços Windows',
     'tcp': 'Conexões TCP',

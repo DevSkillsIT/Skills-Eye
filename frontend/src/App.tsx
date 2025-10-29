@@ -1,5 +1,5 @@
 import React from 'react';
-import { ConfigProvider, theme } from 'antd';
+import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
@@ -116,6 +116,7 @@ const App: React.FC = () => {
           algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
         }}
       >
+        <AntdApp>
         <ProLayout
           title="Consul Manager"
           fixedHeader
@@ -153,6 +154,7 @@ const App: React.FC = () => {
             <Route path="/installer" element={<Installer />} />
           </Routes>
         </ProLayout>
+        </AntdApp>
       </ConfigProvider>
     </BrowserRouter>
   );

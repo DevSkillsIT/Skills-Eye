@@ -34,24 +34,59 @@ import {
 import { PageContainer } from '@ant-design/pro-components';
 import {
   consulAPI,
-  type InstallerRequest,
   type ConsulNode,
+  type InstallStatusResponse,
+  type InstallerLogEntry as ApiInstallerLogEntry,
+  type InstallerRequest,
 } from '../services/api';
 
-const { Option } = Select;
-const { Paragraph, Text, Title } = Typography;
+type ConnectionMethod = 'ssh' | 'fallback';
+type WindowsResolvedMethod = 'psexec' | 'winrm' | 'ssh';
 
-interface ConsulServiceInstanceMeta {
-  instance?: string;
-  name?: string;
-  host?: string;
-  ip?: string;
-  [key: string]: unknown;
+type PrecheckStatus = 'pending' | 'running' | 'success' | 'failed';
+
+interface PrecheckItem {
+  key: string;
+  label: string;
+  description: string;
+  status: PrecheckStatus;
+  detail?: string;
+}
+interface CollectorOption {
+  value: string;
+  label: string;
+  description: string;
+  targets: Array<'linux' | 'windows'>;
 }
 
-interface ConsulServiceNode {
-  Address?: string;
-  [key: string]: unknown;
+interface InstallLogEntry {
+  key: string;
+  message: string;
+  source: 'local' | 'remote';
+  level?: string;
+  timestamp?: string;
+  details?: string;
+}
+
+interface NormalizedConsulNode extends ConsulNode {
+  node?: string;
+  addr?: string;
+  status?: string;
+  type?: string;
+  services_count?: number;
+  datacenter?: string;
+  tagged_addresses?: Record<string, string>;
+  meta?: Record<string, string>;
+}
+
+interface WarningModalContent {
+  duplicateConsul?: boolean;
+  existingInstall?: boolean;
+  services: string[];
+  portOpen?: boolean;
+  serviceRunning?: boolean;
+  hasConfig?: boolean;
+  targetType: 'linux' | 'windows';
 }
 
 interface ConsulServiceInstance {
@@ -60,18 +95,19 @@ interface ConsulServiceInstance {
   ServiceName?: string;
   ServiceID?: string;
   service_name?: string;
-  meta?: ConsulServiceInstanceMeta;
-  Meta?: ConsulServiceInstanceMeta;
-  ServiceMeta?: ConsulServiceInstanceMeta;
-  address?: string;
+  ServiceMeta?: Record<string, string | undefined>;
+  Meta?: Record<string, string | undefined>;
+  meta?: Record<string, string | undefined>;
   Address?: string;
+  address?: string;
   ServiceAddress?: string;
   nodeAddr?: string;
-  Node?: ConsulServiceNode;
+  Node?: {
+    Address?: string;
+  };
   instance?: string;
   host?: string;
   ip?: string;
-  [key: string]: unknown;
 }
 
 interface ExistingInstallationCheckRequest {
@@ -87,75 +123,104 @@ interface ExistingInstallationCheckRequest {
 interface AxiosErrorLike {
   response?: {
     status?: number;
-    data?:
-      | {
-          message?: string;
-          detail?: string;
-          [key: string]: unknown;
-        }
-      | string;
+    data?: Record<string, unknown> | string;
   };
-  code?: string;
   message?: string;
+  stack?: string;
+  code?: string;
   timeout?: number;
 }
 
-type PrecheckStatus = 'pending' | 'running' | 'success' | 'failed';
+const { Paragraph, Text, Title } = Typography;
+const { Option } = Select;
 
-type PrecheckKey = 'connectivity' | 'os' | 'ports' | 'disk' | 'firewall';
+const LOG_LEVEL_COLOR: Record<string, string> = {
+  error: 'red',
+  warning: 'orange',
+  success: 'green',
+  progress: 'geekblue',
+  info: 'blue',
+  debug: 'purple',
+};
 
-type ConnectionMethod = 'ssh' | 'fallback';
+const formatLogTimestamp = (iso?: string): string | undefined => {
+  if (!iso) {
+    return undefined;
+  }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  return parsed.toLocaleTimeString('pt-BR', { hour12: false });
+};
 
-type WindowsResolvedMethod = 'psexec' | 'winrm' | 'ssh';
+const buildLogDetails = (data?: Record<string, unknown>): string | undefined => {
+  if (!data) {
+    return undefined;
+  }
 
-interface InstallLogEntry {
-  key: string;
-  message: string;
-}
+  const sections: string[] = [];
+  const commandValue = data.command;
+  if (typeof commandValue === 'string' && commandValue.trim().length > 0) {
+    sections.push(`Comando: ${commandValue}`);
+  }
 
-interface PrecheckItem {
-  key: PrecheckKey;
-  label: string;
-  description: string;
-  status: PrecheckStatus;
-  detail?: string;
-}
+  const exitCodeValue = data.exit_code;
+  if (typeof exitCodeValue === 'number') {
+    sections.push(`Exit code: ${exitCodeValue}`);
+  } else if (typeof exitCodeValue === 'string' && exitCodeValue.trim().length > 0) {
+    sections.push(`Exit code: ${exitCodeValue}`);
+  }
 
-interface CollectorOption {
-  value: string;
-  label: string;
-  description: string;
-  targets: Array<'linux' | 'windows'>;
-}
+  const outputValue = data.output;
+  if (typeof outputValue === 'string' && outputValue.trim().length > 0) {
+    sections.push(`Saída:\n${outputValue.trim()}`);
+  }
 
-interface DatacenterOption {
-  value: string;
-  label: string;
-  nodeName?: string;
-  nodeAddress?: string;
-  datacenter?: string;
-  instanceCount?: number;
-  serviceName?: string;
-}
+  const reservedKeys = new Set(['command', 'output', 'exit_code']);
+  const extraEntries = Object.entries(data).filter(([key]) => !reservedKeys.has(key));
+  if (extraEntries.length > 0) {
+    const formattedExtras = extraEntries
+      .map(([key, value]) => {
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          return `${key}: ${value}`;
+        }
+        try {
+          return `${key}: ${JSON.stringify(value, null, 2)}`;
+        } catch {
+          return `${key}: ${String(value)}`;
+        }
+      })
+      .join('\n');
+    sections.push(formattedExtras);
+  }
 
-interface ConsulServiceGroup {
-  Name: string;
-  InstanceCount?: number;
-  Datacenter?: string;
-  NodeName?: string;
-  NodeAddress?: string;
-  Nodes?: string[];
-  [key: string]: unknown;
-}
+  return sections.length > 0 ? sections.join('\n') : undefined;
+};
 
-type WarningModalContent = {
-  duplicateConsul: boolean;
-  existingInstall: boolean;
-  services: string[];
-  portOpen: boolean;
-  serviceRunning: boolean;
-  hasConfig: boolean;
-  targetType?: string;
+const mapBackendLogs = (
+  logs: ApiInstallerLogEntry[] | undefined,
+  installationId: string,
+): InstallLogEntry[] => {
+  if (!Array.isArray(logs) || logs.length === 0) {
+    return [];
+  }
+
+  return logs
+    .filter((log) => typeof log.message === 'string' && log.message.trim().length > 0)
+    .map((log, index) => {
+      const keyBase = log.timestamp && log.timestamp.length > 0 ? log.timestamp : `${installationId}-${index}`;
+      const normalizedLevel = typeof log.level === 'string' ? log.level.toLowerCase() : undefined;
+
+      return {
+        key: `remote-${keyBase}-${index}`,
+        message: log.message,
+        source: 'remote',
+        level: normalizedLevel,
+        timestamp: log.timestamp,
+        details: buildLogDetails(log.data),
+      };
+    });
 };
 
 const toStringSafe = (value: unknown): string => (typeof value === 'string' ? value : '');
@@ -238,6 +303,72 @@ const COLLECTOR_OPTIONS: CollectorOption[] = [
   },
 ];
 
+const normalizeConsulNode = (raw: Record<string, unknown>): NormalizedConsulNode => {
+  const nodeName = typeof raw['node'] === 'string'
+    ? (raw['node'] as string)
+    : typeof raw['Node'] === 'string'
+    ? (raw['Node'] as string)
+    : typeof raw['Name'] === 'string'
+    ? (raw['Name'] as string)
+    : 'desconhecido';
+
+  const addrValue = typeof raw['addr'] === 'string'
+    ? (raw['addr'] as string)
+    : typeof raw['Address'] === 'string'
+    ? (raw['Address'] as string)
+    : typeof raw['address'] === 'string'
+    ? (raw['address'] as string)
+    : '';
+
+  const statusValue = typeof raw['status'] === 'string'
+    ? (raw['status'] as string)
+    : typeof raw['Status'] === 'string'
+    ? (raw['Status'] as string)
+    : undefined;
+
+  const typeValue = typeof raw['type'] === 'string'
+    ? (raw['type'] as string)
+    : typeof raw['Type'] === 'string'
+    ? (raw['Type'] as string)
+    : undefined;
+
+  const servicesCountValue = typeof raw['services_count'] === 'number'
+    ? (raw['services_count'] as number)
+    : typeof raw['servicesCount'] === 'number'
+    ? (raw['servicesCount'] as number)
+    : undefined;
+
+  const datacenterValue = typeof raw['datacenter'] === 'string'
+    ? (raw['datacenter'] as string)
+    : typeof raw['Datacenter'] === 'string'
+    ? (raw['Datacenter'] as string)
+    : undefined;
+
+  const taggedAddressesValue = typeof raw['tagged_addresses'] === 'object' && raw['tagged_addresses'] !== null
+    ? (raw['tagged_addresses'] as Record<string, string>)
+    : typeof raw['TaggedAddresses'] === 'object' && raw['TaggedAddresses'] !== null
+    ? (raw['TaggedAddresses'] as Record<string, string>)
+    : undefined;
+
+  const metaValue = typeof raw['meta'] === 'object' && raw['meta'] !== null
+    ? (raw['meta'] as Record<string, string>)
+    : typeof raw['Meta'] === 'object' && raw['Meta'] !== null
+    ? (raw['Meta'] as Record<string, string>)
+    : undefined;
+
+  return {
+    ...(raw as Record<string, unknown>),
+    node: nodeName,
+    addr: addrValue,
+    status: statusValue,
+    type: typeValue,
+    services_count: servicesCountValue,
+    datacenter: datacenterValue,
+    tagged_addresses: taggedAddressesValue,
+    meta: metaValue,
+  } as unknown as NormalizedConsulNode;
+};
+
 const Installer: React.FC = () => {
   const [form] = Form.useForm();
   const watchedPort = Form.useWatch('port', form);
@@ -255,8 +386,7 @@ const Installer: React.FC = () => {
   const [basicAuthPassword, setBasicAuthPassword] = useState('');
   const [autoRegister, setAutoRegister] = useState(true);
   const [selectedNodeAddress, setSelectedNodeAddress] = useState('');
-  const [selectedNodeName, setSelectedNodeName] = useState('');
-  const [nodes, setNodes] = useState<ConsulNode[]>([]);
+  const [nodes, setNodes] = useState<NormalizedConsulNode[]>([]);
   const [loadingNodes, setLoadingNodes] = useState(false);
   const [connectionMethod, setConnectionMethod] = useState<ConnectionMethod>('ssh');
   const [resolvedWindowsMethod, setResolvedWindowsMethod] = useState<WindowsResolvedMethod | null>(null);
@@ -386,12 +516,66 @@ const Installer: React.FC = () => {
     if (!selectedNodeAddress) {
       return 'Não selecionado';
     }
-    const match = nodes.find((node) => node.Address === selectedNodeAddress);
-    return match ? `${match.Node} (${match.Address})` : selectedNodeAddress;
+    const match = nodes.find((node) => node.addr === selectedNodeAddress);
+    return match ? `${match.node} (${match.addr})` : selectedNodeAddress;
   }, [nodes, selectedNodeAddress]);
 
-  const appendLog = (messageText: string) => {
-    setInstallLogs((prev) => [...prev, { key: `${Date.now()}-${prev.length}`, message: messageText }]);
+  const appendLog = (messageText: string, level: string = 'info', details?: string) => {
+      setInstallLogs((prev) => [
+        ...prev,
+        {
+          key: `${Date.now()}-${prev.length}`,
+          message: messageText,
+          source: 'local',
+          level,
+          timestamp: new Date().toISOString(),
+          details,
+        },
+      ]);
+  };
+
+  const buildLogRow = (entry: InstallLogEntry, variant: 'dark' | 'light' = 'dark') => {
+    const levelKey = entry.level ?? 'info';
+    const levelColor = LOG_LEVEL_COLOR[levelKey] ?? 'default';
+    const sourceColor = entry.source === 'remote' ? 'geekblue' : 'cyan';
+    const baseTextColor = variant === 'dark' ? '#f5f5f5' : '#262626';
+    const detailsColor = variant === 'dark' ? '#c5c5c5' : '#595959';
+    const detailsBackground = variant === 'dark' ? 'rgba(255,255,255,0.04)' : '#fafafa';
+
+    return (
+      <div key={entry.key} style={{ marginBottom: 8 }}>
+        <Space align="start" wrap size={4} style={{ lineHeight: 1.4 }}>
+          {entry.timestamp && (
+            <Tag color="default" style={{ marginBottom: 0 }}>
+              {formatLogTimestamp(entry.timestamp)}
+            </Tag>
+          )}
+          <Tag color={levelColor} style={{ marginBottom: 0 }}>
+            {levelKey.toUpperCase()}
+          </Tag>
+          <Tag color={sourceColor} style={{ marginBottom: 0 }}>
+            {entry.source === 'remote' ? 'Backend' : 'Local'}
+          </Tag>
+          <span style={{ color: baseTextColor }}>{entry.message}</span>
+        </Space>
+        {entry.details && (
+          <pre
+            style={{
+              margin: '4px 0 0',
+              color: detailsColor,
+              background: detailsBackground,
+              borderRadius: 4,
+              padding: 8,
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'Consolas, Monaco, monospace',
+              fontSize: 12,
+            }}
+          >
+            {entry.details}
+          </pre>
+        )}
+      </div>
+    );
   };
 
   const normalizeWindowsMethod = (method?: string | null): WindowsResolvedMethod | null => {
@@ -1321,8 +1505,8 @@ EOF"`,
         return;
       }
 
-      appendLog('🚀 Iniciando instalação remota...');
-      appendLog(`📡 Conectando em ${host}:${port} como ${username}...`);
+    appendLog('🚀 Iniciando instalação remota...');
+    appendLog(`📡 Conectando em ${host}:${port} como ${username}...`, 'progress');
       
       // Abrir modal de logs automaticamente
       setLogModalVisible(true);
@@ -1369,7 +1553,7 @@ EOF"`,
         if (useBasicAuth && basicAuthUser && basicAuthPassword) {
           installRequest.basic_auth_user = basicAuthUser;
           installRequest.basic_auth_password = basicAuthPassword;
-          appendLog(`🔒 Basic Auth habilitado (usuário: ${basicAuthUser})`);
+          appendLog(`🔒 Basic Auth habilitado (usuário: ${basicAuthUser})`, 'info');
         }
       } else {
         if (authType === 'password' && password) {
@@ -1378,7 +1562,7 @@ EOF"`,
 
         if (useDomain && domain) {
           installRequest.domain = domain;
-          appendLog(`🏢 Usando conta de domínio: ${domain}\\${username}`);
+          appendLog(`🏢 Usando conta de domínio: ${domain}\\${username}`, 'info');
         }
 
         if (methodToSend === 'winrm') {
@@ -1391,9 +1575,15 @@ EOF"`,
         } else if (!installRequest.psexec_path) {
           installRequest.psexec_path = 'psexec.exe';
         }
+
+        if (useBasicAuth && basicAuthUser && basicAuthPassword) {
+          installRequest.basic_auth_user = basicAuthUser;
+          installRequest.basic_auth_password = basicAuthPassword;
+          appendLog(`🔒 Basic Auth habilitado (usuário: ${basicAuthUser})`, 'info');
+        }
       }
 
-      appendLog('📤 Enviando requisição para o backend...');
+  appendLog('📤 Enviando requisição para o backend...', 'progress');
 
       // Chamar API de instalação
       const response = await consulAPI.startInstallation(installRequest);
@@ -1402,28 +1592,72 @@ EOF"`,
         throw new Error(response.data.message || 'Erro ao iniciar instalação');
       }
 
-      const installationId = response.data.installation_id;
-      appendLog(`✅ Instalação iniciada (ID: ${installationId})`);
-      appendLog('📊 Acompanhando progresso...');
+  const installationId = response.data.installation_id;
+  appendLog(`✅ Instalação iniciada (ID: ${installationId})`, 'success');
+  appendLog('📊 Acompanhando progresso...', 'progress');
 
       // Polling do status (poderia ser WebSocket no futuro)
       const pollStatus = async () => {
         try {
           const statusResponse = await consulAPI.getInstallationStatus(installationId);
-          const status = statusResponse.data;
+          const status: InstallStatusResponse = statusResponse.data;
 
-          // Atualizar logs se houver novos
-          if (status.logs && status.logs.length > 0) {
-            status.logs.forEach((log: string) => {
-              if (!installLogs.find(l => l.message === log)) {
-                appendLog(log);
+          // Processar logs do backend se existirem
+          if (Array.isArray(status.logs) && status.logs.length > 0) {
+            const remoteEntries = mapBackendLogs(status.logs, installationId);
+
+            setInstallLogs((prev) => {
+              if (remoteEntries.length === 0) {
+                return prev;
               }
+
+              // Separar logs locais e remotos existentes
+              const localLogs = prev.filter((log) => log.source === 'local');
+              const remoteLogs = prev.filter((log) => log.source === 'remote');
+              
+              // Criar mapa de logs remotos existentes para merge
+              const remoteLogsByKey = new Map(remoteLogs.map((log) => [log.key, log]));
+              
+              // Atualizar/adicionar logs remotos
+              const updatedRemoteLogs: InstallLogEntry[] = [];
+              remoteEntries.forEach((entry) => {
+                const existing = remoteLogsByKey.get(entry.key);
+                if (existing) {
+                  // Atualizar se mudou
+                  if (
+                    existing.message !== entry.message ||
+                    existing.level !== entry.level ||
+                    existing.details !== entry.details ||
+                    existing.timestamp !== entry.timestamp
+                  ) {
+                    updatedRemoteLogs.push(entry);
+                  } else {
+                    updatedRemoteLogs.push(existing);
+                  }
+                } else {
+                  // Novo log remoto
+                  updatedRemoteLogs.push(entry);
+                }
+              });
+
+              // Combinar logs locais + logs remotos atualizados
+              const combined = [...localLogs, ...updatedRemoteLogs];
+              
+              // Ordenar por timestamp
+              return combined.sort((a, b) => {
+                const timeA = a.timestamp ?? a.key;
+                const timeB = b.timestamp ?? b.key;
+                if (timeA === timeB) {
+                  return a.key.localeCompare(b.key);
+                }
+                return timeA.localeCompare(timeB);
+              });
             });
           }
 
           // Verificar se completou
           if (status.status === 'completed') {
-            appendLog('✅ Instalação concluída com sucesso!');
+            appendLog('✅ Instalação concluída com sucesso!', 'success');
             setInstallSuccess(true);
             setInstallRunning(false);
             setCurrentStep(4); // Ir para tela de validação
@@ -1432,22 +1666,29 @@ EOF"`,
           }
 
           if (status.status === 'failed') {
-            appendLog(`❌ Instalação falhou: ${status.message}`);
+            appendLog(`❌ Instalação falhou: ${status.message}`, 'error');
+            if (status.error_code) {
+              appendLog(`📛 Código do erro: ${status.error_code}`, 'error');
+            }
+            if (status.error_details) {
+              appendLog(`📝 Detalhes: ${status.error_details}`, 'error');
+            }
             setInstallSuccess(false);
             setInstallRunning(false);
             setCurrentStep(4); // Ir para tela de validação mesmo com falha
-            message.error('Falha na instalação');
+            const userMessage = status.message?.replace(/^Erro:\s*/i, '') ?? 'Falha na instalação';
+            message.error(userMessage || 'Falha na instalação');
             return;
           }
 
           // Continuar polling se ainda estiver rodando
           if (status.status === 'running' || status.status === 'pending') {
-            appendLog(`⏳ Progresso: ${status.progress}% - ${status.message}`);
+            appendLog(`⏳ Progresso: ${status.progress}% - ${status.message}`, 'progress');
             setTimeout(pollStatus, 2000); // Poll a cada 2 segundos
           }
         } catch (error) {
           console.error('Erro ao verificar status:', error);
-          appendLog(`⚠️ Erro ao verificar status: ${error}`);
+          appendLog(`⚠️ Erro ao verificar status: ${error}`, 'warning');
           setTimeout(pollStatus, 3000); // Retry após 3 segundos
         }
       };
@@ -1458,7 +1699,7 @@ EOF"`,
     } catch (error) {
       console.error('Erro na instalação:', error);
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      appendLog(`❌ Erro: ${errorMessage}`);
+  appendLog(`❌ Erro: ${errorMessage}`, 'error');
       setInstallSuccess(false);
       setInstallRunning(false);
       message.error('Erro ao iniciar instalação');
@@ -1485,7 +1726,7 @@ EOF"`,
     setBasicAuthUser('prometheus');
     setBasicAuthPassword('');
     setAutoRegister(true);
-    setSelectedNodeAddress(datacenterOptions[0]?.value || '');
+    setSelectedNodeAddress(nodes[0]?.addr ?? '');
     setConnectionMethod('ssh');
     setResolvedWindowsMethod(null);
     setPrivateKeyFile('');
@@ -1507,17 +1748,25 @@ EOF"`,
       setLoadingNodes(true);
       try {
         const response = await consulAPI.getNodes();
-        const activeNodes = (response.data?.data || response.data || [])
-          .filter((node: ConsulNode) => (node.Status ?? 'alive') === 'alive')
-          .sort((a: ConsulNode, b: ConsulNode) => a.Node.localeCompare(b.Node));
+        const payload = response.data?.data ?? response.data ?? [];
+        const rawNodes = Array.isArray(payload) ? payload : [];
+        const normalizedNodes = rawNodes
+          .map((item) => normalizeConsulNode(item as Record<string, unknown>))
+          .filter((node) => Boolean(node.addr));
+
+        const activeNodes = normalizedNodes
+          .filter((node) => (node.status ?? 'alive') === 'alive')
+          .sort((a, b) => (a.node ?? '').localeCompare(b.node ?? ''));
         
         setNodes(activeNodes);
 
-        // Auto-selecionar o primeiro nó se nenhum estiver selecionado
-        if (!selectedNodeAddress && activeNodes.length > 0) {
-          setSelectedNodeAddress(activeNodes[0].Address);
-          setSelectedNodeName(activeNodes[0].Node);
-        }
+        // Auto-selecionar o primeiro nó se nenhum estiver selecionado ainda
+        setSelectedNodeAddress((previous) => {
+          if (previous || activeNodes.length === 0) {
+            return previous;
+          }
+          return activeNodes[0]?.addr ?? '';
+        });
       } catch (error) {
         console.error('Erro ao buscar nós do Consul:', error);
         message.error('Falha ao carregar nós do Consul. Verifique a conexão com o backend.');
@@ -1527,7 +1776,7 @@ EOF"`,
     };
 
     fetchNodes();
-  }, [selectedNodeAddress]);
+  }, []);
 
   useEffect(() => {
     const allowedValues = new Set(availableCollectorOptions.map((option) => option.value));
@@ -2000,14 +2249,26 @@ EOF"`,
               />
 
               <Select
+                showSearch
+                loading={loadingNodes}
                 value={selectedNodeAddress}
-                onChange={setSelectedNodeAddress}
+                onChange={(value) => setSelectedNodeAddress(value)}
                 style={{ width: '100%' }}
-                options={datacenterOptions}
-                loading={loadingGroups}
-                placeholder={loadingGroups ? "Carregando grupos..." : "Selecione o grupo selfnode"}
-                disabled={loadingGroups || datacenterOptions.length === 0}
-                notFoundContent={loadingGroups ? "Carregando..." : "Nenhum grupo selfnode encontrado"}
+                placeholder={
+                  loadingNodes ? 'Carregando nós do Consul...' : 'Selecione um nó do Consul'
+                }
+                optionFilterProp="label"
+                filterOption={(input, option) => {
+                  const label = option?.label;
+                  const labelText = typeof label === 'string' ? label : String(label ?? '');
+                  return labelText.toLowerCase().includes(input.toLowerCase());
+                }}
+                options={nodes.map((node) => ({
+                  value: node.addr,
+                  label: `${node.node} (${node.addr})`,
+                }))}
+                disabled={loadingNodes || nodes.length === 0}
+                notFoundContent={loadingNodes ? 'Carregando...' : 'Nenhum nó ativo encontrado'}
               />
 
               <Space>
@@ -2251,7 +2512,7 @@ EOF"`,
               Nenhum log ainda. Clique em "Iniciar instalacao" para comecar.
             </Text>
           ) : (
-            installLogs.map((log) => <div key={log.key}>{log.message}</div>)
+            installLogs.map((log) => buildLogRow(log, 'dark'))
           )}
         </div>
       </Card>
@@ -2281,6 +2542,7 @@ EOF"`,
         )}
       </Space>
     </Space>
+  );
   };
   const renderValidationContent = () => (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -2361,7 +2623,6 @@ EOF"`,
           items={steps.map((item) => ({
             key: item.key,
             title: item.title,
-        Upload,
             icon: item.icon,
           }))}
           responsive
@@ -2403,11 +2664,7 @@ EOF"`,
               Aguardando início da instalação...
             </div>
           ) : (
-            installLogs.map((log) => (
-              <div key={log.key} style={{ marginBottom: '4px' }}>
-                {log.message}
-              </div>
-            ))
+            installLogs.map((log) => buildLogRow(log, 'dark'))
           )}
         </div>
       </Modal>

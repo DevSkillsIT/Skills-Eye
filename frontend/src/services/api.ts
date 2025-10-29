@@ -166,6 +166,41 @@ export interface ConfigFileInfo {
   modified?: string;
 }
 
+/**
+ * INTERFACES PARA EDIÇÃO DIRETA DE ARQUIVO
+ *
+ * Nova abordagem que edita o arquivo RAW diretamente no servidor via SSH,
+ * preservando 100% dos comentários e formatação YAML.
+ */
+
+export interface RawFileContentResponse {
+  success: boolean;
+  file_path: string;
+  content: string;
+  size_bytes: number;
+  last_modified: string;
+  host: string;
+  port: number;
+}
+
+export interface DirectEditRequest {
+  file_path: string;
+  content: string;
+  hostname?: string;
+}
+
+export interface DirectEditResponse {
+  success: boolean;
+  message: string;
+  validation_result?: {
+    valid: boolean;
+    message?: string;
+    output?: string;
+    errors?: string;
+  };
+  backup_path?: string;
+}
+
 export interface ServicePreset {
   id: string;
   name: string;
@@ -270,6 +305,13 @@ export interface InstallerRequest {
   psexec_path?: string;
 }
 
+export interface InstallerLogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
 export interface InstallerResponse {
   success: boolean;
   message: string;
@@ -293,7 +335,10 @@ export interface InstallStatusResponse {
   method: string;
   started_at?: string;
   completed_at?: string;
-  logs?: string[];
+  logs?: InstallerLogEntry[];
+  error_code?: string;
+  error_category?: string;
+  error_details?: string;
 }
 
 export interface TestConnectionResponse {
@@ -919,6 +964,76 @@ export const consulAPI = {
     }>('/installer/check-existing', request, {
       timeout: 30000, // 30 segundos para verificação
     }).then(response => response.data),
+
+  // ============================================================================
+  // Prometheus Config - Edição Direta de Arquivo
+  // ============================================================================
+
+  /**
+   * Lê o conteúdo RAW do arquivo diretamente do servidor via SSH.
+   *
+   * Nova abordagem que preserva 100% dos comentários e formatação YAML.
+   * O arquivo é lido EXATAMENTE como está no servidor, sem nenhum
+   * parse/dump que pudesse alterar comentários ou formatação.
+   *
+   * @param filePath - Path completo do arquivo no servidor
+   * @param hostname - Hostname do servidor (opcional, para desambiguação quando há arquivos com mesmo path)
+   * @returns Conteúdo RAW do arquivo + metadados
+   */
+  getRawFileContent: (filePath: string, hostname?: string) =>
+    api.get<RawFileContentResponse>('/prometheus-config/file/raw-content', {
+      params: { file_path: filePath, hostname },
+      timeout: 30000, // 30 segundos para operações SSH
+    }),
+
+  /**
+   * Salva o conteúdo RAW diretamente no arquivo via SSH.
+   *
+   * Fluxo de segurança:
+   * 1. Cria backup automático com timestamp
+   * 2. Valida sintaxe YAML antes de salvar
+   * 3. Se prometheus.yml, valida com promtool
+   * 4. Salva arquivo com permissões corretas
+   * 5. Se validação falhar, restaura backup automaticamente
+   *
+   * Como não há parse/dump, comentários e formatação são
+   * preservados EXATAMENTE como o usuário editou no Monaco Editor.
+   *
+   * @param request - file_path e content completo
+   * @returns Confirmação com validação e backup path
+   */
+  saveRawFileContent: (request: DirectEditRequest) =>
+    api.post<DirectEditResponse>('/prometheus-config/file/raw-content', request, {
+      timeout: 60000, // 60 segundos para validação promtool + SSH
+    }),
+
+  /**
+   * Recarrega serviços (Prometheus, Blackbox, Alertmanager) via SSH.
+   *
+   * Usa 'reload' ao invés de 'restart' para evitar downtime.
+   * Determina automaticamente quais serviços recarregar baseado no arquivo.
+   *
+   * @param host - Hostname do servidor (ex: "172.16.1.26")
+   * @param filePath - Path do arquivo editado para determinar serviço
+   * @returns Status do reload com detalhes de cada serviço
+   */
+  reloadService: (host: string, filePath: string) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      services: Array<{
+        service: string;
+        success: boolean;
+        method: string;
+        status: string;
+        error?: string;
+      }>;
+      file_path: string;
+    }>(
+      '/prometheus-config/service/reload',
+      { host, file_path: filePath },
+      { timeout: 30000 }
+    ),
 };
 
 export default api;

@@ -63,7 +63,7 @@ class YamlConfigService:
         # Configurar ruamel.yaml para preservar formatação
         self.yaml = YAML()
         self.yaml.preserve_quotes = True
-        self.yaml.default_flow_style = False
+        self.yaml.default_flow_style = None  # None = preservar estilo original (flow ou block)
         self.yaml.width = 4096
         self.yaml.indent(mapping=2, sequence=2, offset=0)
 

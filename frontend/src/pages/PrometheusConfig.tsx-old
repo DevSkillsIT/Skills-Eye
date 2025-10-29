@@ -1,0 +1,1351 @@
+/**
+ * Editor de Configurações do Prometheus
+ *
+ * Página para visualizar e editar arquivos YAML do Prometheus/Blackbox/Alertmanager
+ * com extração dinâmica de campos metadata e edição de jobs/relabel_configs
+ */
+
+import React, { useState, useEffect } from 'react';
+import {
+  PageContainer,
+  ProCard,
+  ProDescriptions,
+  ProTable,
+} from '@ant-design/pro-components';
+import type { ProColumns } from '@ant-design/pro-components';
+import {
+  Card,
+  Table,
+  Tabs,
+  Tag,
+  Space,
+  Button,
+  message,
+  Spin,
+  Empty,
+  Tooltip,
+  Badge,
+  Alert,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Collapse,
+  Popconfirm,
+  Modal,
+  Typography,
+  Result,
+  Progress,
+} from 'antd';
+import {
+  FileTextOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
+  CloudServerOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  EyeOutlined,
+  CodeOutlined,
+  SettingOutlined,
+  ArrowRightOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons';
+import axios from 'axios';
+import { usePrometheusFields } from '../hooks/usePrometheusFields';
+import { useNavigate } from 'react-router-dom';
+
+const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
+
+const { TextArea } = Input;
+const { Panel } = Collapse;
+const { Paragraph, Text } = Typography;
+
+interface ConfigFile {
+  path: string;
+  service: string;
+  filename: string;
+  host: string;
+  exists: boolean;
+}
+
+interface FilesResponse {
+  success: boolean;
+  files: ConfigFile[];
+  total: number;
+}
+
+interface JobsResponse {
+  success: boolean;
+  jobs: any[];
+  total: number;
+  file_path: string;
+}
+
+interface RelabelConfig {
+  source_labels?: string[];
+  target_label?: string;
+  regex?: string;
+  replacement?: string;
+  action?: string;
+}
+
+interface Server {
+  id: string;
+  hostname: string;
+  port: number;
+  username: string;
+  type: string;
+  display_name: string;
+}
+
+const PrometheusConfig: React.FC = () => {
+  const navigate = useNavigate();
+  const [allFiles, setAllFiles] = useState<ConfigFile[]>([]); // TODOS os arquivos
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [fileType, setFileType] = useState<string>('prometheus'); // NOVO: tipo do arquivo
+  const [itemKey, setItemKey] = useState<string>('job_name'); // NOVO: chave do item
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [editingJob, setEditingJob] = useState<any | null>(null);
+  const [editingJobData, setEditingJobData] = useState<any>(null);
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [servers, setServers] = useState<Server[]>([]);
+  const [selectedServer, setSelectedServer] = useState<string>('');
+  const [jsonError, setJsonError] = useState<string | null>(null); // NOVO: erro de validação JSON
+  const [saveSuccess, setSaveSuccess] = useState(false); // Modal de sucesso customizado
+  const [saveResult, setSaveResult] = useState<any>(null);
+  const [savingInProgress, setSavingInProgress] = useState(false); // Modal de progresso durante salvamento
+  const [form] = Form.useForm();
+
+  // Filtrar arquivos pelo servidor selecionado
+  const files = React.useMemo(() => {
+    if (!selectedServer) return allFiles;
+
+    // Extrair hostname do selectedServer (formato: "172.16.1.26:5522")
+    const serverHostname = selectedServer.split(':')[0];
+
+    // Filtrar arquivos que pertencem ao servidor selecionado
+    return allFiles.filter(file => {
+      // file.host tem formato "root@172.16.1.26:5522"
+      return file.host.includes(serverHostname);
+    });
+  }, [allFiles, selectedServer]);
+
+  // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
+  const [fieldsData, setFieldsData] = useState<{
+    fields: any[];
+    loading: boolean;
+    error: string | null;
+    total: number;
+    lastUpdated: string | null;
+  }>({
+    fields: [],
+    loading: false,
+    error: null,
+    total: 0,
+    lastUpdated: null,
+  });
+
+  const loadPrometheusFields = async () => {
+    setFieldsData(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
+        timeout: 30000,
+      });
+      if (response.data.success) {
+        setFieldsData({
+          fields: response.data.fields,
+          loading: false,
+          error: null,
+          total: response.data.total,
+          lastUpdated: response.data.last_updated,
+        });
+      }
+    } catch (err: any) {
+      setFieldsData(prev => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.message || 'Erro ao carregar campos',
+      }));
+    }
+  };
+
+  const { fields, loading: loadingFields, error: fieldsError, total: totalFields, lastUpdated } = fieldsData;
+  const reloadFields = loadPrometheusFields;
+
+  // Carregar lista de arquivos
+  const fetchFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      // OTIMIZAÇÃO: Se servidor selecionado, busca apenas desse servidor
+      let url = `${API_URL}/prometheus-config/files`;
+      if (selectedServer) {
+        const hostname = selectedServer.split(':')[0]; // Extrai IP de "172.16.1.26:5522"
+        url += `?hostname=${encodeURIComponent(hostname)}`;
+      }
+
+      const response = await axios.get<FilesResponse>(url, {
+        timeout: 30000, // 30 segundos (SSH pode ser lento)
+      });
+      if (response.data.success) {
+        setAllFiles(response.data.files);
+        // Auto-selecionar prometheus.yml do servidor master se existir
+        if (selectedServer && !selectedFile) {
+          const serverHostname = selectedServer.split(':')[0];
+          const prometheusFile = response.data.files.find(
+            f => f.filename === 'prometheus.yml' && f.host.includes(serverHostname)
+          );
+          if (prometheusFile) {
+            setSelectedFile(prometheusFile.path);
+          }
+        }
+      } else {
+        message.error('Falha ao carregar arquivos');
+      }
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        message.error('Tempo esgotado ao carregar arquivos (conexão SSH lenta)');
+      } else {
+        message.error(err.response?.data?.message || 'Erro ao carregar arquivos');
+      }
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  // Carregar estrutura de um arquivo (NOVO - usa /file/structure)
+  const fetchJobs = async (filePath: string) => {
+    setLoadingJobs(true);
+    try {
+      const response = await axios.get(
+        `${API_URL}/prometheus-config/file/structure?file_path=${encodeURIComponent(filePath)}`
+      );
+      if (response.data.success) {
+        setJobs(response.data.items);
+        setFileType(response.data.type); // NOVO: guardar tipo
+        setItemKey(response.data.item_key || 'name'); // NOVO: guardar chave
+        message.success(`Carregados ${response.data.total_items} items (${response.data.type})`);
+      } else {
+        message.error('Falha ao carregar configurações');
+      }
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao carregar configurações');
+      setJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
+  // Carregar lista de servidores
+  const fetchServers = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/metadata-fields/servers`, {
+        timeout: 15000, // 15 segundos (primeira requisição pode consultar Consul)
+      });
+      if (response.data.success) {
+        setServers(response.data.servers);
+        // Selecionar master por padrão
+        if (response.data.master) {
+          setSelectedServer(response.data.master.id);
+        }
+      }
+    } catch (error: any) {
+      console.error('Erro ao carregar servidores:', error);
+      if (error.code === 'ECONNABORTED') {
+        message.error('Tempo esgotado ao carregar servidores (servidor lento)');
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchServers();
+  }, []);
+
+  // Recarregar arquivos quando trocar de servidor
+  useEffect(() => {
+    if (selectedServer) {
+      fetchFiles();
+    }
+  }, [selectedServer]);
+
+  useEffect(() => {
+    if (selectedFile) {
+      fetchJobs(selectedFile);
+    }
+  }, [selectedFile]);
+
+  // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
+  useEffect(() => {
+    if (selectedServer && allFiles.length > 0) {
+      const serverHostname = selectedServer.split(':')[0];
+      const filteredFiles = allFiles.filter(f => f.host.includes(serverHostname));
+
+      if (filteredFiles.length > 0) {
+        const prometheusFile = filteredFiles.find(f => f.filename === 'prometheus.yml');
+        if (prometheusFile) {
+          setSelectedFile(prometheusFile.path);
+        } else {
+          setSelectedFile(filteredFiles[0].path);
+        }
+      } else {
+        setSelectedFile(null);
+      }
+    }
+  }, [allFiles]); // Apenas quando allFiles mudar, não quando selectedServer mudar
+
+  const handleReload = async () => {
+    try {
+      // CRÍTICO: Limpar cache do backend primeiro
+      const hideLoading = message.loading('Limpando cache e recarregando...', 0);
+
+      await axios.post(`${API_URL}/prometheus-config/clear-cache`);
+
+      // Recarregar dados
+      await fetchFiles();
+      reloadFields();
+      if (selectedFile) {
+        await fetchJobs(selectedFile);
+      }
+
+      hideLoading();
+      message.success('Dados recarregados com sucesso!', 2);
+    } catch (error: any) {
+      console.error('Erro ao recarregar:', error);
+      message.error('Erro ao recarregar dados');
+    }
+  };
+
+  const handleEditJob = (job: any) => {
+    setEditingJob(job);
+    setEditingJobData(job);
+    setJsonError(null); // Reset JSON error
+
+    // Configurar form baseado no tipo
+    if (fileType === 'prometheus') {
+      form.setFieldsValue({
+        job_name: job.job_name,
+        scrape_interval: job.scrape_interval,
+        metrics_path: job.metrics_path,
+      });
+    } else if (fileType === 'blackbox') {
+      form.setFieldsValue({
+        module_name: job.module_name,
+        prober: job.prober,
+        timeout: job.timeout,
+      });
+    } else {
+      form.setFieldsValue({
+        name: job.name || job[itemKey],
+      });
+    }
+
+    setDrawerVisible(true);
+  };
+
+  const handleDeleteJob = async (itemName: string) => {
+    try {
+      const updatedJobs = jobs.filter(j => j[itemKey] !== itemName);
+      await axios.put(
+        `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(selectedFile!)}`,
+        updatedJobs
+      );
+      message.success(`Item '${itemName}' deletado com sucesso`);
+      fetchJobs(selectedFile!);
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao deletar job');
+    }
+  };
+
+  const handleSaveJob = async () => {
+    // Validar JSON antes de salvar
+    if (jsonError) {
+      message.error('Corrija os erros de sintaxe JSON antes de salvar');
+      return;
+    }
+
+    try {
+      await form.validateFields();
+
+      // Usar editingJobData que contém o job completo editado no JSON
+      const jobToSave = editingJobData;
+
+      let updatedJobs;
+      if (editingJob) {
+        // Editar item existente
+        updatedJobs = jobs.map(j => j[itemKey] === editingJob[itemKey] ? jobToSave : j);
+      } else {
+        // Adicionar novo job
+        updatedJobs = [...jobs, jobToSave];
+      }
+
+      // VALIDAÇÃO CRÍTICA: Verificar se não estamos perdendo jobs
+      if (jobs.length > 1 && updatedJobs.length === 1) {
+        Modal.error({
+          title: '⚠️ Erro Crítico Detectado',
+          content: (
+            <div>
+              <p><strong>PERDA DE DADOS EVITADA!</strong></p>
+              <p style={{ marginTop: 12 }}>
+                O sistema detectou que esta operação iria DELETAR {jobs.length - 1} jobs do arquivo!
+              </p>
+              <p style={{ marginTop: 12, color: 'red' }}>
+                <strong>Original:</strong> {jobs.length} jobs<br />
+                <strong>Seria salvo:</strong> {updatedJobs.length} job(s)
+              </p>
+              <p style={{ marginTop: 12 }}>
+                Por favor, recarregue a página (F5) e tente novamente.
+              </p>
+            </div>
+          ),
+          width: 600,
+        });
+        return; // Abortar salvamento
+      }
+
+      // Mostrar modal de progresso
+      setSavingInProgress(true);
+
+      const response = await axios.put(
+        `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(selectedFile!)}`,
+        updatedJobs,
+        {
+          timeout: 30000, // 30 segundos para operações SSH
+        }
+      );
+
+      // Fechar modal de progresso
+      setSavingInProgress(false);
+
+      // CRÍTICO: Atualizar estado IMEDIATAMENTE para prevenir corrupção
+      setJobs(updatedJobs);
+
+      // IMPORTANTE: Fechar drawer e limpar estado
+      setDrawerVisible(false);
+      setEditingJob(null);
+      setEditingJobData(null);
+      setJsonError(null);
+      form.resetFields();
+
+      // Salvar resultado e abrir modal customizado
+      setSaveResult({
+        file: selectedFile,
+        total: response.data.total,
+        updatedJobs: updatedJobs,
+      });
+      setSaveSuccess(true);
+
+      // Mensagem grande e visível
+      message.success({
+        content: `✅ SALVO COM SUCESSO! ${response.data.total} jobs atualizados. Clique para ver detalhes.`,
+        duration: 10,
+        style: {
+          marginTop: '20vh',
+          fontSize: 16,
+          fontWeight: 'bold',
+        },
+        onClick: () => setSaveSuccess(true),
+      });
+    } catch (err: any) {
+      // Fechar modal de progresso se houver erro
+      setSavingInProgress(false);
+
+      // Tratar erros de validação do promtool
+      if (err.response?.status === 400 && err.response?.data?.validation_errors) {
+        const validationErrors = err.response.data.validation_errors;
+        const errorMessage = err.response.data.message || 'Validação falhou';
+
+        Modal.error({
+          title: 'Erro de Validação do Promtool',
+          content: (
+            <div>
+              <p>{errorMessage}</p>
+              <ul style={{ marginTop: 16, paddingLeft: 20 }}>
+                {validationErrors.map((error: string, index: number) => (
+                  <li key={index} style={{ marginBottom: 8 }}>
+                    <Text type="danger">{error}</Text>
+                  </li>
+                ))}
+              </ul>
+              {err.response.data.output && (
+                <div style={{ marginTop: 16 }}>
+                  <Text type="secondary">Output completo:</Text>
+                  <pre style={{
+                    marginTop: 8,
+                    padding: 8,
+                    background: '#f5f5f5',
+                    overflow: 'auto',
+                    maxHeight: 200
+                  }}>
+                    {err.response.data.output}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ),
+          width: 600,
+        });
+      } else {
+        // Outros erros
+        const errorMsg = typeof err.response?.data?.detail === 'string'
+          ? err.response.data.detail
+          : err.response?.data?.message || 'Erro ao salvar job';
+        message.error(errorMsg);
+      }
+    }
+  };
+
+  const handleAddJob = () => {
+    setEditingJob(null);
+    setJsonError(null); // Reset JSON error
+
+    // Criar estrutura inicial baseada no tipo
+    let newItem: any = {};
+
+    if (fileType === 'prometheus') {
+      newItem = {
+        job_name: '',
+        scrape_interval: '30s',
+        metrics_path: '/metrics',
+        relabel_configs: [],
+      };
+      form.setFieldsValue({
+        job_name: '',
+        scrape_interval: '30s',
+        metrics_path: '/metrics',
+      });
+    } else if (fileType === 'blackbox') {
+      newItem = {
+        module_name: '',
+        prober: 'http',
+        timeout: '5s',
+        http: {},
+      };
+      form.setFieldsValue({
+        module_name: '',
+        prober: 'http',
+        timeout: '5s',
+      });
+    } else if (fileType === 'alertmanager') {
+      newItem = {
+        name: '',
+        webhook_configs: [],
+      };
+      form.setFieldsValue({ name: '' });
+    } else {
+      newItem = { name: '' };
+      form.setFieldsValue({ name: '' });
+    }
+
+    setEditingJobData(newItem);
+    form.resetFields();
+    setDrawerVisible(true);
+  };
+
+  // NOVO: Colunas dinâmicas baseadas no tipo de arquivo
+  const getColumnsForType = (): ProColumns<any>[] => {
+    const baseColumns: ProColumns<any>[] = [];
+
+    // Primeira coluna: Nome do item (job_name, module_name, name)
+    baseColumns.push({
+      title: itemKey === 'job_name' ? 'Job Name' : itemKey === 'module_name' ? 'Module Name' : 'Name',
+      dataIndex: itemKey,
+      key: itemKey,
+      width: 200,
+      render: (text: string) => <strong>{text}</strong>,
+    });
+
+    // Colunas específicas por tipo
+    if (fileType === 'prometheus') {
+      baseColumns.push(
+        {
+          title: 'Scrape Interval',
+          dataIndex: 'scrape_interval',
+          key: 'scrape_interval',
+          width: 120,
+        },
+        {
+          title: 'Metrics Path',
+          dataIndex: 'metrics_path',
+          key: 'metrics_path',
+          width: 150,
+        },
+        {
+          title: 'Consul SD',
+          dataIndex: 'consul_sd_configs',
+          key: 'consul_sd',
+          width: 100,
+          render: (configs: any[]) =>
+            configs?.length > 0 ? (
+              <Tag color="blue">{configs.length} config(s)</Tag>
+            ) : (
+              <Tag>Nenhum</Tag>
+            ),
+        },
+        {
+          title: 'Relabel Configs',
+          dataIndex: 'relabel_configs',
+          key: 'relabel_configs',
+          width: 120,
+          render: (configs: RelabelConfig[]) =>
+            configs?.length > 0 ? (
+              <Badge count={configs.length} showZero style={{ backgroundColor: '#52c41a' }} />
+            ) : (
+              <Tag>0</Tag>
+            ),
+        }
+      );
+    } else if (fileType === 'blackbox') {
+      baseColumns.push(
+        {
+          title: 'Prober',
+          dataIndex: 'prober',
+          key: 'prober',
+          width: 100,
+          render: (text: string) => <Tag color="orange">{text}</Tag>,
+        },
+        {
+          title: 'Timeout',
+          dataIndex: 'timeout',
+          key: 'timeout',
+          width: 100,
+        },
+        {
+          title: 'Config',
+          key: 'config',
+          width: 150,
+          render: (_: any, record: any) => {
+            const configKey = record.prober; // http, icmp, tcp
+            const config = record[configKey];
+            if (!config) return '-';
+
+            return (
+              <Tooltip title={JSON.stringify(config, null, 2)}>
+                <Tag color="blue">
+                  {Object.keys(config).length} propriedades
+                </Tag>
+              </Tooltip>
+            );
+          },
+        }
+      );
+    } else if (fileType === 'alertmanager') {
+      baseColumns.push(
+        {
+          title: 'Webhook Configs',
+          dataIndex: 'webhook_configs',
+          key: 'webhook',
+          width: 150,
+          render: (configs: any[]) =>
+            configs?.length > 0 ? (
+              <Tag color="purple">{configs.length} webhook(s)</Tag>
+            ) : (
+              <Tag>Nenhum</Tag>
+            ),
+        },
+        {
+          title: 'Email Configs',
+          dataIndex: 'email_configs',
+          key: 'email',
+          width: 150,
+          render: (configs: any[]) =>
+            configs?.length > 0 ? (
+              <Tag color="green">{configs.length} email(s)</Tag>
+            ) : (
+              <Tag>Nenhum</Tag>
+            ),
+        }
+      );
+    } else if (fileType === 'rules') {
+      baseColumns.push(
+        {
+          title: 'Intervalo',
+          dataIndex: 'interval',
+          key: 'interval',
+          width: 100,
+          render: (interval: string) => interval || '-',
+        },
+        {
+          title: 'Total de Regras',
+          dataIndex: 'rules',
+          key: 'rules_count',
+          width: 120,
+          render: (rules: any[]) =>
+            rules?.length > 0 ? (
+              <Badge count={rules.length} showZero style={{ backgroundColor: '#ff4d4f' }} />
+            ) : (
+              <Tag>0</Tag>
+            ),
+        },
+        {
+          title: 'Alertas',
+          key: 'alerts_list',
+          width: 300,
+          render: (_: any, record: any) => {
+            const alerts = record.rules?.filter((r: any) => r.alert) || [];
+            if (alerts.length === 0) return <Tag>Nenhum alerta</Tag>;
+
+            return (
+              <div style={{ maxHeight: 100, overflow: 'auto' }}>
+                {alerts.slice(0, 3).map((alert: any, idx: number) => (
+                  <div key={idx} style={{ marginBottom: 4 }}>
+                    <Tag color="red">{alert.alert}</Tag>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {alert.for && `for: ${alert.for}`}
+                    </Text>
+                  </div>
+                ))}
+                {alerts.length > 3 && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    +{alerts.length - 3} mais...
+                  </Text>
+                )}
+              </div>
+            );
+          },
+        }
+      );
+    }
+
+    // Coluna de ações (sempre no final)
+    baseColumns.push({
+      title: 'Ações',
+      key: 'actions',
+      width: 150,
+      fixed: 'right',
+      render: (_: any, record: any) => (
+        <Space>
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            onClick={() => handleEditJob(record)}
+          >
+            Editar
+          </Button>
+          <Popconfirm
+            title={`Tem certeza que deseja deletar este item?`}
+            onConfirm={() => handleDeleteJob(record[itemKey])}
+            okText="Sim"
+            cancelText="Não"
+          >
+            <Button
+              type="link"
+              danger
+              icon={<DeleteOutlined />}
+            >
+              Deletar
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    });
+
+    return baseColumns;
+  };
+
+  // Colunas da tabela de campos
+  const fieldsColumns = [
+    {
+      title: 'Campo',
+      dataIndex: 'name',
+      key: 'name',
+      width: 200,
+      render: (name: string) => <code>{name}</code>,
+    },
+    {
+      title: 'Nome Exibição',
+      dataIndex: 'display_name',
+      key: 'display_name',
+    },
+    {
+      title: 'Tipo',
+      dataIndex: 'field_type',
+      key: 'field_type',
+      render: (type: string) => {
+        const colors: Record<string, string> = {
+          string: 'default',
+          number: 'blue',
+          boolean: 'green',
+          select: 'purple',
+        };
+        return <Tag color={colors[type]}>{type}</Tag>;
+      },
+    },
+    {
+      title: 'Obrigatório',
+      dataIndex: 'required',
+      key: 'required',
+      render: (required: boolean) =>
+        required ? <Tag color="red">Sim</Tag> : <Tag>Não</Tag>,
+    },
+  ];
+
+  return (
+      <PageContainer
+        title={
+          <div>
+          <div style={{ fontSize: 20, fontWeight: 500, marginBottom: 4 }}>
+            Configurações do Prometheus
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 400, color: 'rgba(0, 0, 0, 0.45)' }}>
+            Editar jobs, relabel_configs e campos metadata dinamicamente
+          </div>
+        </div>
+      }
+      extra={[
+        <Select
+          key="server-select"
+          style={{ width: 350 }}
+          value={selectedServer}
+          onChange={setSelectedServer}
+          placeholder="Selecionar servidor"
+        >
+          {servers.map(server => (
+            <Select.Option key={server.id} value={server.id}>
+              <CloudServerOutlined style={{ marginRight: 8 }} />
+              <strong>{server.display_name}</strong>
+              <span style={{ marginLeft: 8, color: '#999', fontSize: 12 }}>
+                ({server.type === 'master' ? '🟢 Master' : '🔵 Slave'})
+              </span>
+            </Select.Option>
+          ))}
+        </Select>,
+        <Button
+          key="add"
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleAddJob}
+          disabled={!selectedFile}
+        >
+          Adicionar Job
+        </Button>,
+        <Button
+          key="reload"
+          icon={<ReloadOutlined />}
+          onClick={handleReload}
+          loading={loadingFiles || loadingFields || loadingJobs}
+        >
+          Recarregar
+        </Button>,
+      ]}
+    >
+      {selectedServer && servers.length > 0 && (
+        <Alert
+          message={
+            <span>
+              <strong>Servidor Ativo:</strong> {servers.find(s => s.id === selectedServer)?.display_name || 'Carregando...'}
+              <Badge
+                status={servers.find(s => s.id === selectedServer)?.type === 'master' ? 'success' : 'processing'}
+                text={servers.find(s => s.id === selectedServer)?.type === 'master' ? 'Master' : 'Slave'}
+                style={{ marginLeft: 16 }}
+              />
+            </span>
+          }
+          description={`Exibindo ${files.length} arquivo(s) deste servidor`}
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          closable
+        />
+      )}
+
+      <ProCard
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span>Selecionar Arquivo</span>
+            {selectedServer && (
+              <Tag color="green">
+                {files.length} arquivo(s) disponível(is) no servidor selecionado
+              </Tag>
+            )}
+          </div>
+        }
+        style={{ marginBottom: 16 }}
+      >
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Selecione um arquivo YAML"
+          value={selectedFile}
+          onChange={(value) => setSelectedFile(value)}
+          loading={loadingFiles}
+          disabled={!selectedServer}
+        >
+          {files.map(file => (
+            <Select.Option key={file.path} value={file.path}>
+              <Space>
+                <FileTextOutlined />
+                <span>{file.filename}</span>
+                <Tag color={file.service === 'prometheus' ? 'blue' : 'orange'}>
+                  {file.service}
+                </Tag>
+              </Space>
+            </Select.Option>
+          ))}
+        </Select>
+      </ProCard>
+
+      <Tabs
+        defaultActiveKey="jobs"
+        onChange={(activeKey) => {
+          // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
+          if (activeKey === 'fields' && fields.length === 0 && !loadingFields) {
+            loadPrometheusFields();
+          }
+        }}
+        items={[
+          {
+            key: 'jobs',
+            label: (
+              <span>
+                <DatabaseOutlined />
+                Jobs / Scrape Configs ({jobs.length})
+                {selectedServer && <Tag color="orange" style={{ marginLeft: 8 }}>Por Servidor</Tag>}
+              </span>
+            ),
+            children: (
+              <Card>
+                <ProTable
+                  columns={getColumnsForType()}
+                  dataSource={jobs}
+                  rowKey={itemKey}
+                  loading={loadingJobs}
+                  search={false}
+                  options={{
+                    reload: () => selectedFile && fetchJobs(selectedFile),
+                  }}
+                  pagination={{
+                    defaultPageSize: 10,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '30', '50', '100'],
+                    showTotal: (total) => `Total: ${total} jobs`,
+                  }}
+                  scroll={{ x: 1200 }}
+                  locale={{
+                    emptyText: selectedFile ? (
+                      <Empty description="Nenhum job encontrado neste arquivo" />
+                    ) : (
+                      <Empty description="Selecione um arquivo para visualizar os jobs" />
+                    ),
+                  }}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'fields',
+            label: (
+              <span>
+                <DatabaseOutlined />
+                Campos Metadata ({totalFields}) <Tag color="blue">GLOBAL</Tag>
+              </span>
+            ),
+            children: (
+              <Card>
+                <Alert
+                  message="💡 Campos Metadata - Configuração Global"
+                  description={
+                    <div>
+                      <p style={{ marginBottom: 12 }}>
+                        <strong>Esta visualização é somente para consulta.</strong> Os campos metadata são configurações <strong>globais da aplicação</strong> que definem quais metadados podem ser utilizados nos relabel_configs de todos os jobs em todos os servidores.
+                      </p>
+                      <p style={{ marginBottom: 12 }}>
+                        Para <strong>criar, editar ou excluir</strong> campos metadata, acesse a página de configuração dedicada:
+                      </p>
+                      <Button
+                        type="primary"
+                        icon={<SettingOutlined />}
+                        onClick={() => navigate('/metadata-fields')}
+                      >
+                        Ir para Gerenciamento de Campos Metadata
+                        <ArrowRightOutlined style={{ marginLeft: 8 }} />
+                      </Button>
+                    </div>
+                  }
+                  type="info"
+                  showIcon
+                  closable
+                  style={{ marginBottom: 16 }}
+                />
+
+                <Table
+                  dataSource={fields}
+                  columns={fieldsColumns}
+                  rowKey="name"
+                  loading={loadingFields}
+                  pagination={{
+                    defaultPageSize: 15,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '30', '50', '100'],
+                    showTotal: (total) => `Total: ${total} campos`,
+                  }}
+                  locale={{
+                    emptyText: 'Nenhum campo metadata configurado'
+                  }}
+                />
+              </Card>
+            ),
+          },
+        ]}
+      />
+
+      {/* Drawer de Edição de Job */}
+      <Drawer
+        title={
+          <Space direction="vertical" size={0}>
+            <span style={{ fontSize: 18, fontWeight: 500 }}>
+              {editingJob ? `✏️ Editar: ${editingJob[itemKey]}` : `➕ Adicionar Novo (${fileType})`}
+            </span>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {selectedFile ? `Arquivo: ${selectedFile}` : ''}
+            </Text>
+          </Space>
+        }
+        width={820}
+        open={drawerVisible}
+        onClose={() => {
+          setDrawerVisible(false);
+          setEditingJob(null);
+          setEditingJobData(null);
+          setJsonError(null); // Reset JSON error
+          form.resetFields();
+        }}
+        extra={
+          <Space>
+            <Button onClick={() => setDrawerVisible(false)}>Cancelar</Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              onClick={handleSaveJob}
+              disabled={!!jsonError} // Disable if JSON has errors
+              size="large"
+            >
+              Salvar Alterações
+            </Button>
+          </Space>
+        }
+        styles={{
+          body: { paddingBottom: 80 }
+        }}
+      >
+        <Form
+          form={form}
+          layout="vertical"
+        >
+          {fileType === 'prometheus' && (
+            <>
+              <Form.Item
+                name="job_name"
+                label="Job Name"
+                rules={[{ required: true, message: 'Nome do job é obrigatório' }]}
+              >
+                <Input
+                  placeholder="ex: node_exporter"
+                  onChange={(e) => {
+                    setEditingJobData({ ...editingJobData, job_name: e.target.value });
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="scrape_interval" label="Scrape Interval">
+                <Input
+                  placeholder="ex: 30s, 1m"
+                  onChange={(e) => {
+                    setEditingJobData({ ...editingJobData, scrape_interval: e.target.value });
+                  }}
+                />
+              </Form.Item>
+              <Form.Item name="metrics_path" label="Metrics Path">
+                <Input
+                  placeholder="/metrics"
+                  onChange={(e) => {
+                    setEditingJobData({ ...editingJobData, metrics_path: e.target.value });
+                  }}
+                />
+              </Form.Item>
+            </>
+          )}
+
+          {fileType === 'blackbox' && (
+            <>
+              <Form.Item
+                name="module_name"
+                label="Module Name"
+                rules={[{ required: true, message: 'Nome do módulo é obrigatório' }]}
+              >
+                <Input placeholder="ex: http_2xx, icmp" />
+              </Form.Item>
+              <Form.Item name="prober" label="Prober">
+                <Select>
+                  <Select.Option value="http">HTTP</Select.Option>
+                  <Select.Option value="icmp">ICMP</Select.Option>
+                  <Select.Option value="tcp">TCP</Select.Option>
+                  <Select.Option value="dns">DNS</Select.Option>
+                </Select>
+              </Form.Item>
+              <Form.Item name="timeout" label="Timeout">
+                <Input placeholder="5s" />
+              </Form.Item>
+            </>
+          )}
+
+          {(fileType === 'alertmanager' || fileType === 'rules' || fileType === 'other') && (
+            <Form.Item
+              name="name"
+              label="Name"
+              rules={[{ required: true, message: 'Nome é obrigatório' }]}
+            >
+              <Input placeholder="Nome" />
+            </Form.Item>
+          )}
+
+          <Alert
+            message="💡 Dica: Editor JSON Avançado"
+            description="Para editar relabel_configs, consul_sd_configs e outras configurações avançadas, use o editor JSON abaixo. Todas as alterações são validadas antes de salvar."
+            type="info"
+            showIcon
+            closable
+            style={{ marginTop: 24, marginBottom: 16 }}
+          />
+
+          <Card
+            title={
+              <Space>
+                <CodeOutlined />
+                <span>Editor JSON Completo</span>
+                {!jsonError && <Tag color="success">✓ JSON Válido</Tag>}
+                {jsonError && <Tag color="error">✗ Erro de Sintaxe</Tag>}
+              </Space>
+            }
+            size="small"
+            style={{ marginBottom: 16 }}
+          >
+            <Alert
+              message="⚠️ Preservação de Comentários YAML"
+              description="O sistema preserva automaticamente todos os comentários e formatação do arquivo YAML original ao salvar suas alterações."
+              type="success"
+              showIcon
+              closable
+              style={{ marginBottom: 12 }}
+            />
+
+            <Form.Item
+              validateStatus={jsonError ? 'error' : 'success'}
+              help={jsonError || 'Edite o JSON abaixo para modificar todas as propriedades do job'}
+              style={{ marginBottom: 0 }}
+            >
+              <TextArea
+                rows={25}
+                value={JSON.stringify(editingJobData, null, 2)}
+                onChange={(e) => {
+                const jsonText = e.target.value;
+                try {
+                  const parsed = JSON.parse(jsonText);
+                  setEditingJobData(parsed);
+                  setJsonError(null); // JSON válido
+
+                  // Sincronizar campos básicos com o form
+                  if (fileType === 'prometheus') {
+                    form.setFieldsValue({
+                      job_name: parsed.job_name,
+                      scrape_interval: parsed.scrape_interval,
+                      metrics_path: parsed.metrics_path,
+                    });
+                  } else if (fileType === 'blackbox') {
+                    form.setFieldsValue({
+                      module_name: parsed.module_name,
+                      prober: parsed.prober,
+                      timeout: parsed.timeout,
+                    });
+                  } else {
+                    form.setFieldsValue({
+                      name: parsed.name || parsed[itemKey],
+                    });
+                  }
+                } catch (error: any) {
+                  // JSON inválido - mostrar erro
+                  setJsonError(`Sintaxe JSON inválida: ${error.message}`);
+                }
+              }}
+              style={{
+                borderColor: jsonError ? '#ff4d4f' : '#52c41a',
+                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                fontSize: 13,
+                backgroundColor: '#fafafa',
+              }}
+              placeholder="Edite a configuração JSON do job aqui..."
+            />
+          </Form.Item>
+
+          <Space style={{ marginTop: 12 }}>
+            <Button
+              size="small"
+              type="default"
+              icon={<EyeOutlined />}
+              onClick={() => {
+                if (!editingJobData) {
+                  message.warning('Nenhum dado para visualizar');
+                  return;
+                }
+                Modal.info({
+                  title: 'Preview da Configuração JSON',
+                  content: (
+                    <pre style={{
+                      maxHeight: 500,
+                      overflow: 'auto',
+                      background: '#f5f5f5',
+                      padding: 12,
+                      borderRadius: 4,
+                      fontFamily: 'monospace',
+                      fontSize: 12
+                    }}>
+                      {JSON.stringify(editingJobData, null, 2)}
+                    </pre>
+                  ),
+                  width: 800,
+                  okText: 'Fechar'
+                });
+                message.info('Preview aberto em modal', 1);
+              }}
+            >
+              Ver Preview
+            </Button>
+            <Tooltip title="Reindenta o JSON automaticamente">
+              <Button
+                size="small"
+                type="default"
+                icon={<CodeOutlined />}
+                onClick={() => {
+                  if (!editingJobData) {
+                    message.warning('Nenhum dado para formatar');
+                    return;
+                  }
+                  try {
+                    // Força reindentação
+                    const formatted = JSON.parse(JSON.stringify(editingJobData));
+                    setEditingJobData(formatted);
+                    message.success('✓ JSON formatado', 2);
+                  } catch (e: any) {
+                    message.error('Erro: ' + e.message);
+                  }
+                }}
+              >
+                Formatar
+              </Button>
+            </Tooltip>
+          </Space>
+        </Card>
+      </Form>
+      </Drawer>
+
+      {/* Modal de Sucesso Customizado */}
+      <Modal
+        open={saveSuccess}
+        onOk={() => {
+          setSaveSuccess(false);
+          if (selectedFile) {
+            fetchJobs(selectedFile);
+            message.info('Atualizando lista de jobs...', 1);
+          }
+        }}
+        onCancel={() => {
+          setSaveSuccess(false);
+          if (selectedFile) {
+            fetchJobs(selectedFile);
+          }
+        }}
+        title={
+          <div style={{ color: '#52c41a', fontSize: 20, fontWeight: 'bold' }}>
+            ✓ Salvamento Concluído
+          </div>
+        }
+        okText="OK, Entendi"
+        cancelText="Fechar"
+        width={600}
+        centered
+      >
+        {saveResult && (
+          <div>
+            <p style={{ marginBottom: 16, fontSize: 16 }}>
+              <strong>Configuração salva com sucesso!</strong>
+            </p>
+
+            <div style={{ marginBottom: 12 }}>
+              <strong>Arquivo:</strong> {saveResult.file}
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <strong>Total de jobs:</strong> {saveResult.total}
+            </div>
+
+            <div style={{
+              padding: 16,
+              background: '#f6ffed',
+              border: '2px solid #52c41a',
+              borderRadius: 8
+            }}>
+              <div style={{ marginBottom: 8, color: '#52c41a', fontWeight: 600, fontSize: 15 }}>
+                ✓ Comentários YAML preservados
+              </div>
+              <div style={{ marginBottom: 8, color: '#52c41a', fontWeight: 600, fontSize: 15 }}>
+                ✓ Proprietário restaurado (prometheus:prometheus)
+              </div>
+              <div style={{ marginBottom: 0, color: '#52c41a', fontWeight: 600, fontSize: 15 }}>
+                ✓ Backup criado e removido após sucesso
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal de Progresso durante Salvamento */}
+      <Modal
+        open={savingInProgress}
+        closable={false}
+        footer={null}
+        centered
+        width={500}
+      >
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ marginBottom: 24 }}>
+            <SaveOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+          </div>
+
+          <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>
+            Salvando Configuração
+          </div>
+
+          <Progress
+            percent={100}
+            status="active"
+            strokeColor={{
+              '0%': '#108ee9',
+              '100%': '#87d068',
+            }}
+            showInfo={false}
+          />
+
+          <div style={{ marginTop: 20, color: '#666', fontSize: 14 }}>
+            <p style={{ marginBottom: 8 }}>Aguarde enquanto o sistema:</p>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              <li>✓ Valida a configuração</li>
+              <li>✓ Preserva comentários YAML</li>
+              <li>✓ Cria backup de segurança</li>
+              <li>✓ Salva alterações no servidor</li>
+              <li>✓ Restaura permissões</li>
+            </ul>
+          </div>
+
+          <div style={{ marginTop: 20, fontSize: 13, color: '#999' }}>
+            Esta operação pode levar alguns segundos...
+          </div>
+        </div>
+      </Modal>
+      </PageContainer>
+  );
+};
+
+export default PrometheusConfig;

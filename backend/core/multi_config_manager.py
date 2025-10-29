@@ -396,12 +396,13 @@ class MultiConfigManager:
 
         return summary
 
-    def get_file_by_path(self, file_path: str) -> Optional[ConfigFile]:
+    def get_file_by_path(self, file_path: str, hostname: Optional[str] = None) -> Optional[ConfigFile]:
         """
-        Encontra um ConfigFile pelo path
+        Encontra um ConfigFile pelo path e opcionalmente pelo hostname
 
         Args:
             file_path: Path do arquivo
+            hostname: Hostname do servidor (opcional, para desambiguar arquivos com mesmo path)
 
         Returns:
             ConfigFile ou None
@@ -409,6 +410,9 @@ class MultiConfigManager:
         files = self.list_config_files()
         for f in files:
             if f.path == file_path:
+                # Se hostname foi especificado, verificar se bate
+                if hostname and f.host.hostname != hostname:
+                    continue
                 return f
         return None
 
@@ -645,9 +649,504 @@ class MultiConfigManager:
             logger.error(f"Erro ao salvar arquivo {file_path}: {e}")
             raise
 
+    def _copy_comments_deep(self, target: Any, source: Any):
+        """
+        Copia TODOS os comentários de source para target recursivamente.
+
+        Args:
+            target: Objeto ruamel.yaml destino (sem comentários)
+            source: Objeto ruamel.yaml origem (com comentários)
+        """
+        from ruamel.yaml.comments import CommentedMap, CommentedSeq
+
+        # Copiar comentários do CommentedMap
+        if isinstance(target, CommentedMap) and isinstance(source, CommentedMap):
+            if hasattr(source, 'ca') and source.ca:
+                if hasattr(target, 'ca') and target.ca:
+                    # Copiar comment attributes
+                    try:
+                        # Copiar comentários antes/após
+                        if source.ca.comment:
+                            target.ca.comment = source.ca.comment
+                        # Copiar comentários EOL (end-of-line)
+                        if hasattr(source.ca, 'items') and source.ca.items:
+                            if not hasattr(target.ca, 'items') or not target.ca.items:
+                                target.ca.items = {}
+                            target.ca.items.update(source.ca.items)
+                        # Copiar comentários finais
+                        if hasattr(source.ca, 'end') and source.ca.end:
+                            target.ca.end = source.ca.end
+                    except Exception as e:
+                        logger.debug(f"[COPY COMMENTS] Erro ao copiar comentários: {e}")
+
+            # Recursão para cada chave
+            for key in target:
+                if key in source:
+                    self._copy_comments_deep(target[key], source[key])
+
+        # Copiar comentários do CommentedSeq
+        elif isinstance(target, CommentedSeq) and isinstance(source, CommentedSeq):
+            if hasattr(source, 'ca') and source.ca and hasattr(target, 'ca'):
+                try:
+                    # Copiar comment attributes da sequência
+                    if source.ca.comment:
+                        target.ca.comment = source.ca.comment
+                    if hasattr(source.ca, 'items') and source.ca.items:
+                        if not hasattr(target.ca, 'items') or not target.ca.items:
+                            target.ca.items = {}
+                        target.ca.items.update(source.ca.items)
+                except Exception as e:
+                    logger.debug(f"[COPY COMMENTS] Erro ao copiar comentários de seq: {e}")
+
+            # Recursão para cada item da lista
+            for i in range(min(len(target), len(source))):
+                self._copy_comments_deep(target[i], source[i])
+
+    def _update_dict_surgically(self, target: Any, source: Dict[str, Any], path: str = "") -> int:
+        """
+        Atualiza um dicionário (CommentedMap) de forma cirúrgica.
+        Modifica apenas valores que mudaram, preservando estrutura e comentários.
+
+        Args:
+            target: Objeto ruamel.yaml (CommentedMap/CommentedSeq) a atualizar
+            source: Dicionário Python com novos valores
+            path: Path do campo (para debug)
+
+        Returns:
+            Número de campos alterados
+        """
+        from ruamel.yaml.comments import CommentedMap, CommentedSeq
+        import copy
+
+        changes_count = 0
+
+        # Se target não é CommentedMap, não podemos fazer edição cirúrgica
+        if not isinstance(target, (CommentedMap, dict)):
+            return 0
+
+        # Iterar sobre cada chave no source
+        for key, new_value in source.items():
+            current_path = f"{path}.{key}" if path else key
+
+            # Caso 1: Chave não existe no target - adicionar
+            if key not in target:
+                logger.debug(f"[CIRÚRGICO] Adicionando novo campo: {current_path}")
+                target[key] = new_value
+                changes_count += 1
+                continue
+
+            old_value = target[key]
+
+            # Caso 2: Ambos são dicts - recursão
+            if isinstance(new_value, dict) and isinstance(old_value, (CommentedMap, dict)):
+                sub_changes = self._update_dict_surgically(old_value, new_value, current_path)
+                changes_count += sub_changes
+                continue
+
+            # Caso 3: Ambos são listas - MANTER OBJETO ORIGINAL E ATUALIZAR VALORES
+            if isinstance(new_value, list) and isinstance(old_value, CommentedSeq):
+                # Guardar comentários originais ANTES de modificar
+                old_ca = None
+                old_fa = None
+                if hasattr(old_value, 'ca'):
+                    old_ca = copy.deepcopy(old_value.ca)
+                if hasattr(old_value, 'fa'):
+                    old_fa = old_value.fa
+
+                # Atualizar valores
+                old_value.clear()
+                old_value.extend(new_value)
+
+                # Restaurar comentários
+                if old_ca and hasattr(old_value, 'ca'):
+                    old_value.ca = old_ca
+
+                logger.debug(f"[CIRÚRGICO] Lista atualizada: {current_path} ({len(new_value)} itens)")
+                changes_count += 1
+                continue
+
+            # Caso 4: Valores primitivos - comparar e atualizar se diferente
+            if old_value != new_value:
+                logger.info(f"[CIRÚRGICO] ✏️  Modificando: {current_path}")
+                logger.info(f"              Antes: {old_value}")
+                logger.info(f"              Depois: {new_value}")
+                target[key] = new_value
+                changes_count += 1
+
+        # IMPORTANTE: NÃO remover chaves que não estão no source!
+        # Isso seria uma edição destrutiva, não cirúrgica.
+        # Apenas adicionamos/modificamos campos que foram explicitamente alterados.
+
+        return changes_count
+
+    def _update_yaml_text_based(self, content: str, old_jobs: List[Dict], new_jobs: List[Dict]) -> str:
+        """
+        Atualiza YAML usando edição baseada em TEXTO (preserva 100% dos comentários).
+
+        Esta função compara old_jobs com new_jobs e aplica substituições cirúrgicas
+        no texto YAML, preservando TUDO (comentários, formatação, aspas, etc.)
+
+        Args:
+            content: Conteúdo YAML como string
+            old_jobs: Jobs originais (parsed do arquivo)
+            new_jobs: Jobs novos (recebidos do frontend)
+
+        Returns:
+            Conteúdo YAML modificado
+        """
+        import re
+        import json
+
+        logger.info(f"[TEXT-BASED] Iniciando edição baseada em texto")
+        logger.info(f"[TEXT-BASED] old_jobs count: {len(old_jobs)}")
+        logger.info(f"[TEXT-BASED] new_jobs count: {len(new_jobs)}")
+
+        # Criar mapa para comparação rápida
+        old_map = {j.get('job_name'): j for j in old_jobs}
+        new_map = {j.get('job_name'): j for j in new_jobs}
+
+        logger.info(f"[TEXT-BASED] old_map keys: {list(old_map.keys())[:5]}")  # Primeiros 5
+        logger.info(f"[TEXT-BASED] new_map keys: {list(new_map.keys())[:5]}")
+
+        changes_made = 0
+
+        for job_name in old_map:
+            if job_name not in new_map:
+                logger.warning(f"[TEXT-BASED] Job '{job_name}' foi removido")
+                continue
+
+            old_job = old_map[job_name]
+            new_job = new_map[job_name]
+
+            logger.info(f"[TEXT-BASED] Comparando job: {job_name}")
+
+            # Detectar mudanças específicas
+            changes = self._detect_yaml_changes(old_job, new_job, path=job_name)
+
+            logger.info(f"[TEXT-BASED] Mudanças detectadas em '{job_name}': {len(changes)}")
+
+            if len(changes) > 0:
+                logger.info(f"[TEXT-BASED] Mudanças: {changes}")
+
+            for change in changes:
+                # Aplicar substituição cirúrgica
+                old_content_len = len(content)
+                content = self._apply_text_replacement(content, change, job_name)
+                new_content_len = len(content)
+
+                if old_content_len != new_content_len:
+                    changes_made += 1
+                    logger.info(f"[TEXT-BASED] ✓ Aplicada mudança: {change['path']} = {change['new_value']}")
+                else:
+                    logger.warning(f"[TEXT-BASED] ⚠️ Mudança NÃO aplicada (content igual): {change['path']}")
+
+        logger.info(f"[TEXT-BASED] Total de mudanças aplicadas: {changes_made}")
+        return content
+
+    def _detect_yaml_changes(self, old_dict: Dict, new_dict: Dict, path: str = "") -> List[Dict]:
+        """
+        Detecta mudanças entre dois dicts recursivamente.
+
+        Returns:
+            Lista de dicts com {path, old_value, new_value, field_name}
+        """
+        changes = []
+
+        for key in new_dict:
+            if key not in old_dict:
+                continue  # Campo novo - ignorar em text-based
+
+            old_val = old_dict[key]
+            new_val = new_dict[key]
+            current_path = f"{path}.{key}" if path else key
+
+            # Se ambos são dicts, recursão
+            if isinstance(old_val, dict) and isinstance(new_val, dict):
+                sub_changes = self._detect_yaml_changes(old_val, new_val, current_path)
+                changes.extend(sub_changes)
+
+            # Se ambos são listas, comparar
+            elif isinstance(old_val, list) and isinstance(new_val, list):
+                if old_val != new_val:
+                    changes.append({
+                        'path': current_path,
+                        'field_name': key,
+                        'old_value': old_val,
+                        'new_value': new_val,
+                        'type': 'list'
+                    })
+
+            # Valores primitivos
+            elif old_val != new_val:
+                changes.append({
+                    'path': current_path,
+                    'field_name': key,
+                    'old_value': old_val,
+                    'new_value': new_val,
+                    'type': 'primitive'
+                })
+
+        return changes
+
+    def _apply_text_replacement(self, content: str, change: Dict, job_name: str) -> str:
+        """
+        Aplica uma substituição cirúrgica no texto YAML.
+
+        Args:
+            content: Conteúdo YAML
+            change: Dict com path, old_value, new_value
+            job_name: Nome do job sendo modificado
+
+        Returns:
+            Conteúdo modificado
+        """
+        import re
+
+        field_name = change['field_name']
+        old_value = change['old_value']
+        new_value = change['new_value']
+
+        logger.info(f"[TEXT-REPLACE] Campo: {field_name}, De: {old_value}, Para: {new_value}")
+
+        # Converter valores para formato YAML
+        old_yaml = self._value_to_yaml_text(old_value)
+        new_yaml = self._value_to_yaml_text(new_value)
+
+        # Encontrar a seção do job específico
+        job_pattern = rf"(- job_name:\s*['\"]?{re.escape(job_name)}['\"]?.*?)(\n- job_name:|\nrule_files:|\Z)"
+        job_match = re.search(job_pattern, content, re.DOTALL)
+
+        if not job_match:
+            logger.error(f"[TEXT-REPLACE] Não encontrou job '{job_name}' no arquivo!")
+            return content
+
+        job_section = job_match.group(1)
+        job_start = job_match.start(1)
+        job_end = job_match.end(1)
+
+        # Substituir o campo dentro da seção do job
+        field_pattern = rf"(\s+{re.escape(field_name)}:\s*){re.escape(old_yaml)}"
+        replacement = rf"\1{new_yaml}"
+
+        modified_section = re.sub(field_pattern, replacement, job_section, count=1)
+
+        if modified_section == job_section:
+            logger.warning(f"[TEXT-REPLACE] Não encontrou padrão para substituir! Campo: {field_name}")
+            logger.warning(f"[TEXT-REPLACE] Procurando por: {field_pattern}")
+            return content
+
+        # Reconstruir conteúdo
+        new_content = content[:job_start] + modified_section + content[job_end:]
+        return new_content
+
+    def _value_to_yaml_text(self, value: Any) -> str:
+        """
+        Converte um valor Python para representação YAML como texto.
+
+        Args:
+            value: Valor a converter
+
+        Returns:
+            String representando o valor em YAML
+        """
+        if isinstance(value, list):
+            # Formato flow-style: ['a', 'b']
+            items = [f"'{item}'" if isinstance(item, str) else str(item) for item in value]
+            return f"[{', '.join(items)}]"
+        elif isinstance(value, str):
+            # Preservar aspas simples se tiver caracteres especiais
+            if any(c in value for c in [' ', ':', '#', '@', '/', '\\']):
+                return f"'{value}'"
+            return value
+        elif isinstance(value, (int, float, bool)):
+            return str(value).lower() if isinstance(value, bool) else str(value)
+        else:
+            return str(value)
+
+    def _detect_simple_changes(self, old_jobs: List[Dict], new_jobs: List[Dict]) -> List[Dict]:
+        """
+        Detecta mudanças SIMPLES entre old_jobs e new_jobs.
+
+        Returns:
+            Lista de mudanças: [{pattern, replacement, description}]
+        """
+        changes = []
+
+        old_map = {j.get('job_name'): j for j in old_jobs}
+        new_map = {j.get('job_name'): j for j in new_jobs}
+
+        for job_name in old_map:
+            if job_name not in new_map:
+                continue
+
+            old_job = old_map[job_name]
+            new_job = new_map[job_name]
+
+            # Comparar cada campo de forma recursiva
+            field_changes = self._compare_dicts_for_sed(old_job, new_job, job_name)
+            changes.extend(field_changes)
+
+        return changes
+
+    def _compare_dicts_for_sed(self, old_dict: Dict, new_dict: Dict, context: str) -> List[Dict]:
+        """
+        Compara dois dicts e retorna mudanças em formato SED.
+
+        Returns:
+            Lista de {pattern, replacement, description}
+        """
+        changes = []
+
+        for key in new_dict:
+            if key not in old_dict:
+                continue
+
+            old_val = old_dict[key]
+            new_val = new_dict[key]
+
+            if old_val == new_val:
+                continue
+
+            # Listas
+            if isinstance(old_val, list) and isinstance(new_val, list):
+                # Se lista de dicts, comparar elemento por elemento
+                if old_val and isinstance(old_val[0], dict):
+                    # Comparar cada elemento da lista
+                    for i in range(min(len(old_val), len(new_val))):
+                        sub_changes = self._compare_dicts_for_sed(
+                            old_val[i],
+                            new_val[i],
+                            f'{context}.{key}[{i}]'
+                        )
+                        changes.extend(sub_changes)
+                else:
+                    # Lista simples (strings/números)
+                    old_yaml = self._list_to_yaml_sed_format(old_val)
+                    new_yaml = self._list_to_yaml_sed_format(new_val)
+
+                    changes.append({
+                        'pattern': f'{key}: {old_yaml}',
+                        'replacement': f'{key}: {new_yaml}',
+                        'description': f'{context}.{key}: {old_val} -> {new_val}',
+                        'context': context
+                    })
+
+            # Strings simples
+            elif isinstance(old_val, str) and isinstance(new_val, str):
+                # Gerar pattern SED
+                old_yaml = f"'{old_val}'" if any(c in old_val for c in [' ', ':', '#']) else old_val
+                new_yaml = f"'{new_val}'" if any(c in new_val for c in [' ', ':', '#']) else new_val
+
+                changes.append({
+                    'pattern': f'{key}: {old_yaml}',
+                    'replacement': f'{key}: {new_yaml}',
+                    'description': f'{context}.{key}: {old_val} -> {new_val}',
+                    'context': context
+                })
+
+            # Números
+            elif isinstance(old_val, (int, float)) and isinstance(new_val, (int, float)):
+                changes.append({
+                    'pattern': f'{key}: {old_val}',
+                    'replacement': f'{key}: {new_val}',
+                    'description': f'{context}.{key}: {old_val} -> {new_val}',
+                    'context': context
+                })
+
+            # Dicts aninhados - recursão
+            elif isinstance(old_val, dict) and isinstance(new_val, dict):
+                sub_changes = self._compare_dicts_for_sed(old_val, new_val, f'{context}.{key}')
+                changes.extend(sub_changes)
+
+        return changes
+
+    def _list_to_yaml_sed_format(self, lst: List) -> str:
+        """
+        Converte lista Python para formato YAML (flow-style) para SED.
+
+        Ex: ['http_2xx'] → "['http_2xx']"
+        """
+        if not lst:
+            return "[]"
+
+        # Flow-style com aspas simples
+        items = [f"'{item}'" if isinstance(item, str) else str(item) for item in lst]
+        return f"[{', '.join(items)}]"
+
+    def _apply_sed_changes(self, config_file, changes: List[Dict]) -> bool:
+        """
+        Aplica mudanças usando SED via SSH.
+
+        Args:
+            config_file: ConfigFile object
+            changes: Lista de mudanças {pattern, replacement, description}
+
+        Returns:
+            True se sucesso
+        """
+        if not changes:
+            logger.info(f"[SED] Nenhuma mudança para aplicar")
+            return True
+
+        try:
+            client = self._get_ssh_client(config_file.host)
+
+            # Criar backup primeiro
+            backup_path = f"{config_file.path}.backup-$(date +%Y%m%d-%H%M%S)"
+            backup_cmd = f"cp {config_file.path} {backup_path}"
+
+            logger.info(f"[SED] Criando backup: {backup_path}")
+            stdin, stdout, stderr = client.exec_command(backup_cmd)
+            exit_code = stdout.channel.recv_exit_status()
+
+            if exit_code != 0:
+                error = stderr.read().decode('utf-8')
+                logger.error(f"[SED] Erro ao criar backup: {error}")
+                return False
+
+            # Aplicar cada mudança
+            for i, change in enumerate(changes):
+                pattern = change['pattern']
+                replacement = change['replacement']
+                description = change['description']
+
+                logger.info(f"[SED] Mudança {i+1}/{len(changes)}: {description}")
+
+                # Escapar caracteres especiais para SED
+                pattern_escaped = pattern.replace('/', r'\/')
+                replacement_escaped = replacement.replace('/', r'\/')
+
+                # Comando SED
+                sed_cmd = f"sed -i 's/{pattern_escaped}/{replacement_escaped}/g' {config_file.path}"
+
+                logger.info(f"[SED] Executando: {sed_cmd}")
+
+                stdin, stdout, stderr = client.exec_command(sed_cmd)
+                exit_code = stdout.channel.recv_exit_status()
+
+                if exit_code != 0:
+                    error = stderr.read().decode('utf-8')
+                    logger.error(f"[SED] Erro: {error}")
+                    # Restaurar backup
+                    client.exec_command(f"cp {backup_path} {config_file.path}")
+                    return False
+
+                logger.info(f"[SED] ✓ Mudança aplicada")
+
+            logger.info(f"[SED] ✅ Todas as {len(changes)} mudanças aplicadas com sucesso!")
+            return True
+
+        except Exception as e:
+            logger.error(f"[SED] Erro ao aplicar mudanças: {e}")
+            return False
+
     def update_jobs_in_file(self, file_path: str, jobs: List[Dict[str, Any]]) -> bool:
         """
-        Atualiza a lista de jobs em um arquivo
+        Atualiza a lista de jobs em um arquivo de forma CIRÚRGICA.
+
+        ESTRATÉGIA HÍBRIDA:
+        1. Tenta edição TEXT-BASED (preserva 100% comentários)
+        2. Se falhar, usa ruamel.yaml (pode perder comentários)
 
         Args:
             file_path: Path do arquivo
@@ -660,28 +1159,98 @@ class MultiConfigManager:
         if not config_file:
             raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
 
-        # Ler configuração atual (mantém metadados ruamel.yaml)
+        # Ler configuração atual (parseada)
         config = self.read_config_file(config_file)
 
         if 'scrape_configs' not in config:
             raise ValueError(f"Arquivo {file_path} não contém 'scrape_configs'")
 
-        # CRÍTICO: NÃO substituir o CommentedSeq!
-        # Isso destruiria todos os comentários do ruamel.yaml
-        # Em vez disso, limpar e reconstruir mantendo o objeto original
         original_scrape_configs = config['scrape_configs']
 
-        # Limpar lista mantendo o objeto CommentedSeq
-        original_scrape_configs.clear()
+        logger.info(f"[UPDATE JOBS] Iniciando atualização")
+        logger.info(f"[UPDATE JOBS] Jobs no arquivo: {len(original_scrape_configs)}")
+        logger.info(f"[UPDATE JOBS] Jobs novos: {len(jobs)}")
 
-        # Adicionar cada job mantendo estrutura ruamel.yaml
+        # TENTAR EDIÇÃO VIA SED (SSH) PRIMEIRO
+        try:
+            logger.info(f"[SED] Tentando edição via SED (SSH)")
+
+            # Detectar mudanças
+            changes = self._detect_simple_changes(original_scrape_configs, jobs)
+
+            if len(changes) == 0:
+                logger.info(f"[SED] Nenhuma mudança detectada")
+                return True
+
+            logger.info(f"[SED] Detectadas {len(changes)} mudança(s)")
+
+            # Gerar e executar comandos SED
+            success = self._apply_sed_changes(config_file, changes)
+
+            if success:
+                logger.info(f"[UPDATE JOBS] ✅ Sucesso com edição via SED")
+                # Limpar cache para forçar reload
+                cache_key = f"{config_file.host.hostname}:{config_file.path}"
+                if cache_key in self._config_cache:
+                    del self._config_cache[cache_key]
+                return True
+            else:
+                logger.warning(f"[SED] Edição via SED falhou, tentando fallback...")
+
+        except Exception as e:
+            logger.error(f"[UPDATE JOBS] Edição via SED falhou: {e}")
+            logger.info(f"[UPDATE JOBS] Tentando fallback com ruamel.yaml...")
+
+        # FALLBACK: ruamel.yaml (pode perder comentários)
+        logger.warning(f"[UPDATE JOBS] ⚠️  Usando ruamel.yaml - comentários podem ser perdidos!")
+
+        total_changes = 0
+
+        # Criar mapa de jobs por job_name para facilitar comparação
+        jobs_map = {job.get('job_name'): job for job in jobs}
+        original_jobs_map = {
+            job.get('job_name'): (idx, job)
+            for idx, job in enumerate(original_scrape_configs)
+        }
+
+        # Atualizar jobs existentes de forma cirúrgica
+        for job_name, new_job in jobs_map.items():
+            if job_name in original_jobs_map:
+                idx, old_job = original_jobs_map[job_name]
+                logger.info(f"[CIRÚRGICO] Atualizando job existente: {job_name}")
+
+                # Edição cirúrgica - modifica apenas campos alterados
+                changes = self._update_dict_surgically(old_job, new_job, f"job[{job_name}]")
+                total_changes += changes
+
+                if changes == 0:
+                    logger.info(f"[CIRÚRGICO] ✓ Job '{job_name}' sem alterações")
+                else:
+                    logger.info(f"[CIRÚRGICO] ✓ Job '{job_name}' - {changes} campo(s) modificado(s)")
+
+        # Adicionar novos jobs (que não existiam antes)
         from ruamel.yaml.comments import CommentedMap
         yaml_service = YamlConfigService()
 
-        for job in jobs:
-            # Converter job dict para CommentedMap (preserva estrutura YAML)
-            job_yaml = yaml_service.yaml.load(yaml_service.yaml.dump(job))
-            original_scrape_configs.append(job_yaml)
+        for job_name, new_job in jobs_map.items():
+            if job_name not in original_jobs_map:
+                logger.info(f"[CIRÚRGICO] Adicionando novo job: {job_name}")
+                job_yaml = yaml_service.yaml.load(yaml_service.yaml.dump(new_job))
+                original_scrape_configs.append(job_yaml)
+                total_changes += 1
+
+        # Remover jobs que não existem mais
+        jobs_to_remove = [
+            job_name for job_name in original_jobs_map.keys()
+            if job_name not in jobs_map
+        ]
+        for job_name in jobs_to_remove:
+            idx, _ = original_jobs_map[job_name]
+            logger.info(f"[CIRÚRGICO] Removendo job: {job_name}")
+            del original_scrape_configs[idx]
+            total_changes += 1
+
+        logger.info(f"[CIRÚRGICO] ✅ Total de alterações: {total_changes}")
 
         # Converter para YAML (preserva TODOS os comentários)
         from io import StringIO

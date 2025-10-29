@@ -7,6 +7,8 @@ import json
 import asyncio
 from datetime import datetime
 
+from core.installers.task_state import append_installation_log
+
 
 class ConnectionManager:
     """Gerenciador de conexões WebSocket para logs em tempo real"""
@@ -63,6 +65,9 @@ class ConnectionManager:
             "message": message,
             "data": data or {}
         }
+
+        if client_id != "all":
+            append_installation_log(client_id, log_entry)
 
         if client_id == "all":
             # Broadcast para todos os clientes

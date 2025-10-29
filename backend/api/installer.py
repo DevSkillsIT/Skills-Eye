@@ -4,7 +4,7 @@ Suporta múltiplos métodos de instalação para Windows e Linux
 """
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Literal, Union
+from typing import Optional, List, Dict, Literal, Union, Any
 from enum import Enum
 import asyncio
 import uuid
@@ -16,16 +16,16 @@ from core.installers import (
     WindowsSSHInstaller,
     WindowsMultiConnector
 )
+from core.installers.task_state import (
+    installation_tasks,
+    create_task
+)
 from core.consul_manager import ConsulManager
 from core.config import Config
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Storage for installation tasks
-installation_tasks: Dict[str, dict] = {}
-
 
 # ============================================================================
 # PYDANTIC MODELS
@@ -61,6 +61,8 @@ class WindowsSSHInstallRequest(BaseModel):
     collector_profile: str = Field("recommended", description="Perfil de collectors")
     register_in_consul: bool = Field(True, description="Registrar no Consul")
     consul_node: Optional[str] = Field(None, description="Nó Consul")
+    basic_auth_user: Optional[str] = Field(None, description="Usuário para Basic Auth")
+    basic_auth_password: Optional[str] = Field(None, description="Senha para Basic Auth")
 
 
 class WindowsWinRMInstallRequest(BaseModel):
@@ -76,6 +78,8 @@ class WindowsWinRMInstallRequest(BaseModel):
     collector_profile: str = Field("recommended", description="Perfil de collectors")
     register_in_consul: bool = Field(True, description="Registrar no Consul")
     consul_node: Optional[str] = Field(None, description="Nó Consul")
+    basic_auth_user: Optional[str] = Field(None, description="Usuário para Basic Auth")
+    basic_auth_password: Optional[str] = Field(None, description="Senha para Basic Auth")
 
 
 class WindowsPSExecInstallRequest(BaseModel):
@@ -90,6 +94,8 @@ class WindowsPSExecInstallRequest(BaseModel):
     collector_profile: str = Field("recommended", description="Perfil de collectors")
     register_in_consul: bool = Field(True, description="Registrar no Consul")
     consul_node: Optional[str] = Field(None, description="Nó Consul")
+    basic_auth_user: Optional[str] = Field(None, description="Usuário para Basic Auth")
+    basic_auth_password: Optional[str] = Field(None, description="Senha para Basic Auth")
 
 
 class InstallResponse(BaseModel):
@@ -101,6 +107,14 @@ class InstallResponse(BaseModel):
     details: Dict
 
 
+class InstallLogEntry(BaseModel):
+    """Log estruturado da instalação"""
+    timestamp: str
+    level: str
+    message: str
+    data: Optional[Dict[str, Any]] = None
+
+
 class InstallStatusResponse(BaseModel):
     """Status de uma instalação"""
     installation_id: str
@@ -108,6 +122,10 @@ class InstallStatusResponse(BaseModel):
     progress: int
     message: str
     details: Optional[Dict] = None
+    error_code: Optional[str] = None
+    error_category: Optional[str] = None
+    error_details: Optional[str] = None
+    logs: List[InstallLogEntry] = Field(default_factory=list)
 
 
 # ============================================================================
@@ -164,7 +182,7 @@ async def install_exporter(
         installation_id = str(uuid.uuid4())
 
         # Store initial status
-        installation_tasks[installation_id] = {
+        create_task(installation_id, {
             "status": "pending",
             "progress": 0,
             "message": "Instalação na fila",
@@ -172,8 +190,11 @@ async def install_exporter(
             "os_type": os_type,
             "method": method,
             "started_at": None,
-            "completed_at": None
-        }
+            "completed_at": None,
+            "error_code": None,
+            "error_category": None,
+            "error_details": None
+        })
 
         # Start installation in background
         background_tasks.add_task(
@@ -223,7 +244,20 @@ async def get_install_status(installation_id: str):
             "method": task_info["method"],
             "started_at": task_info["started_at"],
             "completed_at": task_info["completed_at"]
-        }
+        },
+        error_code=task_info.get("error_code"),
+        error_category=task_info.get("error_category"),
+        error_details=task_info.get("error_details"),
+        logs=[
+            InstallLogEntry(
+                timestamp=entry.get("timestamp", ""),
+                level=entry.get("level", "info"),
+                message=entry.get("message", ""),
+                data=entry.get("data") if isinstance(entry.get("data"), dict) else None
+            )
+            for entry in task_info.get("logs", [])
+            if entry.get("message")
+        ]
     )
 
 
@@ -713,12 +747,16 @@ async def run_installation(installation_id: str, request):
         task_info["progress"] = 30
         task_info["message"] = "Iniciando instalação..."
 
-        # Install (pass Basic Auth params for Linux)
-        if isinstance(request, LinuxSSHInstallRequest):
+        # Install (pass Basic Auth params for Linux and Windows)
+        if isinstance(request, (LinuxSSHInstallRequest, WindowsPSExecInstallRequest, WindowsWinRMInstallRequest, WindowsSSHInstallRequest)):
+            # Check if request has basic_auth attributes
+            basic_auth_user = getattr(request, 'basic_auth_user', None)
+            basic_auth_password = getattr(request, 'basic_auth_password', None)
+            
             success = await installer.install_exporter(
                 request.collector_profile,
-                request.basic_auth_user,
-                request.basic_auth_password
+                basic_auth_user,
+                basic_auth_password
             )
         else:
             success = await installer.install_exporter(request.collector_profile)
@@ -729,16 +767,30 @@ async def run_installation(installation_id: str, request):
         task_info["progress"] = 85
         task_info["message"] = "Validando instalação..."
 
-        # Validate (pass Basic Auth params for Linux)
-        if isinstance(request, LinuxSSHInstallRequest):
+        # Validate (pass Basic Auth params for Linux and Windows)
+        if isinstance(request, (LinuxSSHInstallRequest, WindowsPSExecInstallRequest, WindowsWinRMInstallRequest, WindowsSSHInstallRequest)):
+            basic_auth_user = getattr(request, 'basic_auth_user', None)
+            basic_auth_password = getattr(request, 'basic_auth_password', None)
+            
             if not await installer.validate_installation(
-                request.basic_auth_user,
-                request.basic_auth_password
+                basic_auth_user,
+                basic_auth_password
             ):
                 raise Exception("Validação falhou")
         else:
-            if not await installer.validate_installation():
-                raise Exception("Validação falhou")
+            # Fallback para métodos sem basic auth
+            validate_method = getattr(installer, 'validate_installation', None)
+            if validate_method:
+                import inspect
+                sig = inspect.signature(validate_method)
+                if len(sig.parameters) > 0:
+                    if not await installer.validate_installation(None, None):
+                        raise Exception("Validação falhou")
+                else:
+                    if not await installer.validate_installation():
+                        raise Exception("Validação falhou")
+            else:
+                raise Exception("Método validate_installation não encontrado")
 
         task_info["progress"] = 95
         task_info["message"] = "Finalizando..."
@@ -756,12 +808,39 @@ async def run_installation(installation_id: str, request):
 
     except Exception as e:
         logger.error(f"Erro na instalação {installation_id}: {e}", exc_info=True)
+        raw_message = str(e) if e else "Erro desconhecido"
+        error_code = "INSTALLATION_ERROR"
+        error_category = "installer"
+        error_details = None
+        user_message = raw_message
+
+        if "|" in raw_message:
+            parts = [part.strip() for part in raw_message.split("|")]
+            if len(parts) >= 2 and parts[1]:
+                error_code = parts[0] or error_code
+                user_message = parts[1]
+            else:
+                error_code = parts[0] or error_code
+            if len(parts) >= 3 and parts[2]:
+                error_category = parts[2]
+            if len(parts) >= 4:
+                error_details = "|".join(parts[3:]).strip() or None
+
+        display_message = user_message
+        if not display_message.lower().startswith("erro"):
+            display_message = f"Erro: {display_message}"
+
         task_info["status"] = "failed"
-        task_info["message"] = f"Erro: {str(e)}"
+        task_info["message"] = display_message
         task_info["completed_at"] = datetime.now().isoformat()
+        task_info["error_code"] = error_code
+        task_info["error_category"] = error_category
+        task_info["error_details"] = error_details
 
         if installer:
             await installer.log(f"ERRO: {str(e)}", "error")
+            if error_details:
+                await installer.log(f"Detalhes: {error_details}", "debug")
 
     finally:
         if installer:
@@ -803,7 +882,7 @@ async def register_in_consul(installer, request):
         }
         
         # Build health check configuration
-        check_config = {
+        check_config: Dict[str, Any] = {
             "HTTP": f"http://{request.host}:{port}/metrics",
             "Interval": "30s",
             "Timeout": "10s"

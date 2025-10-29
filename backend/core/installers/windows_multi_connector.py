@@ -74,6 +74,26 @@ class WindowsMultiConnector:
             else:
                 logger.info(f"[{self.client_id}] [{level.upper()}] {message}")
     
+    def _format_psexec_error(self, error_msg: str) -> str:
+        """Gera mensagem amigável para erros de PSExec"""
+        if "|" in error_msg and error_msg.count("|") >= 2:
+            return error_msg
+
+        lower_msg = error_msg.lower()
+
+        if "dns" in error_msg or "resolve" in lower_msg:
+            return f"Erro de DNS - não foi possível resolver {self.host}"
+        if "timeout" in lower_msg or "timed out" in lower_msg:
+            return f"Host {self.host} não respondeu (timeout) - pode estar offline"
+        if "445" in error_msg or "port_closed" in error_msg:
+            return "Porta SMB 445 bloqueada ou inacessível (firewall?)"
+        if "permission" in lower_msg or "permiss" in lower_msg:
+            return "Sem permissões administrativas - verifique se o usuário é admin local"
+        if "auth" in lower_msg or "credential" in lower_msg:
+            return "Credenciais inválidas ou rejeitadas"
+
+        return error_msg
+
     async def try_psexec(self) -> Tuple[bool, str, Optional[WindowsPSExecInstaller]]:
         """
         Tentativa 1: PSExec
@@ -99,6 +119,18 @@ class WindowsMultiConnector:
             await self.log(f"📋 Host: {self.host}", "info")
             await self.log(f"👤 Usuário: {display_username}", "info")
             await self.log(f"🔑 Método: PSExec (SMB porta 445)", "info")
+
+            valid, validation_msg = await installer.validate_connection()
+            if not valid:
+                detailed_msg = self._format_psexec_error(validation_msg)
+                await self.log(f"❌ Validação PSExec falhou: {detailed_msg}", "warning")
+                self.connection_attempts.append({
+                    "method": "psexec",
+                    "success": False,
+                    "message": detailed_msg
+                })
+                return False, detailed_msg, None
+
             await self.log("⚡ Iniciando conexão via PSExec...", "info")
             
             if await installer.connect():
@@ -121,24 +153,8 @@ class WindowsMultiConnector:
         except Exception as e:
             error_msg = str(e)
             await self.log(f"❌ ERRO PSExec: {error_msg}", "error")
-            
-            # Parse structured error or create user-friendly message
-            if "|" in error_msg and error_msg.count("|") >= 2:
-                # Already structured (CODE|Message|Category)
-                detailed_msg = error_msg
-            elif "DNS" in error_msg or "resolve" in error_msg.lower():
-                detailed_msg = f"Erro de DNS - não foi possível resolver {self.host}"
-            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                detailed_msg = f"Host {self.host} não respondeu (timeout) - pode estar offline"
-            elif "445" in error_msg or "PORT_CLOSED" in error_msg:
-                detailed_msg = "Porta SMB 445 bloqueada ou inacessível (firewall?)"
-            elif "PERMISSION" in error_msg or "permiss" in error_msg.lower():
-                detailed_msg = "Sem permissões administrativas - verifique se o usuário é admin local"
-            elif "AUTH" in error_msg or "credentials" in error_msg.lower():
-                detailed_msg = "Credenciais inválidas ou rejeitadas"
-            else:
-                detailed_msg = error_msg
-            
+            detailed_msg = self._format_psexec_error(error_msg)
+
             self.connection_attempts.append({
                 "method": "psexec",
                 "success": False,

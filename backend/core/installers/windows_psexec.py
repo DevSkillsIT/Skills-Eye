@@ -4,11 +4,13 @@ Uses pypsexec library for pure Python implementation
 No need for PSExec.exe executable
 """
 import asyncio
+import base64
 import socket
 import logging
 import requests
 from typing import Tuple, Optional, Dict
 from pathlib import Path
+from textwrap import dedent
 from .base import BaseInstaller
 
 try:
@@ -27,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Collector configurations
 WINDOWS_EXPORTER_COLLECTORS = {
-    'recommended': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system'],
-    'full': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system', 'service', 'tcp', 'thermalzone'],
+    'recommended': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system'],
+    'full': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system', 'tcp', 'thermalzone'],
     'minimal': ['cpu', 'memory', 'logical_disk', 'os']
 }
 
@@ -123,28 +125,25 @@ class WindowsPSExecInstaller(BaseInstaller):
 
         # Test network connectivity and DNS
         await self.log(f"🌐 Testando conectividade com {self.host}...", "info")
-        
+
         try:
             # Test SMB port (445) with detailed error handling
             port_open = await asyncio.to_thread(test_port, self.host, 445, 10)
             if not port_open:
                 await self.log("⚠️ Porta SMB 445 não está acessível (bloqueada por firewall)", "warning")
                 return False, "PORT_CLOSED|Porta SMB 445 está bloqueada ou inacessível|network"
-            
+
             await self.log("✅ Porta SMB 445 está acessível", "success")
-            
+
         except socket.gaierror as e:
-            # DNS resolution failed
             await self.log(f"❌ Falha na resolução DNS: {e}", "error")
             return False, f"DNS_ERROR|Não foi possível resolver o hostname {self.host}|network"
-            
+
         except socket.timeout as e:
-            # Connection timeout - host offline or unreachable
             await self.log(f"❌ Timeout: {e}", "error")
             return False, f"TIMEOUT|Host {self.host} não respondeu (offline ou rede inacessível)|network"
-            
+
         except Exception as e:
-            # Other network errors
             await self.log(f"❌ Erro de rede: {e}", "error")
             return False, f"NETWORK_ERROR|Erro de conectividade: {e}|network"
 
@@ -152,115 +151,162 @@ class WindowsPSExecInstaller(BaseInstaller):
         return True, "OK"
 
     async def connect(self) -> bool:
-        """Test connection via pypsexec"""
+        """Establish connection via pypsexec"""
         try:
-            valid, msg = await self.validate_connection()
-            if not valid:
-                await self.log(f"❌ {msg}", "error")
-                # Raise structured exception
-                raise Exception(msg)
-
             await self.log("🔌 Testando conexão pypsexec...", "info")
 
-            # 🔧 Preparar username com domínio se necessário
-            # pypsexec aceita: "DOMAIN\\username" ou "username@domain" ou "username"
             username_to_use = self.username
-            
-            # Se username já tem domínio (DOMAIN\username ou username@domain), usar como está
             if "\\" not in username_to_use and "@" not in username_to_use and self.domain:
-                # Adicionar domínio no formato DOMAIN\username
                 username_to_use = f"{self.domain}\\{self.username}"
                 await self.log(f"🔑 Usando credenciais de domínio: {username_to_use}", "info")
             else:
                 await self.log(f"🔑 Usando credenciais: {username_to_use}", "info")
 
-            # Create pypsexec client
             def _connect():
                 if Client is None:
                     raise RuntimeError("pypsexec client is unavailable")
+                
+                logs = []  # Capturar logs para enviar depois
+                
                 client = Client(
                     self.host,
                     username=username_to_use,
                     password=self.password,
                     port=445,
-                    encrypt=False  # Usar modo compatível com PsExec.exe (sem SMB encryption)
+                    encrypt=False
                 )
                 try:
+                    logs.append(("info", "[psexec] Iniciando conexão SMB..."))
                     client.connect()
+                    logs.append(("success", "[psexec] ✅ Conexão SMB estabelecida"))
 
-                    # Garantir limpeza caso restem artefatos de execuções anteriores
                     try:
+                        logs.append(("info", "[psexec] Executando cleanup inicial..."))
                         client.cleanup()
+                        logs.append(("success", "[psexec] ✅ Cleanup inicial OK"))
                     except Exception as cleanup_err:
-                        # Apenas registrar; não bloquear sequência normal
-                        logger.warning(f"[psexec] Falha ao executar cleanup inicial: {cleanup_err}")
+                        logs.append(("warning", f"[psexec] ⚠️ Cleanup inicial falhou: {cleanup_err}"))
 
+                    logs.append(("info", "[psexec] Criando serviço temporário PAExec..."))
                     client.create_service()
-                    # Teste simples (sem flags especiais)
+                    logs.append(("success", "[psexec] ✅ Serviço PAExec criado"))
+                    
+                    logs.append(("info", "[psexec] Executando comando de teste..."))
                     stdout, stderr, rc = client.run_executable(
                         "cmd.exe",
                         arguments="/c echo Connected"
                     )
+                    logs.append(("info", f"[psexec] Comando retornou: rc={rc}"))
 
                     try:
+                        logs.append(("info", "[psexec] Removendo serviço PAExec..."))
                         client.remove_service()
+                        logs.append(("success", "[psexec] ✅ Serviço removido com sucesso"))
                     except Exception as remove_err:
-                        logger.warning(f"[psexec] Falha ao remover serviço temporário: {remove_err}")
-                        # Tentar limpeza forçada
+                        error_type = type(remove_err).__name__
+                        error_msg = str(remove_err)
+                        logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+                        logs.append(("error", "[psexec] ❌ FALHA AO REMOVER SERVIÇO PAExec"))
+                        logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+                        logs.append(("error", f"[psexec] Tipo da exceção: {error_type}"))
+                        logs.append(("error", f"[psexec] Mensagem: {error_msg}"))
+                        
+                        # Extrair detalhes completos da exceção
+                        if hasattr(remove_err, 'args') and remove_err.args:
+                            for i, arg in enumerate(remove_err.args):
+                                logs.append(("error", f"[psexec] Exception.args[{i}]: {arg}"))
+                        
+                        # Atributos específicos do pypsexec
+                        if hasattr(remove_err, '__dict__'):
+                            logs.append(("error", "[psexec] Atributos da exceção:"))
+                            for key, value in remove_err.__dict__.items():
+                                logs.append(("error", f"[psexec]   {key} = {value}"))
+                        
+                        # Se for SCMRException, tem mais detalhes
+                        if 'SCMR' in error_type or hasattr(remove_err, 'error_id'):
+                            if hasattr(remove_err, 'error_id'):
+                                logs.append(("error", f"[psexec] SCMR Error ID: {getattr(remove_err, 'error_id', 'N/A')}"))
+                            if hasattr(remove_err, 'error_msg'):
+                                logs.append(("error", f"[psexec] SCMR Error Message: {getattr(remove_err, 'error_msg', 'N/A')}"))
+                        
+                        logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+                        
                         try:
+                            logs.append(("info", "[psexec] Tentando cleanup após falha de remoção..."))
                             client.cleanup()
+                            logs.append(("success", "[psexec] ✅ Cleanup executado com sucesso"))
                         except Exception as cleanup_err:
-                            logger.warning(f"[psexec] Cleanup após remoção falhou: {cleanup_err}")
+                            cleanup_type = type(cleanup_err).__name__
+                            cleanup_msg = str(cleanup_err)
+                            logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+                            logs.append(("error", "[psexec] ❌ CLEANUP TAMBÉM FALHOU"))
+                            logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+                            logs.append(("error", f"[psexec] Tipo: {cleanup_type}"))
+                            logs.append(("error", f"[psexec] Mensagem: {cleanup_msg}"))
+                            
+                            if hasattr(cleanup_err, 'args') and cleanup_err.args:
+                                for i, arg in enumerate(cleanup_err.args):
+                                    logs.append(("error", f"[psexec] Exception.args[{i}]: {arg}"))
+                            
+                            logs.append(("error", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 
+                    logs.append(("info", "[psexec] Desconectando..."))
                     client.disconnect()
-                    return rc == 0, stdout, stderr
+                    logs.append(("success", "[psexec] ✅ Desconectado"))
+                    
+                    return rc == 0, stdout, stderr, logs
                 except Exception as e:
+                    logs.append(("error", f"[psexec] ❌ Exceção durante conexão: {e}"))
                     try:
+                        logs.append(("info", "[psexec] Tentando cleanup em exceção..."))
                         client.cleanup()
+                        logs.append(("success", "[psexec] ✅ Cleanup em exceção OK"))
                     except Exception as cleanup_err:
-                        logger.warning(f"[psexec] Cleanup em exceção falhou: {cleanup_err}")
+                        logs.append(("error", f"[psexec] ❌ Cleanup em exceção falhou: {cleanup_err}"))
                     try:
                         client.disconnect()
-                    except:
+                    except Exception:
                         pass
                     raise e
 
-            success, stdout, stderr = await asyncio.to_thread(_connect)
+            success, stdout, stderr, logs = await asyncio.to_thread(_connect)
+            
+            # Enviar todos os logs capturados
+            for level, message in logs:
+                await self.log(message, level)
 
             if success:
                 await self.log("✅ Conexão pypsexec bem-sucedida", "success")
                 return True
-            else:
-                await self.log(f"❌ Falha na conexão pypsexec: {stderr}", "error")
-                raise Exception(f"CONNECTION_FAILED|Falha ao executar comando teste: {stderr}|connection")
+
+            await self.log(f"❌ Falha na conexão pypsexec: {stderr}", "error")
+            raise Exception(f"CONNECTION_FAILED|Falha ao executar comando teste: {stderr}|connection")
 
         except PypsexecException as e:
             error_msg = str(e)
             await self.log(f"❌ Erro pypsexec: {error_msg}", "error")
-            
-            # Map common errors to structured format
+
             if "STATUS_LOGON_FAILURE" in error_msg or "0xc000006d" in error_msg:
                 raise Exception("AUTH_FAILED|Usuário ou senha inválidos|authentication")
-            elif "STATUS_LOGON_TYPE_NOT_GRANTED" in error_msg or "0xc0000192" in error_msg:
+            if "STATUS_LOGON_TYPE_NOT_GRANTED" in error_msg or "0xc0000192" in error_msg:
                 raise Exception("PERMISSION_DENIED|Usuário não tem permissão de logon remoto neste computador. Adicione o usuário ao grupo 'Administradores' ou 'Usuários da Área de Trabalho Remota'|authentication")
-            elif "STATUS_ACCOUNT_RESTRICTION" in error_msg or "0xc000006e" in error_msg:
+            if "STATUS_ACCOUNT_RESTRICTION" in error_msg or "0xc000006e" in error_msg:
                 raise Exception("AUTH_FAILED|Conta com restrições - verifique se é administrador local|authentication")
-            elif "STATUS_ACCESS_DENIED" in error_msg or "Access is denied" in error_msg or "0xc0000022" in error_msg:
+            if "STATUS_ACCESS_DENIED" in error_msg or "Access is denied" in error_msg or "0xc0000022" in error_msg:
                 raise Exception("PERMISSION_DENIED|Acesso negado - credenciais sem permissões administrativas|authentication")
-            elif "STATUS_CANNOT_DELETE" in error_msg or "0xc0000121" in error_msg:
+            if "STATUS_CANNOT_DELETE" in error_msg or "0xc0000121" in error_msg:
                 raise Exception("PERMISSION_DENIED|Erro de permissão ao gerenciar serviço - verifique se o usuário é administrador local|authentication")
-            elif "STATUS_OBJECT_NAME_NOT_FOUND" in error_msg or "0xc0000034" in error_msg:
+            if "STATUS_OBJECT_NAME_NOT_FOUND" in error_msg or "0xc0000034" in error_msg:
                 raise Exception("SERVICE_ERROR|Erro ao criar/gerenciar serviço remoto - pode precisar de permissões elevadas|service")
-            elif "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+            if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
                 raise Exception("TIMEOUT|Conexão expirou (timeout)|timeout")
-            elif "connection" in error_msg.lower() and "refused" in error_msg.lower():
+            if "connection" in error_msg.lower() and "refused" in error_msg.lower():
                 raise Exception("CONNECTION_REFUSED|Conexão recusada pelo servidor|connection")
-            else:
-                raise Exception(f"PSEXEC_ERROR|{error_msg}|psexec")
-                
+
+            raise Exception(f"PSEXEC_ERROR|{error_msg}|psexec")
+
         except Exception as e:
             error_msg = str(e)
-            # If already structured, re-raise
             if "|" in error_msg and error_msg.count("|") >= 2:
                 raise
             await self.log(f"❌ Erro ao conectar via pypsexec: {error_msg}", "error")
@@ -287,6 +333,9 @@ class WindowsPSExecInstaller(BaseInstaller):
             def _exec():
                 if Client is None:
                     raise RuntimeError("pypsexec client is unavailable")
+                
+                logs = []  # Capturar logs
+                
                 client = Client(
                     self.host,
                     username=username_to_use,
@@ -295,53 +344,80 @@ class WindowsPSExecInstaller(BaseInstaller):
                     encrypt=False  # Manter consistência com a verificação de conexão
                 )
                 try:
+                    logs.append(("info", "[psexec] Conectando para executar comando..."))
                     client.connect()
+                    logs.append(("success", "[psexec] ✅ Conectado"))
 
                     try:
+                        logs.append(("info", "[psexec] Cleanup inicial..."))
                         client.cleanup()
+                        logs.append(("success", "[psexec] ✅ Cleanup OK"))
                     except Exception as cleanup_err:
-                        logger.warning(f"[psexec] Falha ao executar cleanup inicial: {cleanup_err}")
+                        logs.append(("warning", f"[psexec] ⚠️ Cleanup falhou: {cleanup_err}"))
 
+                    logs.append(("info", "[psexec] Criando serviço PAExec..."))
                     client.create_service()
+                    logs.append(("success", "[psexec] ✅ Serviço criado"))
 
                     if powershell:
+                        logs.append(("info", f"[psexec] Executando PowerShell (encoded): {command[:100]}..."))
+                        encoded = base64.b64encode(command.encode("utf-16le")).decode()
                         stdout, stderr, rc = client.run_executable(
                             "powershell.exe",
-                            arguments=f'-ExecutionPolicy Bypass -NoProfile -Command "{command}"'
+                            arguments=f'-NoProfile -ExecutionPolicy Bypass -EncodedCommand {encoded}'
                         )
                     else:
+                        logs.append(("info", f"[psexec] Executando CMD: {command[:100]}..."))
                         stdout, stderr, rc = client.run_executable(
                             "cmd.exe",
                             arguments=f'/c {command}'
                         )
+                    
+                    logs.append(("info", f"[psexec] Comando retornou rc={rc}"))
 
                     try:
+                        logs.append(("info", "[psexec] Removendo serviço PAExec..."))
                         client.remove_service()
+                        logs.append(("success", "[psexec] ✅ Serviço removido"))
                     except Exception as remove_err:
-                        logger.warning(f"[psexec] Falha ao remover serviço temporário: {remove_err}")
+                        logs.append(("error", f"[psexec] ❌ Falha ao remover serviço: {remove_err}"))
                         try:
+                            logs.append(("info", "[psexec] Tentando cleanup..."))
                             client.cleanup()
+                            logs.append(("success", "[psexec] ✅ Cleanup OK"))
                         except Exception as cleanup_err:
-                            logger.warning(f"[psexec] Cleanup após remoção falhou: {cleanup_err}")
+                            logs.append(("error", f"[psexec] ❌ Cleanup falhou: {cleanup_err}"))
 
+                    logs.append(("info", "[psexec] Desconectando..."))
                     client.disconnect()
+                    logs.append(("success", "[psexec] ✅ Desconectado"))
 
-                    stdout_str = stdout.decode('utf-8') if isinstance(stdout, bytes) else (stdout or "")
-                    stderr_str = stderr.decode('utf-8') if isinstance(stderr, bytes) else (stderr or "")
+                    # Decodificar com fallback para evitar erros de encoding
+                    stdout_str = stdout.decode('utf-8', errors='replace') if isinstance(stdout, bytes) else (stdout or "")
+                    stderr_str = stderr.decode('utf-8', errors='replace') if isinstance(stderr, bytes) else (stderr or "")
 
-                    return rc, stdout_str, stderr_str
+                    return rc, stdout_str, stderr_str, logs
                 except Exception as e:
+                    logs.append(("error", f"[psexec] ❌ Exceção: {e}"))
                     try:
+                        logs.append(("info", "[psexec] Cleanup em exceção..."))
                         client.cleanup()
+                        logs.append(("success", "[psexec] ✅ Cleanup OK"))
                     except Exception as cleanup_err:
-                        logger.warning(f"[psexec] Cleanup em exceção falhou: {cleanup_err}")
+                        logs.append(("error", f"[psexec] ❌ Cleanup falhou: {cleanup_err}"))
                     try:
                         client.disconnect()
                     except:
                         pass
                     raise e
 
-            return await asyncio.to_thread(_exec)
+            rc, stdout_str, stderr_str, logs = await asyncio.to_thread(_exec)
+            
+            # Enviar logs capturados
+            for level, message in logs:
+                await self.log(message, level)
+            
+            return rc, stdout_str, stderr_str
 
         except Exception as e:
             return 1, "", str(e)
@@ -435,8 +511,8 @@ class WindowsPSExecInstaller(BaseInstaller):
         await self.log("Nenhuma instalação anterior detectada", "success")
         return False
 
-    async def install_exporter(self, collector_profile: str = 'recommended') -> bool:
-        """Install Windows Exporter"""
+    async def install_exporter(self, collector_profile: str = 'recommended', basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:
+        """Install Windows Exporter with optional Basic Auth"""
         await self.log("=== Instalando Windows Exporter via PSexec ===", "info")
 
         # Get latest version
@@ -454,60 +530,443 @@ class WindowsPSExecInstaller(BaseInstaller):
             await self.log(f"Versão: {version}", "success")
         except Exception as e:
             await self.log(f"Erro ao obter versão: {e}", "error")
-            return False
+            detail = str(e)
+            raise Exception(
+                f"DOWNLOAD_FAILED|Não foi possível consultar a versão mais recente do windows_exporter no GitHub."
+                " Verifique acesso HTTPS/Proxy a github.com.|network|"
+                f"{detail[:500]}"
+            )
 
         # Prepare collectors
         collectors = WINDOWS_EXPORTER_COLLECTORS.get(collector_profile, WINDOWS_EXPORTER_COLLECTORS['recommended'])
         collectors_str = ','.join(collectors)
+        
+        # Generate bcrypt hash for password if Basic Auth is enabled
+        bcrypt_hash = ""
+        await self.log(f"🔍 DEBUG: basic_auth_user={basic_auth_user}, basic_auth_password={'***' if basic_auth_password else 'None'}", "info")
+        if basic_auth_user and basic_auth_password:
+            await self.log(f"🔐 Basic Auth HABILITADO para usuário: {basic_auth_user}", "info")
+            try:
+                import bcrypt
+                await self.log("📦 Módulo bcrypt importado com sucesso", "info")
+                password_bytes = basic_auth_password.encode('utf-8')
+                await self.log("🔄 Gerando salt bcrypt...", "info")
+                salt = bcrypt.gensalt(rounds=10)
+                await self.log("🔄 Gerando hash bcrypt...", "info")
+                hash_bytes = bcrypt.hashpw(password_bytes, salt)
+                bcrypt_hash = hash_bytes.decode('utf-8')
+                await self.log(f"✅ Hash bcrypt gerado com sucesso (length={len(bcrypt_hash)})", "success")
+                await self.log(f"🔍 DEBUG: bcrypt_hash[:20]={bcrypt_hash[:20]}...", "info")
+            except ImportError as e:
+                await self.log(f"❌ Módulo bcrypt não disponível - Basic Auth não será configurado: {e}", "error")
+                self._raise_install_error(
+                    "BCRYPT_MISSING",
+                    "Módulo bcrypt não está instalado. Execute: pip install bcrypt",
+                    "dependency",
+                    "",
+                    ""
+                )
+            except Exception as e:
+                await self.log(f"❌ Erro ao gerar hash bcrypt: {e}", "error")
+                self._raise_install_error(
+                    "BCRYPT_HASH_FAILED",
+                    f"Falha ao gerar hash bcrypt: {str(e)}",
+                    "configuration",
+                    "",
+                    str(e)
+                )
+        else:
+            await self.log("ℹ️ Basic Auth NÃO habilitado (usuário ou senha não fornecidos)", "info")
 
         url = f"https://github.com/prometheus-community/windows_exporter/releases/download/v{version}/windows_exporter-{version}-amd64.msi"
 
-        # PowerShell installation script
-        install_script = f'''
-$ErrorActionPreference = "Stop"
-$url = "{url}"
-$installer = "$env:TEMP\\windows_exporter.msi"
-$collectors = "{collectors_str}"
+        # Etapa 1 - Download do instalador
+        await self.log("Baixando instalador do windows_exporter...", "info")
+        download_cmd = (
+            "$ErrorActionPreference = 'Stop';"
+            f"$url = '{url}';"
+            "$installer = Join-Path $env:TEMP 'windows_exporter.msi';"
+            "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12;"
+            "Write-Host 'DOWNLOAD_START';"
+            "Write-Host ('DOWNLOAD_URL:' + $url);"
+            "Write-Host ('DOWNLOAD_DEST:' + $installer);"
+            "Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing;"
+            "Write-Host ('DOWNLOAD_OK_BYTES:' + (Get-Item $installer).Length);"
+        )
 
-Write-Host "Baixando Windows Exporter v{version}..."
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+        exit_code, output, error = await self.execute_command(download_cmd, powershell=True)
+        if output:
+            for line in output.splitlines():
+                await self.log(f"[download] {line}", "info")
+        if exit_code != 0:
+            await self.log("Falha ao baixar o instalador", "error")
+            self._raise_install_error(
+                "DOWNLOAD_FAILED",
+                "Falha ao baixar o instalador do windows_exporter. Verifique conectividade HTTPS.",
+                "network",
+                output,
+                error
+            )
+        await self.log("Instalador baixado com sucesso em %TEMP%\\windows_exporter.msi", "info")
 
-Write-Host "Instalando..."
-Stop-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-$arguments = "/i `"$installer`" ENABLED_COLLECTORS=$collectors /quiet /norestart"
-Start-Process msiexec.exe -ArgumentList $arguments -Wait -NoNewWindow
+        await self.progress(30, 100, "Executando instalação/atualização...")
 
-Start-Sleep -Seconds 5
+        # Etapa 2 - Executar MSIEXEC com flags de reinstalação forçada
+        await self.log("Executando msiexec (modo: install/upgrade)...", "info")
+        install_cmd = (
+            "$ErrorActionPreference = 'Stop';"
+            "Write-Host 'INSTALL_START';"
+            "$installer = Join-Path $env:TEMP 'windows_exporter.msi';"
+            f"$collectors = '{collectors_str}';"
+            "$logPath = Join-Path $env:TEMP 'windows_exporter_install.log';"
+            "if (-not (Test-Path $installer)) { Write-Host 'INSTALLER_NOT_FOUND'; exit 2 };"
+            # REINSTALL=ALL REINSTALLMODE=vomus força sobrescrita completa
+            "$arguments = \"/i `\"$installer`\" ENABLED_COLLECTORS=$collectors REINSTALL=ALL REINSTALLMODE=vomus /quiet /norestart /log `\"$logPath`\"\";"
+            "Write-Host \"MSIEXEC_CMD: msiexec.exe $arguments\";"
+            "$process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait -NoNewWindow;"
+            "$exitCode = $process.ExitCode;"
+            "Write-Host \"MSIEXEC_EXITCODE:$exitCode\";"
+            "if ($exitCode -eq 0) { Write-Host 'INSTALL_SUCCESS'; }"
+            "elseif ($exitCode -eq 1603) { Write-Host 'INSTALL_FAILED_1603'; }"
+            "elseif ($exitCode -eq 1618) { Write-Host 'INSTALL_IN_PROGRESS'; }"
+            "else { Write-Host \"INSTALL_FAILED:$exitCode\"; };"
+            "if (Test-Path $logPath) { Get-Content $logPath -Tail 15 | ForEach-Object { Write-Host \"LOG: $_\" }; };"
+            "exit $exitCode;"
+        )
 
-$service = Get-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-if ($service -and $service.Status -eq "Running") {{
-    Write-Host "SUCCESS"
-}} else {{
-    Write-Host "FAILED"
-    exit 1
-}}
+        exit_code, output, error = await self.execute_command(install_cmd, powershell=True)
+        
+        # Log instalação
+        if output:
+            for line in output.splitlines():
+                if line.strip():
+                    if "INSTALL_SUCCESS" in line:
+                        await self.log("✅ Windows Exporter instalado com sucesso", "success")
+                    elif "INSTALL_FAILED" in line or "MSIEXEC_EXITCODE:1603" in line:
+                        await self.log(f"❌ {line}", "error")
+                    elif line.startswith("LOG:"):
+                        await self.log(f"  {line}", "info")
+                    elif "MSIEXEC_CMD" in line or "MSIEXEC_EXITCODE" in line:
+                        await self.log(f"  {line}", "info")
+        
+        if error:
+            error_lines = [l for l in error.splitlines() if l.strip() and not l.strip().startswith("#< CLIXML")]
+            if error_lines:
+                for line in error_lines:
+                    await self.log(f"  [stderr] {line}", "warning")
+                    
+        if exit_code != 0:
+            await self.log(f"❌ MSI retornou código {exit_code}", "error")
+            combined_text = "\n".join(part for part in [output, error] if part).strip()
+            reason, error_code, error_category = self._classify_install_failure(combined_text)
+            self._raise_install_error(error_code, reason, error_category, output, error)
+        
+        await self.log("✅ MSI instalado com sucesso - prosseguindo para configuração...", "success")
 
-Remove-Item $installer -Force -ErrorAction SilentlyContinue
-'''
-
-        await self.progress(30, 100, "Executando instalação remota...")
-        await self.progress(40, 100, "Baixando Windows Exporter no host remoto...")
-
-        exit_code, output, error = await self.execute_command(install_script, powershell=True)
-        await self.progress(90, 100, "Finalizando...")
-
-        if exit_code == 0 and 'SUCCESS' in output:
-            await self.log(f"Windows Exporter v{version} instalado com sucesso!", "success")
-            return True
+        # Etapa 2.5 - Configurar Basic Auth se habilitado
+        await self.log(f"🔍 DEBUG PRÉ-BASIC-AUTH: user={basic_auth_user}, pwd={'***' if basic_auth_password else 'None'}, hash={'SET' if bcrypt_hash else 'EMPTY'}", "info")
+        if basic_auth_user and basic_auth_password and bcrypt_hash:
+            await self.log("🔐 >>>>>> ENTRANDO NO BLOCO DE BASIC AUTH <<<<<<", "success")
+            await self.log("🔐 INICIANDO configuração de Basic Auth...", "info")
+            await self.progress(65, 100, "Configurando autenticação...")
+            
+            # Criar arquivo config.yml com Basic Auth
+            config_content = f"""basic_auth_users:
+  {basic_auth_user}: {bcrypt_hash}
+"""
+            await self.log(f"📄 Config content preparado ({len(config_content)} bytes)", "info")
+            
+            config_cmd = dedent(rf"""
+                $ErrorActionPreference = 'Stop'
+                Write-Host '=== BASIC_AUTH_CONFIG_BEGIN ==='
+                
+                # Criar diretório de configuração
+                $configDir = 'C:\Program Files\windows_exporter'
+                if (-not (Test-Path $configDir)) {{
+                    Write-Host "Creating config directory: $configDir"
+                    New-Item -Path $configDir -ItemType Directory -Force | Out-Null
+                }}
+                
+                # Criar arquivo config.yml
+                $configPath = Join-Path $configDir 'config.yml'
+                Write-Host "Creating config file: $configPath"
+                
+                $configContent = @"
+{config_content}
+"@
+                
+                $configContent | Out-File -FilePath $configPath -Encoding UTF8 -Force
+                Write-Host "CONFIG_FILE_CREATED: $configPath"
+                
+                # Parar serviço
+                Write-Host 'Stopping windows_exporter service...'
+                Stop-Service -Name 'windows_exporter' -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+                
+                # Modificar parâmetros do serviço para incluir --web.config.file
+                Write-Host 'Updating service parameters...'
+                $service = Get-WmiObject Win32_Service -Filter "Name='windows_exporter'"
+                if ($service) {{
+                    $currentPath = $service.PathName
+                    Write-Host "Current PathName: $currentPath"
+                    
+                    # Adicionar --web.config.file se não existir
+                    if ($currentPath -notlike '*--web.config.file*') {{
+                        $newPath = $currentPath + ' --web.config.file="' + $configPath + '"'
+                        Write-Host "New PathName: $newPath"
+                        
+                        $result = $service.Change($null, $newPath)
+                        if ($result.ReturnValue -eq 0) {{
+                            Write-Host 'SERVICE_PARAMS_UPDATED: OK'
+                        }} else {{
+                            Write-Host "SERVICE_PARAMS_UPDATE_FAILED: ReturnValue=$($result.ReturnValue)"
+                            exit 1
+                        }}
+                    }} else {{
+                        Write-Host 'SERVICE_PARAMS_ALREADY_CONFIGURED'
+                    }}
+                }}
+                
+                # Reiniciar serviço
+                Write-Host 'Starting windows_exporter service...'
+                Start-Service -Name 'windows_exporter' -ErrorAction Stop
+                Start-Sleep -Seconds 3
+                
+                $serviceStatus = (Get-Service -Name 'windows_exporter').Status
+                Write-Host "Service Status: $serviceStatus"
+                
+                if ($serviceStatus -eq 'Running') {{
+                    Write-Host 'BASIC_AUTH_CONFIGURED: OK'
+                }} else {{
+                    Write-Host 'SERVICE_START_FAILED'
+                    exit 1
+                }}
+                
+                Write-Host '=== BASIC_AUTH_CONFIG_END ==='
+            """).strip()
+            
+            exit_code, output, error = await self.execute_command(config_cmd, powershell=True)
+            
+            if output:
+                for line in output.splitlines():
+                    if line.strip():
+                        if "CONFIGURED: OK" in line or "CREATED" in line:
+                            await self.log(f"  {line}", "success")
+                        elif "FAILED" in line or "ERROR" in line:
+                            await self.log(f"  {line}", "error")
+                        else:
+                            await self.log(f"  {line}", "info")
+            
+            if exit_code != 0:
+                await self.log("❌ Falha ao configurar Basic Auth", "error")
+                self._raise_install_error(
+                    "BASIC_AUTH_CONFIG_FAILED",
+                    "Não foi possível configurar Basic Auth no windows_exporter",
+                    "configuration",
+                    output if output else "",
+                    error if error else ""
+                )
+            else:
+                await self.log(f"✅ Basic Auth configurado para usuário: {basic_auth_user}", "success")
         else:
-            await self.log("Instalação falhou", "error")
-            await self.log(f"Output: {output[:500]}", "debug")
-            await self.log(f"Error: {error[:500]}", "debug")
-            return False
+            await self.log("⚠️ PULANDO configuração de Basic Auth (condição não satisfeita)", "warning")
+            if not basic_auth_user:
+                await self.log("  Motivo: basic_auth_user está vazio/None", "warning")
+            if not basic_auth_password:
+                await self.log("  Motivo: basic_auth_password está vazio/None", "warning")
+            if not bcrypt_hash:
+                await self.log("  Motivo: bcrypt_hash está vazio/None", "warning")
 
-    async def validate_installation(self) -> bool:
-        """Validate installation"""
+        await self.progress(70, 100, "Validando serviço windows_exporter...")
+
+        # Etapa 3 - Validar serviço e limpar instalador temporário
+        check_cmd = dedent(r"""
+            Write-Host '=== PSEXEC_VALIDATION_BEGIN ==='
+            
+            $service = Get-Service -Name 'windows_exporter' -ErrorAction SilentlyContinue;
+            if (-not $service) {
+                Write-Host 'SERVICE_NOT_FOUND_AFTER_INSTALL';
+                
+                # Listar todos os serviços com 'exporter' no nome
+                Write-Host 'LISTING_EXPORTER_SERVICES:'
+                Get-Service | Where-Object { $_.Name -like '*exporter*' -or $_.DisplayName -like '*exporter*' } | 
+                    ForEach-Object { Write-Host "  - $($_.Name): $($_.Status) ($($_.DisplayName))" }
+                
+                Write-Host 'CHECKING_EVENT_LOG:'
+                $events = Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction SilentlyContinue |
+                    Where-Object { $_.ProviderName -in @('windows_exporter','MsiInstaller','Service Control Manager') } |
+                    Select-Object -First 10;
+                foreach ($evt in $events) {
+                    Write-Host "EVENT: Provider=$($evt.ProviderName), Level=$($evt.LevelDisplayName), Time=$($evt.TimeCreated.ToString('HH:mm:ss')), Message=$($evt.Message -replace '`r`n', ' ' | Select-Object -First 150)";
+                }
+                
+                exit 1;
+            }
+            
+            Write-Host "SERVICE_FOUND: Status=$($service.Status), DisplayName=$($service.DisplayName), StartType=$($service.StartType)"
+            
+            if ($service.Status -ne 'Running') {
+                Write-Host "SERVICE_NOT_RUNNING: Status=$($service.Status)"
+                try {
+                    Write-Host 'SERVICE_START_ATTEMPT...'
+                    Start-Service -Name 'windows_exporter' -ErrorAction Stop;
+                    Start-Sleep -Seconds 3;
+                    $service.Refresh();
+                    Write-Host "SERVICE_START_RESULT: Status=$($service.Status)"
+                } catch {
+                    Write-Host "SERVICE_START_ERROR: $($_.Exception.Message)"
+                }
+            } else {
+                Write-Host 'SERVICE_ALREADY_RUNNING: OK'
+            }
+            
+            if ($service.Status -eq 'Running') {
+                Write-Host 'SERVICE_RUNNING: OK'
+            } else {
+                Write-Host "SERVICE_FAILED: FinalStatus=$($service.Status)"
+                
+                Write-Host 'CHECKING_EVENT_LOG_FOR_ERRORS:'
+                $events = Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction SilentlyContinue |
+                    Where-Object { $_.ProviderName -in @('windows_exporter','MsiInstaller','Service Control Manager') } |
+                    Select-Object -First 10;
+                foreach ($evt in $events) {
+                    Write-Host "EVENT: Provider=$($evt.ProviderName), Level=$($evt.LevelDisplayName), Time=$($evt.TimeCreated.ToString('HH:mm:ss')), Message=$($evt.Message -replace '`r`n', ' ' | Select-Object -First 150)";
+                }
+                
+                exit 1;
+            }
+            
+            Write-Host 'CLEANUP: Removing temporary MSI...'
+            Remove-Item -Path (Join-Path $env:TEMP 'windows_exporter.msi') -Force -ErrorAction SilentlyContinue;
+            
+            Write-Host '=== PSEXEC_VALIDATION_END ==='
+        """).strip()
+
+        exit_code, output, error = await self.execute_command(check_cmd, powershell=True)
+        
+        # Log detalhado da validação
+        if output:
+            await self.log("=== VALIDAÇÃO DO SERVIÇO ===", "info")
+            for line in output.splitlines():
+                if line.strip():
+                    level = "error" if "ERROR" in line.upper() or "FAIL" in line.upper() else "info"
+                    await self.log(f"  {line}", level)
+        if error:
+            await self.log("=== ERROS DA VALIDAÇÃO ===", "error")
+            for line in error.splitlines():
+                if line.strip():
+                    await self.log(f"  {line}", "error")
+                    
+        if exit_code != 0:
+            await self.log("Serviço windows_exporter não iniciou após a instalação", "error")
+            self._raise_install_error(
+                "SERVICE_NOT_RUNNING",
+                "Serviço windows_exporter não está ativo após a instalação. Verifique logs do Windows.",
+                "service",
+                output,
+                error
+            )
+
+        await self.progress(90, 100, "Finalizando...")
+        await self.log(f"Windows Exporter v{version} instalado com sucesso!", "success")
+        return True
+
+    def _classify_install_failure(self, combined_text: str) -> Tuple[str, str, str]:
+        """Provide user-friendly reason, code and category for installation failures"""
+        if not combined_text:
+            return (
+                "Instalação do windows_exporter falhou sem detalhes retornados."
+                " Verifique logs no servidor e permissões do usuário.",
+                "INSTALLATION_FAILED",
+                "installer"
+            )
+
+        text_lower = combined_text.lower()
+
+        if "invoke-webrequest" in text_lower:
+            if any(phrase in text_lower for phrase in ["unable to connect", "could not connect", "não foi possível estabelecer", "unable to resolve", "could not be resolved", "tempo esgotado"]):
+                return (
+                    "Falha ao baixar o instalador do windows_exporter (Invoke-WebRequest)."
+                    " Verifique acesso HTTPS à internet/Proxy para github.com.",
+                    "DOWNLOAD_FAILED",
+                    "network"
+                )
+            if "could not create ssl/tls secure channel" in text_lower:
+                return (
+                    "Falha de SSL/TLS ao baixar o instalador. Habilite TLS 1.2 no servidor Windows.",
+                    "TLS_ERROR",
+                    "network"
+                )
+            if "proxy" in text_lower or "407" in text_lower:
+                return (
+                    "Falha ao baixar o instalador: Proxy corporativo exigiu autenticação.",
+                    "PROXY_AUTH",
+                    "network"
+                )
+            if "not recognized" in text_lower:
+                return (
+                    "PowerShell não possui o cmdlet Invoke-WebRequest (versão antiga)."
+                    " Atualize para PowerShell 3.0+ ou habilite o módulo WebRequest.",
+                    "POWERSHELL_LEGACY",
+                    "environment"
+                )
+
+        if "start-process" in text_lower and any(term in text_lower for term in ["access is denied", "acesso negado", "access denied"]):
+            return (
+                "Permissão negada ao executar msiexec via PSExec. Usuário precisa ser administrador local e o UAC deve permitir acesso remoto.",
+                "PERMISSION_DENIED",
+                "permissions"
+            )
+
+        if any(code in text_lower for code in ["exit code 1603", "returned exit code: 1603", "error code 1603", "1603"]):
+            return (
+                "Msiexec retornou código 1603. Verifique instalações anteriores do windows_exporter, antivirus ou pendências de reinicialização.",
+                "MSI_ERROR_1603",
+                "installer"
+            )
+
+        if any(code in text_lower for code in ["exit code 1618", "returned exit code: 1618", "error code 1618", "another installation is in progress"]):
+            return (
+                "Outra instalação MSI está em andamento no host. Aguarde finalizar para tentar novamente.",
+                "MSI_ERROR_1618",
+                "installer"
+            )
+
+        if "system cannot find the file" in text_lower or "arquivo especificado" in text_lower:
+            return (
+                "Sistema não encontrou arquivos temporários do instalador. Verifique espaço em disco, antivírus e permissões em %TEMP%.",
+                "FILE_NOT_FOUND",
+                "filesystem"
+            )
+
+        if "verifique se o nome está correto" in text_lower and "invoke-webrequest" in text_lower:
+            return (
+                "Invoke-WebRequest não está disponível nesta versão do PowerShell."
+                " Instale Windows Management Framework 5.1 ou superior.",
+                "POWERSHELL_LEGACY",
+                "environment"
+            )
+
+        return (
+            "Instalação do windows_exporter falhou. Revise o log detalhado e valide conectividade, permissões e antivírus.",
+            "INSTALLATION_FAILED",
+            "installer"
+        )
+
+    def _raise_install_error(
+        self,
+        code: str,
+        message: str,
+        category: str,
+        output: Optional[str],
+        error: Optional[str]
+    ) -> None:
+        combined_text = "\n".join(part for part in [output, error] if part).strip()
+        snippet = combined_text[-1000:] if combined_text else ""
+        raise Exception(f"{code}|{message}|{category}|{snippet}")
+
+    async def validate_installation(self, basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:
+        """Validate installation with optional Basic Auth test"""
         await self.log("Validando instalação...", "info")
 
         # Check service
@@ -526,6 +985,36 @@ Remove-Item $installer -Force -ErrorAction SilentlyContinue
             await self.log("Porta 9182 acessível", "success")
         else:
             await self.log("Porta 9182 não acessível (verifique firewall)", "warning")
+        
+        # Test HTTP endpoint with Basic Auth if enabled
+        if basic_auth_user and basic_auth_password:
+            try:
+                import requests
+                from requests.auth import HTTPBasicAuth
+                
+                url = f"http://{self.host}:9182/metrics"
+                await self.log(f"Testando Basic Auth em {url}...", "info")
+                
+                def test_auth():
+                    # Test without auth (should fail)
+                    response_no_auth = requests.get(url, timeout=5)
+                    if response_no_auth.status_code != 401:
+                        return False, "Endpoint não está protegido (esperado 401 sem credenciais)"
+                    
+                    # Test with auth (should succeed)
+                    response_auth = requests.get(url, auth=HTTPBasicAuth(basic_auth_user, basic_auth_password), timeout=5)
+                    if response_auth.status_code == 200:
+                        return True, "Basic Auth funcionando corretamente"
+                    else:
+                        return False, f"Falha na autenticação (status {response_auth.status_code})"
+                
+                success, message = await asyncio.to_thread(test_auth)
+                if success:
+                    await self.log(f"✅ {message}", "success")
+                else:
+                    await self.log(f"⚠️ {message}", "warning")
+            except Exception as e:
+                await self.log(f"⚠️ Não foi possível testar Basic Auth: {e}", "warning")
 
         await self.log("Instalação validada com sucesso!", "success")
         return True

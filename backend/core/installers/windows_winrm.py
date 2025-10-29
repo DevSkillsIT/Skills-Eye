@@ -6,6 +6,7 @@ import asyncio
 import socket
 import requests
 from typing import Tuple, Optional, Dict
+from textwrap import dedent
 from .base import BaseInstaller
 
 try:
@@ -17,20 +18,20 @@ except ImportError:
 
 # Collector configurations for Windows Exporter
 WINDOWS_EXPORTER_COLLECTORS = {
-    'recommended': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system'],
-    'full': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system', 'service', 'tcp', 'thermalzone'],
+    'recommended': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system'],
+    'full': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system', 'tcp', 'thermalzone'],
     'minimal': ['cpu', 'memory', 'logical_disk', 'os']
 }
 
 WINDOWS_EXPORTER_COLLECTOR_DETAILS = {
     'cpu': 'Uso de CPU',
-    'cs': 'Informações do computador',
-    'logical_disk': 'Uso de disco',
+    'logical_disk': 'Uso de disco lógico',
     'memory': 'Uso de memória',
     'net': 'Tráfego de rede',
     'os': 'Informações do SO',
-    'system': 'Sistema geral',
+    'physical_disk': 'I/O de discos físicos',
     'service': 'Serviços Windows',
+    'system': 'Sistema geral',
     'tcp': 'Conexões TCP',
     'thermalzone': 'Temperatura'
 }
@@ -345,12 +346,77 @@ class WindowsWinRMInstaller(BaseInstaller):
         url = f"https://github.com/prometheus-community/windows_exporter/releases/download/v{version}/windows_exporter-{version}-amd64.msi"
 
         # PowerShell installation script
-        install_script = f'''
+        install_script = dedent("""
 $ErrorActionPreference = "Stop"
 $url = "{url}"
 $installer = "$env:TEMP\\windows_exporter.msi"
-$collectors = "{collectors_str}"
+$collectors = "{collectors}"
 $logFile = "$env:TEMP\\windows_exporter_install.log"
+$serviceName = "windows_exporter"
+
+function Remove-OldWindowsExporter {{
+    Write-Host "Verificando instalação anterior..."
+    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if ($service) {{
+        Write-Host "Removendo serviço existente..."
+        if ($service.Status -eq "Running") {{
+            Write-Host "Parando serviço windows_exporter atual..."
+            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }}
+
+        $searchRoots = @(
+            "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            "HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+        )
+        $productCode = $null
+        foreach ($root in $searchRoots) {{
+            foreach ($item in Get-ChildItem -Path $root -ErrorAction SilentlyContinue) {{
+                try {{
+                    $props = Get-ItemProperty -Path $item.PSPath -ErrorAction Stop
+                    if ($props.DisplayName -and $props.DisplayName -like '*windows_exporter*') {{
+                        $productCode = $props.PSChildName
+                        break
+                    }}
+                }} catch {{
+                    continue
+                }}
+            }}
+            if ($productCode) {{ break }}
+        }}
+
+        if ($productCode) {{
+            Write-Host "Desinstalando versão anterior (ProductCode=$productCode)..."
+            $uninstallArgs = @("/x", $productCode, "/quiet", "/norestart")
+            $uninstall = Start-Process msiexec.exe -ArgumentList $uninstallArgs -Wait -PassThru -NoNewWindow
+            if ($uninstall.ExitCode -ne 0) {{
+                Write-Host "UNINSTALL_EXIT_CODE:$($uninstall.ExitCode)"
+                exit $uninstall.ExitCode
+            }}
+            Start-Sleep -Seconds 3
+        }} else {{
+            Write-Host "Removendo serviço órfão via sc.exe..."
+        }}
+
+        sc.exe delete $serviceName | Out-Null
+        Start-Sleep -Seconds 2
+    }}
+
+    Remove-Item "C:\\Program Files\\windows_exporter" -Recurse -Force -ErrorAction SilentlyContinue
+    $svcCheck = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if (-not $svcCheck) {{
+        Write-Host "SERVICE_REMOVED"
+    }} else {{
+        Write-Host ("SERVICE_STILL_PRESENT:" + $svcCheck.Status)
+    }}
+}}
+
+try {{
+    Remove-OldWindowsExporter
+}} catch {{
+    Write-Host "CLEANUP_ERROR:$($_.Exception.Message)"
+    exit 1
+}}
 
 Write-Host "Baixando Windows Exporter v{version}..."
 try {{
@@ -358,27 +424,44 @@ try {{
     Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
     Write-Host "Download concluído"
 }} catch {{
-    Write-Host "Erro no download: $_"
+    Write-Host "DOWNLOAD_ERROR:$($_.Exception.Message)"
     exit 1
 }}
 
-Write-Host "Parando serviço existente (se houver)..."
-Stop-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-
 Write-Host "Instalando..."
-$arguments = @("/i", $installer, "ENABLED_COLLECTORS=$collectors", "/quiet", "/norestart", "/l*v", $logFile)
+$arguments = @("/i", $installer, "ENABLED_COLLECTORS={collectors}", "/quiet", "/norestart", "/l*v", $logFile)
 $process = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru -NoNewWindow
 
 if ($process.ExitCode -ne 0) {{
-    Write-Host "Erro na instalação. Código: $($process.ExitCode)"
+    Write-Host "MSI_EXIT_CODE:$($process.ExitCode)"
+    exit $process.ExitCode
+}}
+
+Write-Host "Configurando serviço windows_exporter..."
+$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if (-not $service) {{
+    Write-Host "FAILED: Serviço não foi criado"
     exit 1
 }}
 
-Write-Host "Aguardando inicialização..."
-Start-Sleep -Seconds 5
+try {{
+    Set-Service -Name $serviceName -StartupType Automatic -ErrorAction SilentlyContinue
+}} catch {{
+    Write-Host "WARN: Não foi possível ajustar StartupType - $($_.Exception.Message)"
+}}
 
-$service = Get-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-if ($service -and $service.Status -eq "Running") {{
+if ($service.Status -ne "Running") {{
+    try {{
+        Start-Service -Name $serviceName -ErrorAction Stop
+        Start-Sleep -Seconds 3
+        $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    }} catch {{
+        Write-Host "FAILED: Não foi possível iniciar o serviço - $($_.Exception.Message)"
+        exit 1
+    }}
+}}
+
+if ($service.Status -eq "Running") {{
     Write-Host "SUCCESS"
     try {{
         $response = Invoke-WebRequest -Uri "http://localhost:9182/metrics" -UseBasicParsing -TimeoutSec 5
@@ -389,13 +472,14 @@ if ($service -and $service.Status -eq "Running") {{
         Write-Host "WARN: Métricas não acessíveis ainda"
     }}
 }} else {{
-    Write-Host "FAILED: Serviço não está rodando"
+    Write-Host "FAILED: Serviço não está rodando (Status=$($service.Status))"
     exit 1
 }}
 
 Remove-Item $installer -Force -ErrorAction SilentlyContinue
+Remove-Item $logFile -Force -ErrorAction SilentlyContinue
 Write-Host "Instalação concluída!"
-'''
+""").format(url=url, collectors=collectors_str, version=version)
 
         await self.progress(30, 100, "Executando instalação...")
         await self.progress(40, 100, "Baixando Windows Exporter...")

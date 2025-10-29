@@ -4,19 +4,17 @@ Usa WebSocket para logs em tempo real
 """
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 import asyncio
 import uuid
 from core.remote_installer import RemoteExporterInstaller
 from core.consul_manager import ConsulManager
 from core.config import Config
+from core.installers.task_state import installation_tasks, create_task
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-# Armazenar status de instalações em andamento
-installation_tasks: Dict[str, dict] = {}
 
 
 class InstallRequest(BaseModel):
@@ -40,6 +38,14 @@ class InstallResponse(BaseModel):
     websocket_url: str
 
 
+class InstallLogEntry(BaseModel):
+    """Log estruturado de instalações legacy"""
+    timestamp: str
+    level: str
+    message: str
+    data: Optional[Dict[str, Any]] = None
+
+
 class InstallStatusResponse(BaseModel):
     """Status de instalação"""
     installation_id: str
@@ -47,6 +53,7 @@ class InstallStatusResponse(BaseModel):
     progress: int
     message: str
     details: Optional[Dict] = None
+    logs: List[InstallLogEntry] = Field(default_factory=list)
 
 
 @router.post("/install", response_model=InstallResponse)
@@ -82,14 +89,14 @@ async def install_node_exporter(
             )
 
         # Armazenar status inicial
-        installation_tasks[installation_id] = {
+        create_task(installation_id, {
             "status": "pending",
             "progress": 0,
             "message": "Instalação na fila",
             "host": request.host,
             "started_at": None,
             "completed_at": None
-        }
+        })
 
         # Iniciar instalação em background
         background_tasks.add_task(
@@ -138,7 +145,17 @@ async def get_install_status(installation_id: str):
             "host": task_info["host"],
             "started_at": task_info["started_at"],
             "completed_at": task_info["completed_at"]
-        }
+        },
+        logs=[
+            InstallLogEntry(
+                timestamp=entry.get("timestamp", ""),
+                level=entry.get("level", "info"),
+                message=entry.get("message", ""),
+                data=entry.get("data") if isinstance(entry.get("data"), dict) else None
+            )
+            for entry in task_info.get("logs", [])
+            if entry.get("message")
+        ]
     )
 
 

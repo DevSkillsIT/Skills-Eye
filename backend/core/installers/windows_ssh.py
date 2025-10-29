@@ -8,13 +8,14 @@ import socket
 import paramiko
 import requests
 from typing import Tuple, Optional, Dict
+from textwrap import dedent
 from .base import BaseInstaller
 
 
 # Collector configurations
 WINDOWS_EXPORTER_COLLECTORS = {
-    'recommended': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system'],
-    'full': ['cpu', 'cs', 'logical_disk', 'memory', 'net', 'os', 'system', 'service', 'tcp', 'thermalzone'],
+    'recommended': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system'],
+    'full': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system', 'tcp', 'thermalzone'],
     'minimal': ['cpu', 'memory', 'logical_disk', 'os']
 }
 
@@ -121,8 +122,12 @@ class WindowsSSHInstaller(BaseInstaller):
             if powershell:
                 command = f'powershell.exe -Command "{command}"'
 
+            client = self.ssh_client
+            if not client:
+                raise RuntimeError("SSH client is not connected")
+
             def _exec():
-                stdin, stdout, stderr = self.ssh_client.exec_command(command)
+                stdin, stdout, stderr = client.exec_command(command)
                 exit_status = stdout.channel.recv_exit_status()
                 output = stdout.read().decode('utf-8', errors='ignore')
                 error = stderr.read().decode('utf-8', errors='ignore')
@@ -250,45 +255,147 @@ class WindowsSSHInstaller(BaseInstaller):
 
         url = f"https://github.com/prometheus-community/windows_exporter/releases/download/v{version}/windows_exporter-{version}-amd64.msi"
 
-        # PowerShell installation script
-        install_script = f'''
+        install_script = dedent("""
 $ErrorActionPreference = "Stop"
 $url = "{url}"
 $installer = "$env:TEMP\\windows_exporter.msi"
-$collectors = "{collectors_str}"
+$collectors = "{collectors}"
+$serviceName = "windows_exporter"
+$logFile = "$env:TEMP\\windows_exporter_install.log"
+$serviceKey = "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\$serviceName"
 
-Write-Host "Baixando Windows Exporter v{version}..."
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+function Get-WindowsExporterProductCodes {{
+    $roots = @(
+        "Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        "Registry::HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+    )
+    $codes = @()
+    foreach ($root in $roots) {{
+        foreach ($item in Get-ChildItem -Path $root -ErrorAction SilentlyContinue) {{
+            try {{
+                $props = Get-ItemProperty -Path $item.PSPath -ErrorAction Stop
+                if ($props.DisplayName -and $props.DisplayName -like '*windows_exporter*') {{
+                    $codes += $props.PSChildName
+                }}
+            }} catch {{
+                continue
+            }}
+        }}
+    }}
+    return $codes | Select-Object -Unique
+}}
+
+function Remove-WindowsExporterService {{
+    param([string]$Name)
+
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($svc) {{
+        Write-Output "SERVICO_EXISTENTE:$($svc.Status)"
+        if ($svc.Status -eq 'Running') {{
+            Stop-Service -Name $Name -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }}
+    }} else {{
+        Write-Output 'SERVICO_NAO_ENCONTRADO'
+    }}
+
+    Get-Process -Name 'windows_exporter' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+
+    sc.exe delete $Name | Out-Null
+    Start-Sleep -Seconds 2
+
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($svc) {{
+        Write-Output 'SERVICO_AINDA_PRESENTE'
+        if (Test-Path $serviceKey) {{
+            Remove-Item $serviceKey -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Output 'REGISTRO_SERVICO_REMOVIDO'
+        }}
+    }} else {{
+        Write-Output 'SERVICO_REMOVIDO'
+    }}
+}}
+
+function Uninstall-WindowsExporterPackages {{
+    $codes = Get-WindowsExporterProductCodes
+    if ($codes.Count -eq 0) {{
+        Write-Output 'MSI_NAO_ENCONTRADO'
+    }} else {{
+        foreach ($code in $codes) {{
+            Write-Output "DESINSTALANDO_MSI:$code"
+            $uninstall = Start-Process msiexec.exe -ArgumentList '/x', $code, '/quiet', '/norestart' -Wait -PassThru -NoNewWindow
+            Write-Output "UNINSTALL_EXIT_CODE:$($uninstall.ExitCode)"
+        }}
+    }}
+
+    $remaining = Get-WindowsExporterProductCodes
+    if ($remaining.Count -gt 0) {{
+        foreach ($code in $remaining) {{
+            try {{
+                Write-Output "WMIC_UNINSTALL:$code"
+                wmic product where "IdentifyingNumber='$code'" call uninstall /nointeractive | Out-Null
+            }} catch {{
+                Write-Output "WMIC_FALHOU:$code"
+            }}
+        }}
+    }}
+}}
+
+Remove-WindowsExporterService -Name $serviceName
+Uninstall-WindowsExporterPackages
+
+Remove-Item "C:\\Program Files\\windows_exporter" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $installer -Force -ErrorAction SilentlyContinue
+Remove-Item $logFile -Force -ErrorAction SilentlyContinue
+
+Write-Output 'DOWNLOAD_INICIADO'
 Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
 
-Write-Host "Instalando..."
-Stop-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-$arguments = "/i `"$installer`" ENABLED_COLLECTORS=$collectors /quiet /norestart"
+Write-Output 'MSI_INSTALANDO'
+$arguments = @('/i', $installer, "ENABLED_COLLECTORS={collectors}", '/quiet', '/norestart', '/log', $logFile)
 $process = Start-Process msiexec.exe -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+Write-Output "MSI_EXIT_CODE:$($process.ExitCode)"
 
 if ($process.ExitCode -ne 0) {{
-    Write-Host "FAILED: Exit code $($process.ExitCode)"
+    if (Test-Path $logFile) {{
+        Write-Output "LOG_PATH:$logFile"
+    }}
+    Write-Output 'INSTALACAO_FALHOU'
     exit 1
 }}
 
+Set-Service -Name $serviceName -StartupType Automatic -ErrorAction SilentlyContinue
+
+Start-Sleep -Seconds 3
+Start-Service -Name $serviceName -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 5
 
-$service = Get-Service -Name "windows_exporter" -ErrorAction SilentlyContinue
-if ($service -and $service.Status -eq "Running") {{
-    Write-Host "SUCCESS"
+$service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($service -and $service.Status -eq 'Running') {{
+    Write-Output 'INSTALACAO_OK'
     try {{
-        $response = Invoke-WebRequest -Uri "http://localhost:9182/metrics" -UseBasicParsing -TimeoutSec 5
+        $response = Invoke-WebRequest -Uri 'http://localhost:9182/metrics' -UseBasicParsing -TimeoutSec 5
         if ($response.StatusCode -eq 200) {{
-            Write-Host "METRICS_OK"
+            Write-Output 'METRICS_OK'
+        }} else {{
+            Write-Output "METRICS_STATUS:$($response.StatusCode)"
         }}
-    }} catch {{}}
+    }} catch {{
+        Write-Output 'METRICS_TEST_FALHOU'
+    }}
 }} else {{
-    Write-Host "FAILED: Service not running"
+    Write-Output 'SERVICO_NAO_SUBIU'
+    if (Test-Path $logFile) {{
+        Write-Output "LOG_PATH:$logFile"
+    }}
     exit 1
 }}
 
 Remove-Item $installer -Force -ErrorAction SilentlyContinue
-'''
+Write-Output 'FIM'
+""").format(url=url, collectors=collectors_str, version=version)
 
         await self.progress(30, 100, "Executando instalação...")
         await self.progress(40, 100, "Baixando Windows Exporter...")
@@ -318,13 +425,32 @@ Remove-Item $installer -Force -ErrorAction SilentlyContinue
         # Clean up
         await self.execute_command(f"Remove-Item {script_path} -Force -ErrorAction SilentlyContinue", powershell=True)
 
-        if exit_code == 0 and 'SUCCESS' in output:
+        if exit_code == 0 and 'INSTALACAO_OK' in output:
             await self.log(f"Windows Exporter v{version} instalado com sucesso!", "success")
             if 'METRICS_OK' in output:
                 await self.log("Métricas acessíveis em http://localhost:9182/metrics", "success")
+            if 'METRICS_TEST_FALHOU' in output:
+                await self.log("Coleta de métricas falhou durante validação, verificar manualmente", "warning")
             return True
         else:
             await self.log("Instalação falhou", "error")
+            if 'SERVICO_AINDA_PRESENTE' in output:
+                await self.log("Serviço windows_exporter permaneceu registrado mesmo após tentativa de remoção", "warning")
+            if 'MSI_EXIT_CODE:' in output:
+                for line in output.splitlines():
+                    if line.startswith('MSI_EXIT_CODE:'):
+                        await self.log(f"Código MSI: {line.split(':', 1)[1]}", "debug")
+                        break
+            if 'LOG_PATH:' in output:
+                for line in output.splitlines():
+                    if line.startswith('LOG_PATH:'):
+                        await self.log(f"Log MSI salvo em {line.split(':', 1)[1]}", "info")
+                        break
+            if 'UNINSTALL_EXIT_CODE:' in output:
+                for line in output.splitlines():
+                    if line.startswith('UNINSTALL_EXIT_CODE:'):
+                        await self.log(f"Resultado desinstalação existente: {line.split(':', 1)[1]}", "debug")
+                        break
             await self.log(f"Output: {output[:500]}", "debug")
             await self.log(f"Error: {error[:500]}", "debug")
             return False
