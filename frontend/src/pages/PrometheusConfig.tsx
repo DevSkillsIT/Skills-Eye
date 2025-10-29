@@ -140,6 +140,7 @@ const PrometheusConfig: React.FC = () => {
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [alertViewMode, setAlertViewMode] = useState<'group' | 'individual'>('group'); // Toggle para visões de alertas
   const [tableSize, setTableSize] = useState<'small' | 'middle' | 'large'>('middle'); // Densidade da tabela
+  const [activeTabKey, setActiveTabKey] = useState<string>('jobs'); // Controla qual aba está ativa
 
   // Monaco Editor states
   const [monacoEditorVisible, setMonacoEditorVisible] = useState(false);
@@ -214,8 +215,38 @@ const PrometheusConfig: React.FC = () => {
   const loadPrometheusFields = async () => {
     // Abrir modal IMEDIATAMENTE ao iniciar carregamento
     setProgressModalVisible(true);
-    setFieldsData(prev => ({ ...prev, loading: true, error: null }));
 
+    // PASSO 1: Buscar lista de servidores para mostrar Timeline pré-populada
+    try {
+      const serversResponse = await axios.get(`${API_URL}/metadata-fields/servers`);
+      if (serversResponse.data.success && serversResponse.data.servers) {
+        const serversList = serversResponse.data.servers as Array<{ id: string; name: string }>;
+
+        // Inicializar Timeline com todos os servidores em "Processando..."
+        const initialStatus: ServerStatus[] = serversList.map((srv) => ({
+          hostname: srv.id.split(':')[0], // Extrair IP de "172.16.1.26:8500"
+          success: false,
+          from_cache: false,
+          files_count: 0,
+          fields_count: 0,
+          error: null,
+          duration_ms: 0,
+        }));
+
+        setFieldsData(prev => ({
+          ...prev,
+          loading: true,
+          error: null,
+          serverStatus: initialStatus,
+          totalServers: initialStatus.length,
+          successfulServers: 0,
+        }));
+      }
+    } catch (err) {
+      console.error('Erro ao buscar servidores:', err);
+    }
+
+    // PASSO 2: Fazer requisição de fields (isso vai demorar)
     try {
       const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
         timeout: 30000,
@@ -496,7 +527,12 @@ const PrometheusConfig: React.FC = () => {
 
       // Recarregar dados (fetchFiles já valida selectedServer internamente)
       await fetchFiles();
-      reloadFields();
+
+      // CORREÇÃO: Só recarregar fields se estiver na aba de Campos Metadata
+      if (activeTabKey === 'fields') {
+        reloadFields();
+      }
+
       if (selectedFile) {
         await fetchJobs(selectedFile, selectedServer);
       }
@@ -1858,7 +1894,16 @@ const PrometheusConfig: React.FC = () => {
       </Card>
 
       <Tabs
-        defaultActiveKey="jobs"
+        activeKey={activeTabKey}
+        onChange={(activeKey) => {
+          // CORREÇÃO: Atualizar state da aba ativa
+          setActiveTabKey(activeKey);
+
+          // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
+          if (activeKey === 'fields' && fields.length === 0 && !loadingFields) {
+            loadPrometheusFields();
+          }
+        }}
         tabBarExtraContent={
           <Space size="middle" align="center" style={{ marginBottom: 8, marginRight: 8 }}>
             <ColumnSelector
@@ -1904,12 +1949,6 @@ const PrometheusConfig: React.FC = () => {
             </Dropdown>
           </Space>
         }
-        onChange={(activeKey) => {
-          // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
-          if (activeKey === 'fields' && fields.length === 0 && !loadingFields) {
-            loadPrometheusFields();
-          }
-        }}
         items={[
           {
             key: 'jobs',
@@ -2124,51 +2163,70 @@ const PrometheusConfig: React.FC = () => {
               Status dos Servidores:
             </div>
             <Timeline
-              items={serverStatus.map((server: ServerStatus) => ({
-                color: server.success ? 'green' : 'red',
-                dot: loadingFields ? (
-                  <LoadingOutlined style={{ fontSize: 16 }} spin />
-                ) : server.success ? (
-                  <CheckCircleOutlined style={{ fontSize: 16 }} />
-                ) : (
-                  <CloseCircleOutlined style={{ fontSize: 16 }} />
-                ),
-                children: (
-                  <div>
-                    <Space>
-                      <CloudServerOutlined />
-                      <strong>{server.hostname}</strong>
-                      {server.from_cache ? (
-                        <Tag color="cyan" icon={<ThunderboltOutlined />}>
-                          Cache
-                        </Tag>
-                      ) : server.success ? (
-                        <Tag color="green">Sucesso</Tag>
-                      ) : (
-                        <Tag color="red">Falha</Tag>
-                      )}
-                      {server.duration_ms > 0 && (
-                        <Tag icon={<ClockCircleOutlined />}>
-                          {server.duration_ms}ms
-                        </Tag>
-                      )}
-                    </Space>
-                    <div style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
-                      {server.success ? (
-                        <>
-                          {server.files_count} arquivos processados,{' '}
-                          {server.fields_count} campos novos encontrados
-                        </>
-                      ) : (
-                        <span style={{ color: '#ff4d4f' }}>
-                          <WarningOutlined /> Erro:{' '}
-                          {server.error || 'Servidor offline ou inacessível'}
-                        </span>
-                      )}
+              items={serverStatus.map((server: ServerStatus) => {
+                // Determinar se servidor está sendo processado
+                const isProcessing = loadingFields && server.duration_ms === 0 && !server.success && !server.error;
+
+                return {
+                  color: isProcessing ? 'blue' : server.success ? 'green' : 'red',
+                  dot: isProcessing ? (
+                    <LoadingOutlined style={{ fontSize: 16 }} spin />
+                  ) : server.success ? (
+                    <CheckCircleOutlined style={{ fontSize: 16 }} />
+                  ) : (
+                    <CloseCircleOutlined style={{ fontSize: 16 }} />
+                  ),
+                  children: (
+                    <div>
+                      <Space>
+                        <CloudServerOutlined />
+                        <strong>{server.hostname}</strong>
+                        {isProcessing ? (
+                          <Tag color="processing" icon={<SyncOutlined spin />}>
+                            Processando...
+                          </Tag>
+                        ) : server.from_cache ? (
+                          <Tag color="cyan" icon={<ThunderboltOutlined />}>
+                            Cache
+                          </Tag>
+                        ) : server.success ? (
+                          <Tag color="green">Sucesso</Tag>
+                        ) : (
+                          <Tag color="red">Falha</Tag>
+                        )}
+                        {server.duration_ms > 0 && (
+                          <Tag icon={<ClockCircleOutlined />}>
+                            {server.duration_ms}ms
+                          </Tag>
+                        )}
+                      </Space>
+                      <div style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+                        {isProcessing ? (
+                          <span style={{ color: '#1890ff' }}>
+                            Conectando via SSH e extraindo campos metadata...
+                          </span>
+                        ) : server.success ? (
+                          server.from_cache ? (
+                            <span style={{ color: '#52c41a' }}>
+                              Dados carregados do cache (processado anteriormente)
+                            </span>
+                          ) : (
+                            <>
+                              {server.files_count} arquivos processados,{' '}
+                              {server.fields_count} campos novos encontrados
+                            </>
+                          )
+                        ) : (
+                          <span style={{ color: '#ff4d4f' }}>
+                            <WarningOutlined /> Erro:{' '}
+                            {server.error || 'Servidor offline ou inacessível'}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ),
-              }))}
+                  ),
+                };
+              })}
             />
           </div>
         )}
