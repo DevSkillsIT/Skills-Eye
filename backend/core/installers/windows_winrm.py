@@ -36,16 +36,53 @@ WINDOWS_EXPORTER_COLLECTOR_DETAILS = {
 }
 
 
-def test_port(host: str, port: int, timeout: int = 2) -> bool:
-    """Test if a port is open"""
+def test_port(host: str, port: int, timeout: int = 10) -> bool:
+    """
+    Test if a port is open on a host
+    
+    Returns:
+        True: Port is open and accepting connections
+        False: Port is closed/filtered but host responded quickly (connection refused)
+        
+    Raises:
+        socket.gaierror: DNS resolution failed
+        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
+        ConnectionRefusedError: Connection actively refused by host
+        Exception: Other network errors (unreachable, no route, etc)
+    """
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0
-    except:
-        return False
+        
+        if result == 0:
+            return True
+        elif result in (10061, 111):  # Connection refused - host is UP but port closed
+            return False
+        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
+            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
+        else:
+            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
+            
+    except socket.gaierror as e:
+        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
+    except socket.timeout:
+        raise
+    except OSError as e:
+        error_msg = str(e).lower()
+        if "timed out" in error_msg or "timeout" in error_msg:
+            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
+        else:
+            raise Exception(f"Network error testing {host}:{port}: {e}")
+    except Exception as e:
+        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except:
+                pass
 
 
 class WindowsWinRMInstaller(BaseInstaller):
@@ -76,18 +113,37 @@ class WindowsWinRMInstaller(BaseInstaller):
             self.full_username = username
 
     async def validate_connection(self) -> Tuple[bool, str]:
-        """Validate connection parameters"""
+        """Validate connection parameters with network checks"""
         if not HAS_WINRM:
             return False, "pywinrm não está instalado. Execute: pip install pywinrm"
 
-        await self.log(f"Validando conexão WinRM para {self.host}:{self.port}...", "info")
+        await self.log(f"🔧 Validando conexão WinRM para {self.host}:{self.port}...", "info")
 
-        # Test WinRM port
-        port_open = await asyncio.to_thread(test_port, self.host, self.port, 5)
-        if not port_open:
-            return False, f"Porta WinRM {self.port} não está acessível em {self.host}"
+        # Test network connectivity and DNS
+        await self.log(f"🌐 Testando conectividade com {self.host}...", "info")
+        
+        try:
+            # Test WinRM port with detailed error handling
+            port_open = await asyncio.to_thread(test_port, self.host, self.port, 10)
+            if not port_open:
+                await self.log(f"⚠️ Porta WinRM {self.port} não está acessível", "warning")
+                return False, f"Porta WinRM {self.port} não está acessível em {self.host}"
+            
+            await self.log(f"✅ Porta WinRM {self.port} está acessível", "success")
+            
+        except socket.gaierror as e:
+            await self.log(f"❌ Falha na resolução DNS: {e}", "error")
+            return False, f"DNS_ERROR|Não foi possível resolver o hostname {self.host}|network"
+            
+        except socket.timeout as e:
+            await self.log(f"❌ Timeout: {e}", "error")
+            return False, f"TIMEOUT|Host {self.host} não respondeu (offline ou rede inacessível)|network"
+            
+        except Exception as e:
+            await self.log(f"❌ Erro de rede: {e}", "error")
+            return False, f"NETWORK_ERROR|Erro de conectividade: {e}|network"
 
-        await self.log(f"Porta WinRM {self.port} acessível", "success")
+        await self.log("✅ WinRM disponível e host acessível", "success")
         return True, "OK"
 
     async def connect(self) -> bool:
@@ -96,7 +152,13 @@ class WindowsWinRMInstaller(BaseInstaller):
             valid, msg = await self.validate_connection()
             if not valid:
                 await self.log(msg, "error")
-                return False
+                # Lançar exceção estruturada para informar o motivo
+                if "pywinrm não está instalado" in msg:
+                    raise Exception("DEPENDENCY_MISSING|pywinrm não está instalado. Execute: pip install pywinrm|CONFIGURACAO")
+                elif "Porta WinRM" in msg:
+                    raise Exception(f"PORT_CLOSED|{msg}|CONEXAO")
+                else:
+                    raise Exception(f"VALIDATION_ERROR|{msg}|CONFIGURACAO")
 
             await self.log("Conectando via WinRM...", "info")
 
@@ -112,18 +174,44 @@ class WindowsWinRMInstaller(BaseInstaller):
 
             self.session = await asyncio.to_thread(_connect)
 
-            # Test connection
+            # Test connection with detailed error
             result = await self.execute_command("echo Connected")
             if result[0] == 0:
                 await self.log("Conectado via WinRM com sucesso", "success")
                 return True
             else:
-                await self.log("Falha ao testar conexão WinRM", "error")
-                return False
+                error_detail = result[2] if result[2] else "Falha ao executar comando de teste"
+                await self.log(f"Falha ao testar conexão WinRM: {error_detail}", "error")
+                
+                # Lançar exceção com detalhes do erro
+                if "401" in error_detail or "Unauthorized" in error_detail:
+                    raise Exception(f"AUTH_FAILED|Autenticação falhou. Verifique usuário e senha.|AUTENTICACAO")
+                elif "Connection refused" in error_detail or "timeout" in error_detail.lower():
+                    raise Exception(f"TIMEOUT|Timeout ao conectar via WinRM. Serviço WinRM pode estar desabilitado.|CONEXAO")
+                else:
+                    raise Exception(f"WINRM_ERROR|{error_detail}|CONEXAO")
 
         except Exception as e:
-            await self.log(f"Erro ao conectar via WinRM: {e}", "error")
-            return False
+            error_msg = str(e)
+            await self.log(f"Erro ao conectar via WinRM: {error_msg}", "error")
+            
+            # Se já é uma exceção estruturada, re-lançar
+            if "|" in error_msg:
+                raise
+            
+            # Analisar erro do pywinrm para fornecer detalhes úteis
+            if "401" in error_msg or "Unauthorized" in error_msg:
+                raise Exception("AUTH_FAILED|Usuário ou senha inválidos. Verifique as credenciais.|AUTENTICACAO")
+            elif "Connection refused" in error_msg:
+                raise Exception(f"CONNECTION_REFUSED|WinRM recusou conexão. Verifique se o serviço WinRM está habilitado em {self.host}.|CONEXAO")
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                raise Exception(f"TIMEOUT|Timeout ao conectar via WinRM na porta {self.port}. Verifique firewall e serviço WinRM.|CONEXAO")
+            elif "Name or service not known" in error_msg or "getaddrinfo failed" in error_msg:
+                raise Exception(f"DNS_ERROR|Não foi possível resolver o hostname '{self.host}'.|REDE")
+            elif "No route to host" in error_msg or "Network is unreachable" in error_msg:
+                raise Exception(f"NETWORK_UNREACHABLE|Host {self.host} está inacessível pela rede.|REDE")
+            else:
+                raise Exception(f"WINRM_ERROR|{error_msg}|DESCONHECIDO")
 
     async def disconnect(self):
         """Disconnect WinRM"""
@@ -146,32 +234,45 @@ class WindowsWinRMInstaller(BaseInstaller):
             return 1, "", str(e)
 
     async def detect_os(self) -> Optional[str]:
-        """Detect operating system"""
-        await self.log("Detectando sistema operacional...", "info")
+        """Detect operating system with multiple fallback methods"""
+        await self.log("🔍 Detectando sistema operacional...", "info")
 
-        exit_code, output, _ = await self.execute_command("$PSVersionTable.PSVersion.Major")
-
-        if exit_code == 0 and output.strip():
+        # Método 1: Tentar via Win32_OperatingSystem (mais completo)
+        await self.log("📋 Tentando detectar via PowerShell (Win32_OperatingSystem)...", "info")
+        exit_code, os_info, _ = await self.execute_command(
+            "(Get-WmiObject -Class Win32_OperatingSystem).Caption"
+        )
+        
+        if exit_code == 0 and os_info and os_info.strip():
             self.os_type = 'windows'
-
-            # Get detailed OS info
-            exit_code, os_info, _ = await self.execute_command(
-                "(Get-WmiObject -Class Win32_OperatingSystem).Caption"
-            )
-            if exit_code == 0:
-                self.os_details['name'] = os_info.strip()
-
+            self.os_details['name'] = os_info.strip()
+            
+            # Tentar pegar versão também
             exit_code, version, _ = await self.execute_command(
                 "(Get-WmiObject -Class Win32_OperatingSystem).Version"
             )
-            if exit_code == 0:
+            if exit_code == 0 and version:
                 self.os_details['version'] = version.strip()
-
-            await self.log(f"Windows detectado: {self.os_details.get('name', 'Unknown')}", "success")
+            
+            await self.log(f"✅ Windows detectado: {os_info.strip()}", "info")
             return 'windows'
-
-        await self.log("SO não é Windows ou não detectado", "error")
-        return None
+        
+        # Método 2: Tentar via $PSVersionTable (confirma PowerShell/Windows)
+        await self.log("📋 Tentando detectar via $PSVersionTable...", "info")
+        exit_code, output, _ = await self.execute_command("$PSVersionTable.PSVersion.Major")
+        
+        if exit_code == 0 and output and output.strip():
+            self.os_type = 'windows'
+            self.os_details['name'] = f'Windows (PowerShell {output.strip()})'
+            await self.log(f"✅ Windows detectado via PowerShell", "info")
+            return 'windows'
+        
+        # Método 3: Assumir Windows se chegou até aqui (estamos usando WinRM que é Windows-only)
+        await self.log("⚠️ Não foi possível detectar versão específica, mas assumindo Windows (conexão WinRM funcionou)", "warning")
+        self.os_type = 'windows'
+        self.os_details['name'] = 'Windows (versão não detectada)'
+        self.os_details['version'] = 'Unknown'
+        return 'windows'
 
     async def check_disk_space(self, required_mb: int = 200) -> bool:
         """Check available disk space"""

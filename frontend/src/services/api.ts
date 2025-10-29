@@ -249,6 +249,75 @@ export interface Statistics {
   by_service_name: Record<string, number>;
 }
 
+// Installer Types
+export interface InstallerRequest {
+  os_type: 'linux' | 'windows';
+  method: 'ssh' | 'winrm' | 'psexec' | 'auto';  // 'auto' para Windows multi-connector
+  host: string;
+  username: string;
+  password?: string;
+  key_file?: string;
+  ssh_port?: number;
+  port?: number;
+  use_sudo?: boolean;
+  collector_profile?: string;
+  register_in_consul?: boolean;
+  consul_node?: string;
+  basic_auth_user?: string;
+  basic_auth_password?: string;
+  domain?: string;
+  use_ssl?: boolean;
+  psexec_path?: string;
+}
+
+export interface InstallerResponse {
+  success: boolean;
+  message: string;
+  installation_id: string;
+  websocket_url: string;
+  details: {
+    host: string;
+    os_type: string;
+    method: string;
+    collector_profile: string;
+  };
+}
+
+export interface InstallStatusResponse {
+  installation_id: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  host: string;
+  os_type: string;
+  method: string;
+  started_at?: string;
+  completed_at?: string;
+  logs?: string[];
+}
+
+export interface TestConnectionResponse {
+  success: boolean;
+  message: string;
+  details: {
+    os: string;
+    version: string;
+    architecture: string;
+    hostname: string;
+    method: string;
+  };
+  connection_summary?: {
+    host: string;
+    successful_method: string;
+    attempts: Array<{
+      method: string;
+      success: boolean;
+      message: string;
+    }>;
+    total_attempts: number;
+  };
+}
+
 export interface DashboardMetrics {
   total_services: number;
   blackbox_targets: number;
@@ -409,6 +478,16 @@ export interface ConsulServiceOverviewItem {
   nodes: string[];
 }
 
+export interface ConsulNode {
+  ID: string;
+  Node: string;
+  Address: string;
+  Status?: string;
+  Datacenter?: string;
+  TaggedAddresses?: { [key: string]: string };
+  Meta?: { [key: string]: string };
+}
+
 // ============================================================================
 // Axios Instance
 // ============================================================================
@@ -445,6 +524,12 @@ export const consulAPI = {
 
   deleteService: (serviceId: string, params?: ServiceQuery) =>
     api.delete(`/services/${encodeURIComponent(serviceId)}`, { params }),
+
+  // Deregister service (Consul native API) - usado para exporters
+  deregisterService: (params: { service_id: string; node_addr?: string }) =>
+    api.delete(`/services/${encodeURIComponent(params.service_id)}`, {
+      params: { node_addr: params.node_addr },
+    }),
 
   getServiceMetadataValues: (field: string) =>
     api.get<MetadataResponse>('/services/metadata/unique-values', {
@@ -806,6 +891,34 @@ export const consulAPI = {
     api.post<{ success: boolean; message: string }>('/optimized/clear-cache', null, {
       params: { cache_type: cacheType },
     }),
+
+  // Installer - Remote exporter installation
+  startInstallation: (request: InstallerRequest) =>
+    api.post<InstallerResponse>('/installer/install', request),
+
+  getInstallationStatus: (installationId: string) =>
+    api.get<InstallStatusResponse>(`/installer/install/${installationId}/status`),
+
+  testConnection: (request: Partial<InstallerRequest>) =>
+    api.post<TestConnectionResponse>('/installer/test-connection', request, {
+      timeout: 60000, // 60 segundos para testar conexão SSH/WinRM remota
+    }),
+
+  checkExistingInstallation: (request: {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    exporter_port: number;
+    target_type: string;
+  }) =>
+    api.post<{
+      port_open: boolean;
+      service_running: boolean;
+      has_config: boolean;
+    }>('/installer/check-existing', request, {
+      timeout: 30000, // 30 segundos para verificação
+    }).then(response => response.data),
 };
 
 export default api;

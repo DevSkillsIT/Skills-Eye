@@ -80,12 +80,34 @@ def get_exporters_optimized(
         BLACKBOX_MODULES = {'icmp', 'http_2xx', 'http_4xx', 'http_5xx', 'http_post_2xx',
                            'https', 'tcp_connect', 'ssh_banner', 'pop3s_banner', 'irc_banner'}
 
-        # Função para detectar tipo do exporter pelo nome do serviço
-        def detect_exporter_type(service_name: str) -> str:
-            """Detecta o tipo de exporter baseado no nome do serviço"""
+        # Função para detectar tipo do exporter pelo nome do serviço E TAGS
+        def detect_exporter_type(service_name: str, tags: Optional[List[str]] = None) -> str:
+            """
+            Detecta o tipo de exporter baseado no nome do serviço e tags
+            
+            Para selfnode_exporter: usa as TAGS para diferenciar:
+            - Tag 'linux' → Node Exporter
+            - Tag 'windows' → Windows Exporter
+            """
             service_lower = service_name.lower()
+            tags = tags or []
+            tags_lower = [str(t).lower() for t in tags]
 
-            if 'node_exporter' in service_lower or 'node-exporter' in service_lower:
+            # SELFNODE_EXPORTER: Diferencia por TAG (linux vs windows)
+            if 'selfnode' in service_lower:
+                logger.info(f"🔍 DEBUG: selfnode detectado! Tags: {tags_lower}")
+                if 'windows' in tags_lower:
+                    logger.info(f"✅ Tag 'windows' encontrada → Windows Exporter")
+                    return 'Windows Exporter'
+                elif 'linux' in tags_lower:
+                    logger.info(f"✅ Tag 'linux' encontrada → Node Exporter")
+                    return 'Node Exporter'
+                else:
+                    logger.info(f"⚠️ Sem tag linux/windows → SelfNode Exporter")
+                    return 'SelfNode Exporter'  # Fallback se não tiver tag
+            
+            # Outros exporters: detecção por nome
+            elif 'node_exporter' in service_lower or 'node-exporter' in service_lower:
                 return 'Node Exporter'
             elif 'windows_exporter' in service_lower or 'windows-exporter' in service_lower:
                 return 'Windows Exporter'
@@ -101,28 +123,23 @@ def get_exporters_optimized(
                 return 'Elasticsearch Exporter'
             elif 'blackbox_exporter' in service_lower:
                 return 'Blackbox Exporter'
-            elif 'selfnode' in service_lower:
-                return 'SelfNode Exporter'
             else:
                 return 'Other Exporter'
 
         exporters_data = []
         summary = {'by_type': {}, 'by_env': {}}
 
+        # 🚀 BUSCAR TODAS AS INSTÂNCIAS DE TODOS OS SERVIÇOS
         for svc in all_services:
             if not svc or svc.get('Name') == 'consul':
                 continue
 
-            service_name = str(svc.get('Name', '')).lower()
+            service_name = svc.get('Name', '')
 
-            # Verificar se é exporter (tem '_exporter' no nome)
-            if '_exporter' not in service_name:
-                continue
-
-            # Buscar instances deste exporter
+            # Buscar instances deste serviço
             try:
                 instances_resp = requests.get(
-                    f"{CONSUL_URL}/health/service/{svc['Name']}",
+                    f"{CONSUL_URL}/health/service/{service_name}",
                     headers=CONSUL_HEADERS,
                     timeout=5
                 )
@@ -143,14 +160,26 @@ def get_exporters_optimized(
                     node_info = inst.get('Node', {})
                     node_name = node_info.get('Node', 'unknown')
                     meta = svc_data.get('Meta', {}) or {}
+                    tags = svc_data.get('Tags', []) or []
+                    
+                    service_lower = str(svc_data.get('Service', '')).lower()
 
-                    # Verificar se NÃO é blackbox
+                    # ❌ EXCLUIR: Blackbox targets (baseado no módulo)
                     module = str(meta.get('module', '')).lower()
                     if module in BLACKBOX_MODULES:
                         continue
 
-                    # Detectar tipo do exporter pelo nome do serviço
-                    exp_type = detect_exporter_type(svc_data.get('Service', ''))
+                    # ❌ EXCLUIR: Serviços que NÃO são exporters
+                    # Verificar se tem '_exporter' ou '-exporter' no nome do serviço
+                    if '_exporter' not in service_lower and '-exporter' not in service_lower:
+                        logger.debug(f"Ignorando serviço não-exporter: {service_lower}")
+                        continue
+
+                    # ✅ INCLUIR: É um exporter válido
+                    # Detectar tipo do exporter pelo nome do serviço E TAGS
+                    exp_type = detect_exporter_type(svc_data.get('Service', ''), tags)
+                    logger.debug(f"Incluindo exporter: {service_lower} com tags {tags} → tipo: {exp_type}")
+                    
                     env = meta.get('env', meta.get('ambiente', 'unknown'))
 
                     exporter_item = {
@@ -350,13 +379,45 @@ def get_service_groups_optimized(force_refresh: bool = Query(False)):
         services_response.raise_for_status()
         all_services = [s for s in (services_response.json() or []) if s and s.get('Name') != 'consul']
 
+        # Para cada serviço selfnode*, buscar as instâncias para pegar o primeiro node_addr
+        enriched_services = []
+        for service in all_services:
+            service_name = service.get('Name', '')
+            
+            # Se for selfnode*, buscar primeira instância para pegar node_addr
+            if service_name.lower().startswith('selfnode'):
+                try:
+                    instances_resp = requests.get(
+                        f"{CONSUL_URL}/health/service/{service_name}",
+                        headers=CONSUL_HEADERS,
+                        timeout=3
+                    )
+                    if instances_resp.status_code == 200:
+                        instances = instances_resp.json() or []
+                        if instances:
+                            # Pegar o endereço do primeiro nó
+                            first_instance = instances[0]
+                            node_info = first_instance.get('Node', {})
+                            node_addr = node_info.get('Address', '')
+                            node_name = node_info.get('Node', '')
+                            
+                            # Adicionar informações ao serviço
+                            service['NodeAddress'] = node_addr
+                            service['NodeName'] = node_name
+                except Exception as e:
+                    logger.warning(f"Erro ao buscar node_addr para {service_name}: {e}")
+                    service['NodeAddress'] = ''
+                    service['NodeName'] = ''
+            
+            enriched_services.append(service)
+
         result = {
-            'data': all_services,
-            'total': len(all_services),
+            'data': enriched_services,
+            'total': len(enriched_services),
             'summary': {
-                'totalInstances': sum(s.get('InstanceCount', 0) for s in all_services),
-                'healthy': sum(s.get('ChecksPassing', 0) for s in all_services),
-                'unhealthy': sum(s.get('ChecksCritical', 0) for s in all_services)
+                'totalInstances': sum(s.get('InstanceCount', 0) for s in enriched_services),
+                'healthy': sum(s.get('ChecksPassing', 0) for s in enriched_services),
+                'unhealthy': sum(s.get('ChecksCritical', 0) for s in enriched_services)
             },
             'load_time_ms': int((time.time() - start_time) * 1000),
             'from_cache': False

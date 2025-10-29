@@ -676,6 +676,7 @@ const Services: React.FC = () => {
             port: payload.port,
             tags: payload.tags,
             Meta: payload.Meta,
+            node_addr: currentRecord.nodeAddr || currentRecord.node, // CRITICAL: Necessário para identificar o nó
           };
           await consulAPI.updateService(currentRecord.id, updatePayload);
         message.success('Serviço atualizado com sucesso');

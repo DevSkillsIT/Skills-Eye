@@ -338,21 +338,49 @@ class ConsulManager:
     async def update_service(self, service_id: str, service_data: Dict, node_addr: str = None) -> bool:
         """
         Atualiza um serviço existente
-        Nota: Consul não tem endpoint de update, então fazemos deregister + register
+
+        IMPORTANTE: Segundo documentação oficial do Consul, para atualizar um serviço
+        basta RE-REGISTRAR com o mesmo ID. NÃO é necessário fazer deregister antes.
+        Fonte: https://developer.hashicorp.com/consul/api-docs/agent/service
+
+        O Consul automaticamente substitui o serviço quando você registra com mesmo ID.
         """
         if node_addr and node_addr != self.host:
             temp_manager = ConsulManager(host=node_addr, token=self.token)
             return await temp_manager.update_service(service_id, service_data)
 
         try:
-            # Primeiro remove o serviço existente
-            await self.deregister_service(service_id, node_addr)
-            # Aguarda um pouco para garantir que foi removido
-            await asyncio.sleep(0.5)
-            # Registra novamente com novos dados
-            return await self.register_service(service_data, node_addr)
+            # Preparar payload normalizado para o endpoint de registro
+            normalized_data = service_data.copy()
+
+            # 1. Converter campo "Service" → "Name" (obrigatório para register)
+            #    GET /agent/services retorna "Service"
+            #    PUT /agent/service/register espera "Name"
+            if "Service" in normalized_data and "Name" not in normalized_data:
+                normalized_data["Name"] = normalized_data.pop("Service")
+
+            # 2. Garantir que o ID está presente (obrigatório para update)
+            if "ID" not in normalized_data:
+                normalized_data["ID"] = service_id
+
+            # 3. Remover campos read-only que não podem ser enviados no register
+            #    Estes campos são retornados pelo GET mas não aceitos pelo PUT
+            readonly_fields = ["CreateIndex", "ModifyIndex", "ContentHash", "Datacenter", "PeerName"]
+            for field in readonly_fields:
+                normalized_data.pop(field, None)
+
+            # 4. Ajustar campo Weights se estiver vazio (converter {} para None)
+            if "Weights" in normalized_data and normalized_data["Weights"] == {}:
+                normalized_data["Weights"] = None
+
+            # 5. RE-REGISTRAR o serviço (Consul atualiza automaticamente se ID já existe)
+            #    NÃO fazer deregister antes - isso deletaria o serviço!
+            return await self.register_service(normalized_data)
+
         except Exception as e:
             print(f"Erro ao atualizar serviço: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     async def get_service_by_id(self, service_id: str, node_addr: str = None) -> Optional[Dict]:

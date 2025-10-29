@@ -101,3 +101,9 @@ nul
 
 # Embedded repositories
 TenSunS/
+
+# Claude Code settings
+.claude/settings.local.json
+
+# Python cache files
+backend/core/installers/__pycache__/

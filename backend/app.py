@@ -25,6 +25,8 @@ from api.consul_insights import router as consul_insights_router
 from api.audit import router as audit_router
 from api.dashboard import router as dashboard_router
 from api.optimized_endpoints import router as optimized_router
+from api.prometheus_config import router as prometheus_config_router
+from api.metadata_fields_manager import router as metadata_fields_router
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -172,6 +174,8 @@ app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["consu
 app.include_router(audit_router, prefix="/api/v1", tags=["audit"])
 app.include_router(dashboard_router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
+app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus-config"])
+app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])
@@ -180,9 +184,8 @@ if HAS_INSTALLER:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "app:app",
+        app,
         host="0.0.0.0",
         port=5000,
-        reload=True,
         log_level="info"
     )

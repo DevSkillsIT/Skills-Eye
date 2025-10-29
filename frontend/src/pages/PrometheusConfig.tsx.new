@@ -1,0 +1,551 @@
+/**
+ * Editor de Configurações do Prometheus
+ *
+ * Página para visualizar e editar arquivos YAML do Prometheus/Blackbox/Alertmanager
+ * com extração dinâmica de campos metadata e edição de jobs/relabel_configs
+ */
+
+import React, { useState, useEffect } from 'react';
+import {
+  PageContainer,
+  ProCard,
+  ProDescriptions,
+  ProTable,
+} from '@ant-design/pro-components';
+import type { ProColumns } from '@ant-design/pro-components';
+import {
+  Card,
+  Table,
+  Tabs,
+  Tag,
+  Space,
+  Button,
+  message,
+  Spin,
+  Empty,
+  Tooltip,
+  Badge,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Collapse,
+  Popconfirm,
+  Modal,
+  Typography,
+} from 'antd';
+import {
+  FileTextOutlined,
+  ReloadOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  DatabaseOutlined,
+  CloudServerOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  SaveOutlined,
+  EyeOutlined,
+  CodeOutlined,
+} from '@ant-design/icons';
+import axios from 'axios';
+import { usePrometheusFields } from '../hooks/usePrometheusFields';
+
+const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
+
+const { TextArea } = Input;
+const { Panel } = Collapse;
+const { Paragraph, Text } = Typography;
+
+interface ConfigFile {
+  path: string;
+  service: string;
+  filename: string;
+  host: string;
+  exists: boolean;
+}
+
+interface FilesResponse {
+  success: boolean;
+  files: ConfigFile[];
+  total: number;
+}
+
+interface JobsResponse {
+  success: boolean;
+  jobs: any[];
+  total: number;
+  file_path: string;
+}
+
+interface RelabelConfig {
+  source_labels?: string[];
+  target_label?: string;
+  regex?: string;
+  replacement?: string;
+  action?: string;
+}
+
+const PrometheusConfig: React.FC = () => {
+  const [files, setFiles] = useState<ConfigFile[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loadingFiles, setLoadingFiles] = useState(false);
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [editingJob, setEditingJob] = useState<any | null>(null);
+  const [editingJobData, setEditingJobData] = useState<any>(null); // NOVO: guardar job completo
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [form] = Form.useForm();
+
+  const {
+    fields,
+    loading: loadingFields,
+    error: fieldsError,
+    total: totalFields,
+    lastUpdated,
+    reload: reloadFields,
+  } = usePrometheusFields();
+
+  // Carregar lista de arquivos
+  const fetchFiles = async () => {
+    setLoadingFiles(true);
+    try {
+      const response = await axios.get<FilesResponse>(`${API_URL}/prometheus-config/files`);
+      if (response.data.success) {
+        setFiles(response.data.files);
+        // Auto-selecionar prometheus.yml se existir
+        const prometheusFile = response.data.files.find(f => f.filename === 'prometheus.yml');
+        if (prometheusFile && !selectedFile) {
+          setSelectedFile(prometheusFile.path);
+        }
+      } else {
+        message.error('Falha ao carregar arquivos');
+      }
+    } catch (err: any) {
+      message.error(err.response?.data?.message || 'Erro ao carregar arquivos');
+    } finally {
+      setLoadingFiles(false);
+    }
+  };
+
+  // Carregar jobs de um arquivo
+  const fetchJobs = async (filePath: string) => {
+    setLoadingJobs(true);
+    try {
+      const response = await axios.get<JobsResponse>(
+        `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(filePath)}`
+      );
+      if (response.data.success) {
+        setJobs(response.data.jobs);
+        message.success(`Carregados ${response.data.total} jobs`);
+      } else {
+        message.error('Falha ao carregar jobs');
+      }
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao carregar jobs');
+      setJobs([]);
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiles();
+  }, []);
+
+  useEffect(() => {
+    if (selectedFile) {
+      fetchJobs(selectedFile);
+    }
+  }, [selectedFile]);
+
+  const handleReload = () => {
+    fetchFiles();
+    reloadFields();
+    if (selectedFile) {
+      fetchJobs(selectedFile);
+    }
+  };
+
+  const handleEditJob = (job: any) => {
+    setEditingJob(job);
+    setEditingJobData(job); // NOVO: guardar job completo
+    form.setFieldsValue({
+      job_name: job.job_name,
+      scrape_interval: job.scrape_interval,
+      metrics_path: job.metrics_path,
+    });
+    setDrawerVisible(true);
+  };
+
+  const handleDeleteJob = async (jobName: string) => {
+    try {
+      const updatedJobs = jobs.filter(j => j.job_name !== jobName);
+      await axios.put(
+        `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(selectedFile!)}`,
+        updatedJobs
+      );
+      message.success(`Job '${jobName}' deletado com sucesso`);
+      fetchJobs(selectedFile!);
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao deletar job');
+    }
+  };
+
+  const handleSaveJob = async () => {
+    try {
+      await form.validateFields();^^      ^^      // Usar editingJobData que cont�m o job completo editado no JSON^^      const jobToSave = editingJobData;
+
+      let updatedJobs;
+      if (editingJob) {
+        // Editar job existente
+        updatedJobs = jobs.map(j => j.job_name === editingJob.job_name ? jobToSave : j);
+      } else {
+        // Adicionar novo job
+        updatedJobs = [...jobs, values];
+      }
+
+      await axios.put(
+        `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(selectedFile!)}`,
+        updatedJobs
+      );
+
+      message.success('Job salvo com sucesso!');
+      setDrawerVisible(false);
+      setEditingJob(null);
+      form.resetFields();
+      fetchJobs(selectedFile!);
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao salvar job');
+    }
+  };
+
+  const handleAddJob = () => {
+    setEditingJob(null);
+    const newJob = {
+      job_name: '',
+      scrape_interval: '30s',
+      metrics_path: '/metrics',
+      relabel_configs: [],
+    };
+    setEditingJobData(newJob); // NOVO
+    form.resetFields();
+    form.setFieldsValue({
+      job_name: '',
+      scrape_interval: '30s',
+      metrics_path: '/metrics',
+    });
+    setDrawerVisible(true);
+  };
+
+  // Colunas da tabela de jobs
+  const jobsColumns: ProColumns<any>[] = [
+    {
+      title: 'Job Name',
+      dataIndex: 'job_name',
+      key: 'job_name',
+      width: 200,
+      render: (text: string) => <strong>{text}</strong>,
+    },
+    {
+      title: 'Scrape Interval',
+      dataIndex: 'scrape_interval',
+      key: 'scrape_interval',
+      width: 120,
+    },
+    {
+      title: 'Metrics Path',
+      dataIndex: 'metrics_path',
+      key: 'metrics_path',
+      width: 150,
+    },
+    {
+      title: 'Consul SD',
+      dataIndex: 'consul_sd_configs',
+      key: 'consul_sd',
+      width: 100,
+      render: (configs: any[]) =>
+        configs?.length > 0 ? (
+          <Tag color="blue">{configs.length} config(s)</Tag>
+        ) : (
+          <Tag>Nenhum</Tag>
+        ),
+    },
+    {
+      title: 'Relabel Configs',
+      dataIndex: 'relabel_configs',
+      key: 'relabel_configs',
+      width: 120,
+      render: (configs: RelabelConfig[]) =>
+        configs?.length > 0 ? (
+          <Badge count={configs.length} showZero style={{ backgroundColor: '#52c41a' }} />
+        ) : (
+          <Tag>0</Tag>
+        ),
+    },
+    {
+      title: 'Ações',
+      key: 'actions',
+      width: 150,
+      fixed: 'right',
+      render: (_: any, record: any) => (
+        <Space>
+          <Button
+            type="link"
+            icon={<EditOutlined />}
+            onClick={() => handleEditJob(record)}
+          >
+            Editar
+          </Button>
+          <Popconfirm
+            title="Tem certeza que deseja deletar este job?"
+            onConfirm={() => handleDeleteJob(record.job_name)}
+            okText="Sim"
+            cancelText="Não"
+          >
+            <Button
+              type="link"
+              danger
+              icon={<DeleteOutlined />}
+            >
+              Deletar
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  // Colunas da tabela de campos
+  const fieldsColumns = [
+    {
+      title: 'Campo',
+      dataIndex: 'name',
+      key: 'name',
+      width: 200,
+      render: (name: string) => <code>{name}</code>,
+    },
+    {
+      title: 'Nome Exibição',
+      dataIndex: 'display_name',
+      key: 'display_name',
+    },
+    {
+      title: 'Tipo',
+      dataIndex: 'field_type',
+      key: 'field_type',
+      render: (type: string) => {
+        const colors: Record<string, string> = {
+          string: 'default',
+          number: 'blue',
+          boolean: 'green',
+          select: 'purple',
+        };
+        return <Tag color={colors[type]}>{type}</Tag>;
+      },
+    },
+    {
+      title: 'Obrigatório',
+      dataIndex: 'required',
+      key: 'required',
+      render: (required: boolean) =>
+        required ? <Tag color="red">Sim</Tag> : <Tag>Não</Tag>,
+    },
+  ];
+
+  return (
+    <PageContainer
+      title="Configurações do Prometheus"
+      subTitle="Editar jobs, relabel_configs e campos metadata dinamicamente"
+      extra={[
+        <Button
+          key="add"
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleAddJob}
+          disabled={!selectedFile}
+        >
+          Adicionar Job
+        </Button>,
+        <Button
+          key="reload"
+          icon={<ReloadOutlined />}
+          onClick={handleReload}
+          loading={loadingFiles || loadingFields || loadingJobs}
+        >
+          Recarregar
+        </Button>,
+      ]}
+    >
+      <ProCard
+        title="Selecionar Arquivo"
+        style={{ marginBottom: 16 }}
+      >
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Selecione um arquivo YAML"
+          value={selectedFile}
+          onChange={(value) => setSelectedFile(value)}
+          loading={loadingFiles}
+        >
+          {files.map(file => (
+            <Select.Option key={file.path} value={file.path}>
+              <Space>
+                <FileTextOutlined />
+                <span>{file.filename}</span>
+                <Tag color={file.service === 'prometheus' ? 'blue' : 'orange'}>
+                  {file.service}
+                </Tag>
+              </Space>
+            </Select.Option>
+          ))}
+        </Select>
+      </ProCard>
+
+      <Tabs
+        defaultActiveKey="jobs"
+        items={[
+          {
+            key: 'jobs',
+            label: (
+              <span>
+                <DatabaseOutlined />
+                Jobs / Scrape Configs ({jobs.length})
+              </span>
+            ),
+            children: (
+              <Card>
+                <ProTable
+                  columns={jobsColumns}
+                  dataSource={jobs}
+                  rowKey="job_name"
+                  loading={loadingJobs}
+                  search={false}
+                  options={{
+                    reload: () => selectedFile && fetchJobs(selectedFile),
+                  }}
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    showTotal: (total) => `Total: ${total} jobs`,
+                  }}
+                  scroll={{ x: 1200 }}
+                  locale={{
+                    emptyText: selectedFile ? (
+                      <Empty description="Nenhum job encontrado neste arquivo" />
+                    ) : (
+                      <Empty description="Selecione um arquivo para visualizar os jobs" />
+                    ),
+                  }}
+                />
+              </Card>
+            ),
+          },
+          {
+            key: 'fields',
+            label: (
+              <span>
+                <DatabaseOutlined />
+                Campos Metadata ({totalFields})
+              </span>
+            ),
+            children: (
+              <Card>
+                <Table
+                  dataSource={fields}
+                  columns={fieldsColumns}
+                  rowKey="name"
+                  loading={loadingFields}
+                  pagination={{
+                    pageSize: 15,
+                    showSizeChanger: true,
+                  }}
+                />
+              </Card>
+            ),
+          },
+        ]}
+      />
+
+      {/* Drawer de Edição de Job */}
+      <Drawer
+        title={editingJob ? `Editar Job: ${editingJob.job_name}` : 'Adicionar Novo Job'}
+        width={720}
+        open={drawerVisible}
+        onClose={() => {
+          setDrawerVisible(false);
+          setEditingJob(null);
+          setEditingJobData(null); // NOVO
+          form.resetFields();
+        }}
+        extra={
+          <Space>
+            <Button onClick={() => setDrawerVisible(false)}>Cancelar</Button>
+            <Button type="primary" icon={<SaveOutlined />} onClick={handleSaveJob}>
+              Salvar
+            </Button>
+          </Space>
+        }
+      >
+        <Form
+          form={form}
+          layout="vertical"
+        >
+          <Form.Item
+            name="job_name"
+            label="Job Name"
+            rules={[{ required: true, message: 'Nome do job é obrigatório' }]}
+          >
+            <Input placeholder="ex: node_exporter" />
+          </Form.Item>
+
+          <Form.Item
+            name="scrape_interval"
+            label="Scrape Interval"
+          >
+            <Input placeholder="ex: 30s, 1m" />
+          </Form.Item>
+
+          <Form.Item
+            name="metrics_path"
+            label="Metrics Path"
+          >
+            <Input placeholder="/metrics" />
+          </Form.Item>
+
+          <Paragraph type="secondary" style={{ marginTop: 24 }}>
+            <strong>Nota:</strong> Para editar relabel_configs e outras configurações avançadas,
+            use o editor YAML completo ou edite manualmente o campo JSON abaixo.
+          </Paragraph>
+
+          <Form.Item
+            label="Configuração Completa (JSON)"
+          >
+            <TextArea
+              rows={20}
+              value={JSON.stringify(editingJobData, null, 2)}
+              onChange={(e) => {
+                try {
+                  const parsed = JSON.parse(e.target.value);
+                  setEditingJobData(parsed); // NOVO: atualizar estado
+                  // Sincronizar campos básicos com o form
+                  form.setFieldsValue({
+                    job_name: parsed.job_name,
+                    scrape_interval: parsed.scrape_interval,
+                    metrics_path: parsed.metrics_path,
+                  });
+                } catch {
+                  // Ignora erros de parsing durante digitação
+                }
+              }}
+            />
+          </Form.Item>
+        </Form>
+      </Drawer>
+    </PageContainer>
+  );
+};
+
+export default PrometheusConfig;
+

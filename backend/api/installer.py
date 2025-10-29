@@ -8,11 +8,13 @@ from typing import Optional, List, Dict, Literal, Union
 from enum import Enum
 import asyncio
 import uuid
+import socket
 from core.installers import (
     LinuxSSHInstaller,
     WindowsPSExecInstaller,
     WindowsWinRMInstaller,
-    WindowsSSHInstaller
+    WindowsSSHInstaller,
+    WindowsMultiConnector
 )
 from core.consul_manager import ConsulManager
 from core.config import Config
@@ -302,6 +304,9 @@ async def get_collector_profiles():
 async def test_connection(request: Dict):
     """
     Testa conexão sem instalar
+    
+    Para Windows: Tenta automaticamente PSExec -> WinRM -> SSH
+    Para Linux: Usa SSH diretamente
 
     Detecta SO e retorna informações do sistema
     """
@@ -311,8 +316,12 @@ async def test_connection(request: Dict):
 
         # Create appropriate installer
         test_id = "test-" + str(uuid.uuid4())[:8]
+        installer = None
+        connection_method = method
+        multi_connector = None  # Inicializar para Windows
 
         if os_type == "linux":
+            # Linux: sempre SSH
             installer = LinuxSSHInstaller(
                 host=request["host"],
                 username=request["username"],
@@ -322,44 +331,107 @@ async def test_connection(request: Dict):
                 use_sudo=request.get("use_sudo", True),
                 client_id=test_id
             )
-        elif os_type == "windows" and method == "ssh":
-            installer = WindowsSSHInstaller(
+            
+            # Test connection
+            try:
+                if not await installer.connect():
+                    raise HTTPException(
+                        status_code=503,
+                        detail="CONNECTION_FAILED|Falha ao conectar via SSH.|CONEXAO"
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Erro ao testar conexão Linux: {error_msg}")
+                
+                if "|" in error_msg:
+                    parts = error_msg.split("|")
+                    error_code = parts[0] if len(parts) > 0 else "UNKNOWN"
+                    
+                    if error_code == "AUTH_FAILED" or error_code == "AUTH_METHOD_UNAVAILABLE":
+                        status_code = 401
+                    elif error_code == "PERMISSION_DENIED":
+                        status_code = 403
+                    elif error_code == "TIMEOUT":
+                        status_code = 504
+                    elif error_code in ["CONNECTION_REFUSED", "PORT_CLOSED", "DNS_ERROR", "NETWORK_UNREACHABLE", "NETWORK_ERROR", "SSH_ERROR", "HOSTKEY_ERROR"]:
+                        status_code = 503
+                    else:
+                        status_code = 500
+                    
+                    raise HTTPException(status_code=status_code, detail=error_msg)
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"CONNECTION_ERROR|{error_msg}|DESCONHECIDO"
+                    )
+        
+        elif os_type == "windows":
+            # Windows: usar MultiConnector para tentar todos os métodos
+            logger.info(f"Iniciando conexão Windows com multi-connector para {request['host']}")
+            
+            multi_connector = WindowsMultiConnector(
                 host=request["host"],
                 username=request["username"],
-                password=request.get("password"),
-                key_file=request.get("key_file"),
+                password=request["password"],
                 domain=request.get("domain"),
+                client_id=test_id,
                 ssh_port=request.get("ssh_port", 22),
-                client_id=test_id
-            )
-        elif os_type == "windows" and method == "winrm":
-            installer = WindowsWinRMInstaller(
-                host=request["host"],
-                username=request["username"],
-                password=request["password"],
-                domain=request.get("domain"),
-                use_ssl=request.get("use_ssl", False),
-                port=request.get("port"),
-                client_id=test_id
-            )
-        elif os_type == "windows" and method == "psexec":
-            installer = WindowsPSExecInstaller(
-                host=request["host"],
-                username=request["username"],
-                password=request["password"],
-                domain=request.get("domain"),
+                winrm_port=request.get("port"),
+                winrm_use_ssl=request.get("use_ssl", False),
                 psexec_path=request.get("psexec_path", "psexec.exe"),
-                client_id=test_id
+                key_file=request.get("key_file")
             )
+            
+            try:
+                success, message, installer = await multi_connector.connect_with_fallback()
+                if not success or not installer:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="ALL_METHODS_FAILED|Todos os métodos de conexão falharam. Veja logs.|CONEXAO_MULTIPLA"
+                    )
+                
+                connection_method = multi_connector.connection_method
+                logger.info(f"Windows conectado com sucesso via: {connection_method}")
+                
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Erro ao testar conexão Windows multi-método: {error_msg}")
+                
+                # Capturar resumo das tentativas para incluir na resposta
+                connection_summary = multi_connector.get_connection_summary()
+                
+                if "|" in error_msg:
+                    parts = error_msg.split("|")
+                    error_code = parts[0] if len(parts) > 0 else "UNKNOWN"
+                    
+                    # Para ALL_METHODS_FAILED, retornar 503 com detalhes
+                    if error_code == "ALL_METHODS_FAILED":
+                        detail_msg = f"{error_msg}\n\nTentativas realizadas:\n"
+                        for attempt in connection_summary["attempts"]:
+                            status = "✅" if attempt["success"] else "❌"
+                            detail_msg += f"• {attempt['method'].upper()}: {status} - {attempt['message']}\n"
+                        
+                        raise HTTPException(status_code=503, detail=detail_msg)
+                    else:
+                        # Outros erros estruturados
+                        status_code = 503
+                        if error_code in ["AUTH_FAILED", "AUTH_METHOD_UNAVAILABLE"]:
+                            status_code = 401
+                        elif error_code == "PERMISSION_DENIED":
+                            status_code = 403
+                        elif error_code == "TIMEOUT":
+                            status_code = 504
+                        
+                        raise HTTPException(status_code=status_code, detail=error_msg)
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"CONNECTION_ERROR|{error_msg}|DESCONHECIDO"
+                    )
         else:
-            raise HTTPException(status_code=400, detail="Combinação inválida de OS e método")
-
-        # Test connection
-        if not await installer.connect():
-            raise HTTPException(
-                status_code=503,
-                detail="Falha ao conectar. Verifique credenciais e conectividade."
-            )
+            raise HTTPException(status_code=400, detail="Sistema operacional inválido")
 
         # Detect OS
         detected_os = await installer.detect_os()
@@ -372,19 +444,148 @@ async def test_connection(request: Dict):
 
         await installer.disconnect()
 
-        return {
+        # Construir resposta com informações do método usado
+        response = {
             "success": True,
             "message": "Conexão bem-sucedida",
             "details": {
                 **system_info,
-                "method": method
+                "method": connection_method  # Método que realmente funcionou
             }
         }
+        
+        # Se foi Windows multi-connector, incluir resumo das tentativas
+        if os_type == "windows":
+            response["connection_summary"] = multi_connector.get_connection_summary()
+            response["message"] = f"Conexão Windows bem-sucedida via {connection_method.upper()}"
+        
+        return response
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Erro ao testar conexão: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/check-existing")
+async def check_existing_installation(request: Dict):
+    """
+    Verifica se já existe instalação do exporter no servidor remoto
+    
+    Retorna:
+        - port_open: bool - Porta do exporter está em uso
+        - service_running: bool - Serviço está rodando
+        - has_config: bool - Arquivo de configuração existe
+    """
+    try:
+        host = request["host"]
+        username = request["username"]
+        password = request.get("password")
+        port = request.get("port", 22)
+        exporter_port = request.get("exporter_port", 9100)
+        target_type = request.get("target_type", "linux")
+        
+        # Criar instalador temporário apenas para verificação
+        check_id = "check-" + str(uuid.uuid4())[:8]
+        installer = None
+        
+        if target_type == "linux":
+            installer = LinuxSSHInstaller(
+                host=host,
+                username=username,
+                password=password,
+                ssh_port=port,
+                use_sudo=True,
+                client_id=check_id
+            )
+            
+            # Conectar
+            if not await installer.connect():
+                raise HTTPException(status_code=503, detail="CONNECTION_FAILED|Não foi possível conectar ao servidor|CONEXAO")
+                
+        else:
+            # Windows: usar multi-connector
+            logger.info(f"[check-existing] Verificando instalação Windows em {host} usando multi-connector")
+            
+            multi_connector = WindowsMultiConnector(
+                host=host,
+                username=username,
+                password=password,
+                domain=request.get("domain"),
+                client_id=check_id,
+                ssh_port=port,
+                winrm_port=request.get("winrm_port"),
+                winrm_use_ssl=request.get("use_ssl", False)
+            )
+            
+            try:
+                success, message, installer = await multi_connector.connect_with_fallback()
+                if not success or not installer:
+                    logger.error(f"[check-existing] ❌ Falha ao conectar: {message}")
+                    raise HTTPException(
+                        status_code=503,
+                        detail="ALL_METHODS_FAILED|Todos os métodos de conexão falharam ao verificar instalação|CONEXAO_MULTIPLA"
+                    )
+                logger.info(f"[check-existing] ✅ Windows conectado via {multi_connector.connection_method} para verificação")
+            except HTTPException:
+                raise
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"[check-existing] ❌ Erro ao conectar Windows: {error_msg}", exc_info=True)
+                raise HTTPException(status_code=503, detail=error_msg if "|" in error_msg else f"CONNECTION_ERROR|{error_msg}|CONEXAO")
+        
+        # Verificar porta
+        port_open = False
+        try:
+            # Testar se a porta está em uso (netstat/ss)
+            if target_type == "linux":
+                exit_code, stdout, stderr = await installer.execute_command(f"sudo ss -tuln | grep ':{exporter_port}' || true")
+                result = stdout
+            else:
+                exit_code, stdout, stderr = await installer.execute_command(f"netstat -an | findstr ':{exporter_port}'")
+                result = stdout
+            
+            port_open = bool(result and len(result.strip()) > 0)
+        except Exception as e:
+            logger.warning(f"Erro ao verificar porta: {e}")
+        
+        # Verificar serviço
+        service_running = False
+        try:
+            if target_type == "linux":
+                exit_code, stdout, stderr = await installer.execute_command("sudo systemctl is-active node_exporter 2>/dev/null || echo 'inactive'")
+                service_running = stdout.strip() == "active"
+            else:
+                exit_code, stdout, stderr = await installer.execute_command("sc query windows_exporter 2>nul")
+                service_running = "RUNNING" in stdout
+        except Exception as e:
+            logger.warning(f"Erro ao verificar serviço: {e}")
+        
+        # Verificar arquivo de configuração
+        has_config = False
+        try:
+            if target_type == "linux":
+                exit_code, stdout, stderr = await installer.execute_command("test -f /etc/systemd/system/node_exporter.service && echo 'exists' || echo 'not found'")
+                has_config = "exists" in stdout
+            else:
+                exit_code, stdout, stderr = await installer.execute_command("if exist C:\\Program Files\\windows_exporter\\windows_exporter.exe echo exists")
+                has_config = "exists" in stdout
+        except Exception as e:
+            logger.warning(f"Erro ao verificar config: {e}")
+        
+        await installer.disconnect()
+        
+        return {
+            "port_open": port_open,
+            "service_running": service_running,
+            "has_config": has_config
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao verificar instalação existente: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -601,13 +802,28 @@ async def register_in_consul(installer, request):
             "os": request.os_type
         }
         
+        # Build health check configuration
+        check_config = {
+            "HTTP": f"http://{request.host}:{port}/metrics",
+            "Interval": "30s",
+            "Timeout": "10s"
+        }
+        
         # Add Basic Auth credentials to metadata for Prometheus scraping
-        if hasattr(request, 'basic_auth_user') and request.basic_auth_user:
+        if hasattr(request, 'basic_auth_user') and request.basic_auth_user and hasattr(request, 'basic_auth_password') and request.basic_auth_password:
             service_meta["basic_auth_enabled"] = "true"
             service_meta["basic_auth_user"] = request.basic_auth_user
-            # Store encrypted password or reference to vault
-            # For now, Prometheus will need to be configured separately with credentials
-            await installer.log(f"Basic Auth metadata adicionado ao Consul", "info")
+            
+            # Add Basic Auth to health check
+            import base64
+            auth_string = f"{request.basic_auth_user}:{request.basic_auth_password}"
+            b64_auth = base64.b64encode(auth_string.encode()).decode()
+            check_config["Header"] = {
+                "Authorization": [f"Basic {b64_auth}"]
+            }
+            
+            await installer.log(f"Basic Auth configurado no health check do Consul", "info")
+            await installer.log(f"Basic Auth metadata adicionado ao Consul para Prometheus", "info")
 
         service_data = {
             "id": service_id,
@@ -615,15 +831,19 @@ async def register_in_consul(installer, request):
             "tags": [request.os_type, request.method],
             "address": request.host,
             "port": port,
-            "Meta": service_meta
+            "Meta": service_meta,
+            "Check": check_config
         }
 
         await consul.register_service(service_data, target_node)
         await installer.log(f"Registrado no Consul: {service_id}", "success")
         
-        if hasattr(request, 'basic_auth_user') and request.basic_auth_user:
-            await installer.log(f"IMPORTANTE: Configure o Prometheus para usar Basic Auth ao scrape este target", "warning")
-            await installer.log(f"  Usuário: {request.basic_auth_user}", "info")
+        if hasattr(request, 'basic_auth_user') and request.basic_auth_user and hasattr(request, 'basic_auth_password') and request.basic_auth_password:
+            await installer.log(f"✓ Health check do Consul configurado com Basic Auth", "success")
+            await installer.log(f"✓ Metadata inclui basic_auth_enabled=true para Prometheus", "success")
+            await installer.log(f"✓ Prometheus pode usar service discovery do Consul para obter credenciais", "info")
+        else:
+            await installer.log(f"⚠ Instalação SEM Basic Auth - métricas expostas publicamente", "warning")
 
     except Exception as e:
         logger.error(f"Erro ao registrar no Consul: {e}")

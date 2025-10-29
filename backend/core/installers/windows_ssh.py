@@ -133,34 +133,56 @@ class WindowsSSHInstaller(BaseInstaller):
             return 1, "", str(e)
 
     async def detect_os(self) -> Optional[str]:
-        """Detect operating system"""
-        await self.log("Detectando sistema operacional...", "info")
+        """Detect operating system with multiple fallback methods"""
+        await self.log("🔍 Detectando sistema operacional...", "info")
 
-        exit_code, output, _ = await self.execute_command("$PSVersionTable.PSVersion.Major", powershell=True)
-
-        if exit_code == 0 and output.strip().isdigit():
+        # Method 1: Try PowerShell WMI (most detailed)
+        await self.log("📋 Tentando detectar via PowerShell WMI...", "info")
+        exit_code, os_info, _ = await self.execute_command(
+            "(Get-WmiObject -Class Win32_OperatingSystem).Caption",
+            powershell=True
+        )
+        if exit_code == 0 and os_info.strip():
             self.os_type = 'windows'
-
-            # Get detailed OS info
-            exit_code, os_info, _ = await self.execute_command(
-                "(Get-WmiObject -Class Win32_OperatingSystem).Caption",
-                powershell=True
-            )
-            if exit_code == 0:
-                self.os_details['name'] = os_info.strip()
-
+            self.os_details['name'] = os_info.strip()
+            
+            # Try to get version too
             exit_code, version, _ = await self.execute_command(
                 "(Get-WmiObject -Class Win32_OperatingSystem).Version",
                 powershell=True
             )
             if exit_code == 0:
                 self.os_details['version'] = version.strip()
-
-            await self.log(f"Windows detectado: {self.os_details.get('name', 'Unknown')}", "success")
+            
+            await self.log(f"✅ Windows detectado via WMI: {self.os_details.get('name', 'Unknown')}", "info")
             return 'windows'
 
-        await self.log("SO não é Windows ou não detectado", "error")
-        return None
+        # Method 2: Try PowerShell version check
+        await self.log("📋 Tentando detectar via $PSVersionTable...", "info")
+        exit_code, output, _ = await self.execute_command("$PSVersionTable.PSVersion.Major", powershell=True)
+        if exit_code == 0 and output.strip().isdigit():
+            self.os_type = 'windows'
+            self.os_details['name'] = f"Windows (PowerShell {output.strip()})"
+            await self.log(f"✅ Windows detectado via PowerShell: {self.os_details['name']}", "info")
+            return 'windows'
+
+        # Method 3: Try systeminfo command
+        await self.log("📋 Tentando detectar via systeminfo...", "info")
+        exit_code, output, _ = await self.execute_command('systeminfo | findstr /C:"OS Name"')
+        if exit_code == 0 and 'Windows' in output:
+            self.os_type = 'windows'
+            # Extract OS name from "OS Name: Windows Server 2019..."
+            os_name = output.split(':', 1)[1].strip() if ':' in output else 'Windows'
+            self.os_details['name'] = os_name
+            await self.log(f"✅ Windows detectado via systeminfo: {os_name}", "info")
+            return 'windows'
+
+        # Method 4: Final fallback - assume Windows since SSH with PowerShell worked
+        # (SSH connection succeeded and PowerShell commands were attempted = likely Windows)
+        await self.log("⚠️ Não foi possível detectar detalhes do SO, mas assumindo Windows já que SSH com PowerShell está disponível", "info")
+        self.os_type = 'windows'
+        self.os_details['name'] = 'Windows (version unknown)'
+        return 'windows'
 
     async def check_disk_space(self, required_mb: int = 200) -> bool:
         """Check available disk space"""

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -10,6 +9,7 @@ import {
   Input,
   List,
   message,
+  Modal,
   Row,
   Select,
   Space,
@@ -18,6 +18,7 @@ import {
   Tag,
   Tooltip,
   Typography,
+  Upload,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -27,25 +28,137 @@ import {
   SettingOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  UploadOutlined,
   WindowsOutlined,
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
+import {
+  consulAPI,
+  type InstallerRequest,
+  type ConsulNode,
+} from '../services/api';
 
 const { Option } = Select;
-const { Title, Paragraph, Text } = Typography;
+const { Paragraph, Text, Title } = Typography;
 
-interface PrecheckItem {
-  key: string;
-  label: string;
-  description: string;
-  status: 'pending' | 'running' | 'success' | 'failed';
-  detail?: string;
+interface ConsulServiceInstanceMeta {
+  instance?: string;
+  name?: string;
+  host?: string;
+  ip?: string;
+  [key: string]: unknown;
 }
+
+interface ConsulServiceNode {
+  Address?: string;
+  [key: string]: unknown;
+}
+
+interface ConsulServiceInstance {
+  service?: string;
+  Service?: string;
+  ServiceName?: string;
+  ServiceID?: string;
+  service_name?: string;
+  meta?: ConsulServiceInstanceMeta;
+  Meta?: ConsulServiceInstanceMeta;
+  ServiceMeta?: ConsulServiceInstanceMeta;
+  address?: string;
+  Address?: string;
+  ServiceAddress?: string;
+  nodeAddr?: string;
+  Node?: ConsulServiceNode;
+  instance?: string;
+  host?: string;
+  ip?: string;
+  [key: string]: unknown;
+}
+
+interface ExistingInstallationCheckRequest {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  exporter_port: number;
+  target_type: 'linux' | 'windows';
+  domain?: string;
+}
+
+interface AxiosErrorLike {
+  response?: {
+    status?: number;
+    data?:
+      | {
+          message?: string;
+          detail?: string;
+          [key: string]: unknown;
+        }
+      | string;
+  };
+  code?: string;
+  message?: string;
+  timeout?: number;
+}
+
+type PrecheckStatus = 'pending' | 'running' | 'success' | 'failed';
+
+type PrecheckKey = 'connectivity' | 'os' | 'ports' | 'disk' | 'firewall';
+
+type ConnectionMethod = 'ssh' | 'fallback';
+
+type WindowsResolvedMethod = 'psexec' | 'winrm' | 'ssh';
 
 interface InstallLogEntry {
   key: string;
   message: string;
 }
+
+interface PrecheckItem {
+  key: PrecheckKey;
+  label: string;
+  description: string;
+  status: PrecheckStatus;
+  detail?: string;
+}
+
+interface CollectorOption {
+  value: string;
+  label: string;
+  description: string;
+  targets: Array<'linux' | 'windows'>;
+}
+
+interface DatacenterOption {
+  value: string;
+  label: string;
+  nodeName?: string;
+  nodeAddress?: string;
+  datacenter?: string;
+  instanceCount?: number;
+  serviceName?: string;
+}
+
+interface ConsulServiceGroup {
+  Name: string;
+  InstanceCount?: number;
+  Datacenter?: string;
+  NodeName?: string;
+  NodeAddress?: string;
+  Nodes?: string[];
+  [key: string]: unknown;
+}
+
+type WarningModalContent = {
+  duplicateConsul: boolean;
+  existingInstall: boolean;
+  services: string[];
+  portOpen: boolean;
+  serviceRunning: boolean;
+  hasConfig: boolean;
+  targetType?: string;
+};
+
+const toStringSafe = (value: unknown): string => (typeof value === 'string' ? value : '');
 
 const DEFAULT_PRECHECKS: PrecheckItem[] = [
   {
@@ -57,7 +170,7 @@ const DEFAULT_PRECHECKS: PrecheckItem[] = [
   {
     key: 'os',
     label: 'Sistema operacional',
-    description: 'Detecta distribuicao, versao e arquitetura.',
+    description: 'Detecta distribuição, versão e arquitetura.',
     status: 'pending',
   },
   {
@@ -68,81 +181,66 @@ const DEFAULT_PRECHECKS: PrecheckItem[] = [
   },
   {
     key: 'disk',
-    label: 'Espaco em disco',
-    description: 'Valida espaco minimo para binarios e logs.',
+    label: 'Espaço em disco',
+    description: 'Valida espaço mínimo para binários e logs.',
     status: 'pending',
   },
   {
     key: 'firewall',
     label: 'Firewall',
-    description: 'Simula regras de liberacao para Prometheus.',
+    description: 'Simula regras de liberação para Prometheus.',
     status: 'pending',
   },
 ];
 
-type CollectorTarget = 'linux' | 'windows';
-
-interface CollectorOption {
-  label: string;
-  value: string;
-  description: string;
-  metrics: string[];
-  targets: CollectorTarget[];
-}
-
 const COLLECTOR_OPTIONS: CollectorOption[] = [
   {
-    label: 'Node exporter padrao',
     value: 'node',
-    description: 'CPU, memoria, rede e recursos base do host.',
-    metrics: ['node_cpu_seconds_total', 'node_memory_Active_bytes'],
+    label: 'Node exporter padrão',
+    description: 'CPU, memória, rede e recursos básicos do host.',
     targets: ['linux'],
   },
   {
-    label: 'Filesystem',
     value: 'filesystem',
-    description: 'Uso de disco por filesystem, inodes e espaco reservado.',
-    metrics: ['node_filesystem_avail_bytes', 'node_filesystem_size_bytes'],
+    label: 'Filesystem',
+    description: 'Uso de disco por filesystem, inodes e espaço reservado.',
     targets: ['linux'],
   },
   {
-    label: 'Systemd',
     value: 'systemd',
+    label: 'Systemd',
     description: 'Estado de unidades systemd e falhas recentes.',
-    metrics: ['node_systemd_unit_state', 'node_systemd_unit_start_time_seconds'],
     targets: ['linux'],
   },
   {
-    label: 'Textfile collector',
     value: 'textfile',
-    description: 'Permite expor metricas customizadas via arquivos .prom.',
-    metrics: ['node_textfile_mtime_seconds'],
+    label: 'Textfile collector',
+    description: 'Permite expor métricas customizadas via arquivos .prom.',
     targets: ['linux'],
   },
   {
-    label: 'Process collector',
     value: 'process',
-    description: 'Expande metricas de processos, threads e uso de CPU.',
-    metrics: ['node_processes_state', 'node_processes_threads'],
+    label: 'Process collector',
+    description: 'Expande métricas de processos, threads e uso de CPU.',
     targets: ['linux'],
   },
   {
-    label: 'iostat collector (Linux)',
     value: 'iostat',
-    description: 'Metricas detalhadas de IO por dispositivo (requer sysstat).',
-    metrics: ['node_disk_io_time_seconds_total', 'node_disk_reads_completed_total'],
+    label: 'iostat collector (Linux)',
+    description: 'Métricas detalhadas de IO por dispositivo (requer sysstat).',
     targets: ['linux'],
   },
   {
-    label: 'WMI collectors (Windows)',
     value: 'wmi',
-    description: 'Grupos padrao do windows_exporter (CPU, memoria, discos, servicos).',
-    metrics: ['wmi_cpu_time_total', 'wmi_logical_disk_free_megabytes'],
+    label: 'WMI collectors (Windows)',
+    description: 'Grupos padrão do windows_exporter (CPU, memória, discos, serviços).',
     targets: ['windows'],
   },
 ];
+
 const Installer: React.FC = () => {
   const [form] = Form.useForm();
+  const watchedPort = Form.useWatch('port', form);
   const [currentStep, setCurrentStep] = useState(0);
   const [targetType, setTargetType] = useState<'linux' | 'windows'>('linux');
   const [prechecks, setPrechecks] = useState<PrecheckItem[]>(DEFAULT_PRECHECKS);
@@ -156,12 +254,98 @@ const Installer: React.FC = () => {
   const [basicAuthUser, setBasicAuthUser] = useState('prometheus');
   const [basicAuthPassword, setBasicAuthPassword] = useState('');
   const [autoRegister, setAutoRegister] = useState(true);
-  const [selectedDatacenter, setSelectedDatacenter] = useState('palmas');
-  const [connectionMethod, setConnectionMethod] = useState<'ssh' | 'fallback'>('ssh');
+  const [selectedNodeAddress, setSelectedNodeAddress] = useState('');
+  const [selectedNodeName, setSelectedNodeName] = useState('');
+  const [nodes, setNodes] = useState<ConsulNode[]>([]);
+  const [loadingNodes, setLoadingNodes] = useState(false);
+  const [connectionMethod, setConnectionMethod] = useState<ConnectionMethod>('ssh');
+  const [resolvedWindowsMethod, setResolvedWindowsMethod] = useState<WindowsResolvedMethod | null>(null);
+  const [privateKeyFile, setPrivateKeyFile] = useState<string>('');
+  const [existingInstallation, setExistingInstallation] = useState<{
+    detected: boolean;
+    portOpen: boolean;
+    serviceRunning: boolean;
+    hasConfig: boolean;
+  } | null>(null);
+  const [logModalVisible, setLogModalVisible] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalTitle, setErrorModalTitle] = useState('');
+  const [errorModalContent, setErrorModalContent] = useState('');
+  const [errorModalIcon, setErrorModalIcon] = useState('');
+  const [errorCategory, setErrorCategory] = useState('');
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [warningModalTitle, setWarningModalTitle] = useState('');
+  const [warningModalContent, setWarningModalContent] = useState<WarningModalContent | null>(null);
+  const [warningModalMode, setWarningModalMode] = useState<'precheck-warning' | 'toggle-auto-register' | null>(
+    null,
+  );
+
+  const warningModalFooter = useMemo(() => {
+    if (warningModalMode === 'toggle-auto-register') {
+      return [
+        <Button
+          key="cancel"
+          onClick={() => {
+            setWarningModalVisible(false);
+            setWarningModalContent(null);
+            setWarningModalMode(null);
+            message.info('Switch mantido DESLIGADO', 3);
+          }}
+        >
+          ❌ Cancelar
+        </Button>,
+        <Button
+          key="continue"
+          type="primary"
+          danger
+          onClick={() => {
+            setWarningModalVisible(false);
+            setWarningModalContent(null);
+            setWarningModalMode(null);
+            setAutoRegister(true);
+            message.success('✅ Registro no Consul ATIVADO (com IP duplicado)', 5);
+          }}
+        >
+          ⚠️ Registrar Mesmo Assim
+        </Button>,
+      ];
+    }
+
+    return [
+      <Button
+        key="cancel"
+        onClick={() => {
+          setWarningModalVisible(false);
+          setWarningModalContent(null);
+          setWarningModalMode(null);
+          message.info('Operação cancelada. Revise os dados e tente novamente.');
+        }}
+      >
+        ❌ Cancelar
+      </Button>,
+      <Button
+        key="continue"
+        type="primary"
+        danger
+        onClick={() => {
+          setWarningModalVisible(false);
+          setWarningModalContent(null);
+          setWarningModalMode(null);
+          setCurrentStep(2);
+          message.warning('⚠️ Prosseguindo com avisos. Tenha cuidado!', 5);
+        }}
+      >
+        ⚠️ Continuar Mesmo Assim
+      </Button>,
+    ];
+  }, [warningModalMode]);
 
   useEffect(() => {
-    const desired = targetType === 'linux' ? 'ssh' : 'fallback';
+    const desired: ConnectionMethod = targetType === 'linux' ? 'ssh' : 'fallback';
     setConnectionMethod((prev) => (prev === desired ? prev : desired));
+    if (targetType === 'windows') {
+      setResolvedWindowsMethod(null);
+    }
     form.setFieldsValue({
       authType: 'password',
       password: undefined,
@@ -169,12 +353,9 @@ const Installer: React.FC = () => {
     });
   }, [targetType, form]);
 
-  // Atualizar porta padrão quando mudar tipo/método de conexão
   useEffect(() => {
     const isWindowsFallback = targetType === 'windows' && connectionMethod === 'fallback';
     const defaultPort = isWindowsFallback ? 5985 : 22;
-
-    // Só atualizar se o formulário ainda não tem valor ou está com valor padrão antigo
     const currentPort = form.getFieldValue('port');
     if (!currentPort || currentPort === 22 || currentPort === 5985) {
       form.setFieldsValue({ port: defaultPort });
@@ -189,6 +370,7 @@ const Installer: React.FC = () => {
       });
     }
   }, [connectionMethod, form]);
+
   const steps = useMemo(
     () => [
       { key: 'target', title: 'Destino', icon: <CloudServerOutlined /> },
@@ -200,11 +382,36 @@ const Installer: React.FC = () => {
     [],
   );
 
-  const appendLog = (message: string) => {
-    setInstallLogs((prev) => [
-      ...prev,
-      { key: `${Date.now()}-${prev.length}`, message },
-    ]);
+  const selectedNodeLabel = useMemo(() => {
+    if (!selectedNodeAddress) {
+      return 'Não selecionado';
+    }
+    const match = nodes.find((node) => node.Address === selectedNodeAddress);
+    return match ? `${match.Node} (${match.Address})` : selectedNodeAddress;
+  }, [nodes, selectedNodeAddress]);
+
+  const appendLog = (messageText: string) => {
+    setInstallLogs((prev) => [...prev, { key: `${Date.now()}-${prev.length}`, message: messageText }]);
+  };
+
+  const normalizeWindowsMethod = (method?: string | null): WindowsResolvedMethod | null => {
+    if (!method) {
+      return null;
+    }
+
+    const normalized = method.toLowerCase();
+    if (normalized === 'psexec' || normalized === 'winrm' || normalized === 'ssh') {
+      return normalized;
+    }
+
+    return null;
+  };
+
+  // Função auxiliar para verificar se é IP ou hostname
+  const isIPAddress = (str: string): boolean => {
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Pattern = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+    return ipv4Pattern.test(str) || ipv6Pattern.test(str);
   };
 
   const runPrechecks = async () => {
@@ -217,7 +424,7 @@ const Installer: React.FC = () => {
         fields.push('keyPath');
       }
       await form.validateFields(fields);
-    } catch (err) {
+    } catch {
       message.error('Preencha os campos obrigatorios do alvo.');
       return;
     }
@@ -230,29 +437,676 @@ const Installer: React.FC = () => {
         detail: undefined,
       })),
     );
+    
+    setExistingInstallation(null);
+    setResolvedWindowsMethod(null);
 
-    for (const item of DEFAULT_PRECHECKS) {
+    // Obter valores do formulário
+    const host = form.getFieldValue('host');
+    const port = form.getFieldValue('port');
+    const username = form.getFieldValue('username');
+    const password = form.getFieldValue('password');
+    const keyPath = form.getFieldValue('keyPath');
+    const authType = form.getFieldValue('authType');
+    const useDomain = form.getFieldValue('useDomain');
+    const domain = form.getFieldValue('domain');
+
+    // Validar DNS se for hostname (não IP)
+    if (!isIPAddress(host)) {
       setPrechecks((prev) =>
         prev.map((entry) =>
-          entry.key === item.key
-            ? { ...entry, status: 'running', detail: undefined }
+          entry.key === 'connectivity'
+            ? { ...entry, status: 'running', detail: `Resolvendo hostname ${host} via DNS...` }
             : entry,
         ),
       );
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      setPrechecks((prev) =>
-        prev.map((entry) =>
-          entry.key === item.key
-            ? { ...entry, status: 'success', detail: 'Verificacao concluida com sucesso.' }
-            : entry,
-        ),
-      );
+
+      // Tentar resolver o hostname via backend (test-connection já faz isso)
+      console.log(`🔍 Hostname detectado: ${host}, será resolvido durante teste de conexão`);
     }
 
-    setPrecheckRunning(false);
-    message.success('Pre-checks concluido.');
-    setCurrentStep(2);
+    // 1. Teste de conectividade (REAL com backend)
+    setPrechecks((prev) =>
+      prev.map((entry) =>
+        entry.key === 'connectivity'
+          ? { ...entry, status: 'running', detail: targetType === 'windows' ? 'Testando conexão Windows (PSExec/WinRM/SSH)...' : 'Testando conexão SSH...' }
+          : entry,
+      ),
+    );
+
+    try {
+      const methodToSend = 'auto';  // Backend decide automaticamente
+      
+      const testRequest: Partial<InstallerRequest> = {
+        os_type: targetType,
+        method: methodToSend,
+        host,
+        username,
+        ssh_port: parseInt(port as string, 10) || 22,
+      };
+
+      // Adicionar domínio se estiver usando conta de domínio (Windows)
+      if (targetType === 'windows' && useDomain && domain) {
+        testRequest.domain = domain;
+      }
+
+      // Adicionar autenticação
+      if (authType === 'password') {
+        testRequest.password = password;
+        testRequest.use_sudo = true;
+      } else {
+        testRequest.key_file = privateKeyFile || keyPath;
+        testRequest.use_sudo = true;
+      }
+
+      const connectionTest = await consulAPI.testConnection(testRequest);
+
+      if (connectionTest.data.success) {
+        // Construir mensagem de sucesso
+        let successDetail = `✅ Conectado com sucesso!`;
+        
+        // Se tem resumo de conexão (Windows multi-método)
+        if (connectionTest.data.connection_summary) {
+          const summary = connectionTest.data.connection_summary;
+          successDetail += `\n\n🎯 Método usado: ${summary.successful_method?.toUpperCase()}`;
+          successDetail += `\n📊 Tentativas: ${summary.total_attempts}`;
+          
+          // Listar tentativas
+          const attempts = summary.attempts ?? [];
+          if (attempts.length > 0) {
+            successDetail += `\n\n📋 Histórico:`;
+            attempts.forEach((attempt, index) => {
+              const status = attempt.success ? '✅' : '❌';
+              successDetail += `\n${index + 1}. ${attempt.method.toUpperCase()}: ${status}`;
+            });
+          }
+        }
+
+        if (targetType === 'windows') {
+          const summaryMethod = normalizeWindowsMethod(connectionTest.data.connection_summary?.successful_method);
+          const detailsMethod = normalizeWindowsMethod(connectionTest.data.details?.method);
+          const resolvedMethod = summaryMethod ?? detailsMethod ?? 'psexec';
+
+          setResolvedWindowsMethod(resolvedMethod);
+          successDetail += `\n⚙️ Método configurado para instalação: ${resolvedMethod.toUpperCase()}`;
+        } else {
+          setResolvedWindowsMethod(null);
+        }
+        
+        successDetail += `\n\n💻 Host: ${connectionTest.data.details.hostname}`;
+        
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'connectivity'
+              ? { 
+                  ...entry, 
+                  status: 'success', 
+                  detail: successDetail
+                }
+              : entry,
+          ),
+        );
+
+        // 2. Verificação de IP/Hostname duplicado no Consul (apenas selfnode*)
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'os'
+              ? { ...entry, status: 'running', detail: 'Verificando IP/Hostname no Consul (selfnode) e detectando SO...' }
+              : entry,
+          ),
+        );
+
+        // Buscar apenas serviços selfnode* para verificar se o host já existe
+        let ipDuplicado = false;
+        const servicosComIp: string[] = [];
+        
+        try {
+          const servicesResponse = await consulAPI.getServicesInstancesOptimized(false);
+          console.log('🔍 Resposta do Consul:', servicesResponse.data);
+          
+          if (servicesResponse.data.data && Array.isArray(servicesResponse.data.data)) {
+            console.log(`🔍 Total de instâncias: ${servicesResponse.data.data.length}`);
+
+            // DEBUG: Mostrar estrutura dos primeiros 3 itens completos
+            console.log(
+              '🔍 Amostra de dados (primeiros 3 itens COMPLETOS):',
+              JSON.stringify(servicesResponse.data.data.slice(0, 3), null, 2),
+            );
+
+            const normalizedHost = host.toLowerCase();
+            const rawInstances = servicesResponse.data.data ?? [];
+            const serviceInstances = rawInstances as unknown as ConsulServiceInstance[];
+
+            // Primeiro, filtrar APENAS serviços selfnode* para análise
+            const selfnodeServices = serviceInstances.filter((service) => {
+              const nameCandidates = [
+                toStringSafe(service.service),
+                toStringSafe(service.Service),
+                toStringSafe(service.ServiceName),
+                toStringSafe(service.ServiceID),
+                toStringSafe(service.service_name),
+                toStringSafe(service.meta?.name),
+                toStringSafe(service.Meta?.name),
+              ];
+              const serviceName = nameCandidates.find(Boolean) ?? '';
+              console.log(`🔍 Analisando: serviceName="${serviceName}"`);
+              return serviceName.toLowerCase().startsWith('selfnode');
+            });
+
+            console.log(
+              `🔍 Serviços selfnode encontrados: ${selfnodeServices.length} de ${servicesResponse.data.data.length} total`,
+            );
+
+            if (selfnodeServices.length > 0) {
+              console.log(
+                '🔍 Primeiro serviço selfnode (estrutura completa):',
+                JSON.stringify(selfnodeServices[0], null, 2),
+              );
+            }
+
+            // Agora verificar cada serviço selfnode
+            selfnodeServices.forEach((service) => {
+              const nameCandidates = [
+                toStringSafe(service.service),
+                toStringSafe(service.Service),
+                toStringSafe(service.ServiceName),
+                toStringSafe(service.ServiceID),
+                toStringSafe(service.Meta?.name),
+                toStringSafe(service.meta?.name),
+                toStringSafe(service.service_name),
+              ];
+              const serviceName = nameCandidates.find(Boolean) ?? '';
+
+              // Coletar TODOS os campos que podem conter IP/hostname
+              const possibleIPFields: Record<string, string | undefined> = {
+                'meta.instance': service.meta?.instance,
+                Address: service.address ?? service.Address,
+                ServiceAddress: service.ServiceAddress,
+                NodeAddress: service.nodeAddr,
+                'Node.Address': service.Node?.Address,
+                'Meta.instance': service.Meta?.instance,
+                'ServiceMeta.instance': service.ServiceMeta?.instance,
+                instance: service.instance,
+                host: service.host,
+                ip: service.ip,
+                'Meta.host': service.Meta?.host,
+                'Meta.ip': service.Meta?.ip,
+              };
+
+              // Filtrar apenas valores não vazios
+              const possibleIPs = Object.entries(possibleIPFields)
+                .filter(([, value]) => Boolean(value))
+                .map(([field, value]) => ({ field, value: value ?? '' }));
+
+              console.log(`🔍 Serviço: ${serviceName}`);
+              console.log('   Campos com valores:', possibleIPs);
+              console.log(`   Procurando: ${host}`);
+
+              // Verificar se algum campo corresponde ao host procurado
+              const foundMatch = possibleIPs.find(
+                ({ value }) => value.toLowerCase() === normalizedHost,
+              );
+
+              if (foundMatch) {
+                ipDuplicado = true;
+                if (!servicosComIp.includes(serviceName)) {
+                  servicosComIp.push(serviceName);
+                  console.log(
+                    `❌ IP/Host ENCONTRADO! Serviço: ${serviceName}, Campo: ${foundMatch.field}, Valor: ${foundMatch.value}`,
+                  );
+                }
+              }
+            });
+
+            console.log(
+              `🔍 Resultado final: ipDuplicado=${ipDuplicado}, serviços=${servicosComIp.join(', ')}`,
+            );
+          }
+        } catch (error) {
+          console.error('❌ Erro ao verificar IP duplicado:', error);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        
+        // Variáveis para acumular todos os problemas encontrados
+        let hasDuplicateConsul = false;
+        let consulServices: string[] = [];
+        
+        if (ipDuplicado) {
+          hasDuplicateConsul = true;
+          consulServices = servicosComIp;
+          
+          setPrechecks((prev) =>
+            prev.map((entry) =>
+              entry.key === 'os'
+                ? { 
+                    ...entry, 
+                    status: 'failed', 
+                    detail: `⚠️ IP/Host ${host} JÁ EXISTE no Consul!\n\nServiços encontrados: ${servicosComIp.join(', ')}\n\nSistema detectado: ${connectionTest.data.details.os} ${connectionTest.data.details.version} (${connectionTest.data.details.architecture})\n\n⚠️ ATENÇÃO: Instalar novamente pode causar conflitos de dados no Consul!` 
+                  }
+                : entry,
+            ),
+          );
+          
+          message.warning(`⚠️ IP/Host ${host} já existe no Consul! Serviços: ${servicosComIp.join(', ')}`, 8);
+        } else {
+          setPrechecks((prev) =>
+            prev.map((entry) =>
+              entry.key === 'os'
+                ? { 
+                    ...entry, 
+                    status: 'success', 
+                    detail: `✅ IP/Host ${host} não existe no Consul (OK para instalar)\n\nSistema detectado: ${connectionTest.data.details.os} ${connectionTest.data.details.version} (${connectionTest.data.details.architecture})` 
+                  }
+                : entry,
+            ),
+          );
+        }
+
+        // 3. Verificação de portas e instalação existente
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'ports'
+              ? { ...entry, status: 'running', detail: 'Verificando porta do exporter e instalação existente...' }
+              : entry,
+          ),
+        );
+
+        const exporterPort = targetType === 'windows' ? 9182 : 9100;
+        
+        // ===== VERIFICAÇÃO REAL DE INSTALAÇÃO EXISTENTE =====
+        let portOpen = false;
+        let serviceRunning = false;
+        let hasConfig = false;
+        let hasExistingInstall = false;
+        
+        try {
+          // Buscar dados do formulário
+          const sshHost = form.getFieldValue('host');
+          const sshPort = form.getFieldValue('port');
+          const sshUsername = form.getFieldValue('username');
+          const sshPassword = form.getFieldValue('password');
+          const useDomain = form.getFieldValue('useDomain');
+          const domain = form.getFieldValue('domain');
+          
+          // Montar payload com domain se necessário
+          const parsedPort =
+            typeof sshPort === 'number'
+              ? sshPort
+              : Number(sshPort) || (targetType === 'windows' ? 5985 : 22);
+
+          const checkPayload: ExistingInstallationCheckRequest = {
+            host: sshHost,
+            port: parsedPort,
+            username: sshUsername,
+            password: sshPassword ?? '',
+            exporter_port: exporterPort,
+            target_type: targetType,
+          };
+          
+          // Adicionar domain para Windows se ativo
+          if (targetType === 'windows' && useDomain && domain) {
+            checkPayload.domain = domain;
+          }
+          
+          // Verificar porta e instalação via backend
+          const checkResponse = await consulAPI.checkExistingInstallation(checkPayload);
+          
+          if (checkResponse) {
+            portOpen = checkResponse.port_open || false;
+            serviceRunning = checkResponse.service_running || false;
+            hasConfig = checkResponse.has_config || false;
+          }
+        } catch (error) {
+          console.error('Erro ao verificar instalação existente:', error);
+          // Não bloquear por erro de verificação - continuar sem detecção
+        }
+        
+        if (portOpen || serviceRunning || hasConfig) {
+          hasExistingInstall = true;
+          
+          const existingDetails = {
+            detected: true,
+            portOpen,
+            serviceRunning,
+            hasConfig
+          };
+          
+          setExistingInstallation(existingDetails);
+          
+          // Construir mensagem detalhada
+          const exporterName = targetType === 'windows' ? 'windows_exporter' : 'node_exporter';
+          let warningDetails = `⚠️ Instalação existente detectada em ${host}:\n\n`;
+          if (portOpen) warningDetails += `• Porta ${exporterPort} está em uso\n`;
+          if (serviceRunning) warningDetails += `• Serviço ${exporterName} está rodando\n`;
+          if (hasConfig) warningDetails += `• Arquivo de configuração encontrado\n`;
+          warningDetails += `\n⚠️ Continuar irá substituir a instalação existente!`;
+          
+          setPrechecks((prev) =>
+            prev.map((entry) =>
+              entry.key === 'ports'
+                ? { 
+                    ...entry, 
+                    status: 'failed', 
+                    detail: warningDetails
+                  }
+                : entry,
+            ),
+          );
+          
+          message.warning(`Instalação existente encontrada em ${host}. Revisar antes de continuar.`, 6);
+        } else {
+          setExistingInstallation(null);
+          
+          setPrechecks((prev) =>
+            prev.map((entry) =>
+              entry.key === 'ports'
+                ? { 
+                    ...entry, 
+                    status: 'success', 
+                    detail: `✅ Porta ${exporterPort} disponível\n✅ Nenhuma instalação anterior detectada` 
+                  }
+                : entry,
+            ),
+          );
+        }
+        
+        // APÓS TODAS AS VERIFICAÇÕES: Tratar apenas INSTALAÇÃO EXISTENTE primeiro
+        
+        // 🎯 CENÁRIO 1: SEMPRE mostrar instalação existente PRIMEIRO (se detectada)
+        if (hasExistingInstall) {
+          // Atualizar estado de instalação existente
+          setExistingInstallation({
+            detected: true,
+            portOpen: portOpen,
+            serviceRunning: serviceRunning,
+            hasConfig: hasConfig
+          });
+          
+          // 🔥 DESMARCAR "Registrar no Consul" automaticamente
+          setAutoRegister(false);
+          message.warning('⚠️ "Registrar no Consul" foi DESMARCADO automaticamente (instalação existente detectada)', 6);
+          
+          // Mostrar modal APENAS de instalação existente
+          setWarningModalTitle('⚙️ Instalação existente detectada no servidor');
+          setWarningModalContent({
+            duplicateConsul: false, // NÃO mostrar IP duplicado neste modal
+            existingInstall: true,
+            services: [],
+            portOpen: portOpen,
+            serviceRunning: serviceRunning,
+            hasConfig: hasConfig,
+            targetType: targetType
+          });
+          setWarningModalMode('precheck-warning');
+          setWarningModalVisible(true);
+        }
+        // 🎯 CENÁRIO 2: Se NÃO tem instalação existente mas TEM IP duplicado
+        else if (hasDuplicateConsul) {
+          setAutoRegister(false);
+          message.warning('⚠️ "Registrar no Consul" foi DESMARCADO automaticamente (IP duplicado)', 6);
+          
+          setWarningModalTitle('🚫 IP/Host já existe no Consul');
+          setWarningModalContent({
+            duplicateConsul: true,
+            existingInstall: false,
+            services: consulServices,
+            portOpen: false,
+            serviceRunning: false,
+            hasConfig: false,
+            targetType: targetType
+          });
+          setWarningModalMode('precheck-warning');
+          setWarningModalVisible(true);
+        }
+        
+        // 📝 GUARDAR informação de IP duplicado para verificação posterior
+        // (quando usuário MARCAR o switch de Registrar no Consul)
+        if (hasDuplicateConsul) {
+          console.log('💾 Guardando IP duplicado no sessionStorage para verificação futura');
+          sessionStorage.setItem('consulIPDuplicate', 'true');
+          sessionStorage.setItem('consulIPServices', JSON.stringify(consulServices));
+        } else {
+          sessionStorage.removeItem('consulIPDuplicate');
+          sessionStorage.removeItem('consulIPServices');
+        }
+
+        // 4. Espaço em disco (simulado - TODO: implementar verificação real)
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'disk'
+              ? { ...entry, status: 'running', detail: 'Verificando espaço em disco...' }
+              : entry,
+          ),
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'disk'
+              ? { 
+                  ...entry, 
+                  status: 'success', 
+                  detail: '✅ Espaço em disco suficiente (simulado)\n\nNOTA: Verificação real será implementada futuramente.' 
+                }
+              : entry,
+          ),
+        );
+
+        // 5. Firewall (simulado - informativo apenas)
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'firewall'
+              ? { ...entry, status: 'running', detail: 'Verificando requisitos de firewall...' }
+              : entry,
+          ),
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        setPrechecks((prev) =>
+          prev.map((entry) =>
+            entry.key === 'firewall'
+              ? { 
+                  ...entry, 
+                  status: 'success', 
+                  detail: `✅ Firewall (informativo)\n\nCertifique-se de que a porta ${exporterPort} está liberada no firewall do ${host} para acesso do Prometheus.` 
+                }
+              : entry,
+          ),
+        );
+
+      } else {
+        throw new Error(connectionTest.data.message || 'Falha na conexão');
+      }
+
+      setPrecheckRunning(false);
+      
+      // Verificar se há avisos que impedem avanço automático
+      const hasWarnings = existingInstallation?.detected || warningModalVisible;
+      
+      if (!hasWarnings) {
+        message.success('Pre-checks concluído com sucesso. Avançando...');
+        setCurrentStep(2);
+      } else {
+        message.warning('Pre-checks concluído com avisos. Revise antes de continuar.', 6);
+      }
+
+    } catch (error: unknown) {
+      console.error('Erro no pre-check de conectividade:', error);
+      try {
+        console.log('🔍 Erro completo:', JSON.stringify(error, null, 2));
+      } catch {
+        console.log('🔍 Erro completo indisponível para serialização');
+      }
+
+      // Análise detalhada do erro para fornecer feedback específico
+      let errorTitle = 'Falha na conexão';
+      let errorDetails = 'Verifique host, porta, usuário e senha.';
+      let errorCategory = 'GERAL';
+      let errorCode = 'UNKNOWN';
+
+      const axiosError =
+        typeof error === 'object' && error !== null ? (error as AxiosErrorLike) : undefined;
+
+      // Verificar se é um erro HTTP do backend
+      if (axiosError?.response) {
+        const status = axiosError.response.status ?? 0;
+        const responseData = axiosError.response.data;
+        const backendMessage =
+          typeof responseData === 'string'
+            ? responseData
+            : responseData?.message ?? responseData?.detail ?? '';
+
+        console.log(`🔍 Status HTTP: ${status}`);
+        console.log('🔍 Mensagem backend:', backendMessage);
+
+        // Parse structured error from backend (format: ERROR_CODE|Message|Category)
+        errorCode = 'UNKNOWN';
+        let errorMsg = String(backendMessage);
+
+        if (typeof backendMessage === 'string' && backendMessage.includes('|')) {
+          const parts = backendMessage.split('|');
+          errorCode = parts[0] || 'UNKNOWN';
+          errorMsg = parts[1] || backendMessage;
+          errorCategory = parts[2] || 'GERAL';
+        }
+
+        console.log(`🔍 Parsed - Code: ${errorCode}, Category: ${errorCategory}`);
+
+        // 503 = Backend não conseguiu conectar no host remoto
+        if (status === 503) {
+          if (errorCode === 'ALL_METHODS_FAILED') {
+            // Erro específico do multi-connector Windows
+            errorTitle = `❌ Todas as conexões falharam - ${host}`;
+            
+            // Tentar extrair detalhes das tentativas do backend
+            let attemptsText = '';
+            const fullMessage = String(backendMessage);
+            if (fullMessage.includes('Tentativas realizadas:')) {
+              const match = fullMessage.match(/Tentativas realizadas:([\s\S]+)/);
+              if (match) {
+                attemptsText = match[1].trim();
+              }
+            }
+            
+            errorDetails = `O sistema tentou conectar usando TODOS os métodos disponíveis, mas nenhum funcionou.\n\n📋 TENTATIVAS REALIZADAS:\n${attemptsText}\n\n✅ AÇÕES NECESSÁRIAS:\n\n🔧 PSEXEC (SMB/445):\n• Usuário precisa estar no grupo 'Administradores'\n• Execute no servidor:\n  net localgroup Administradores ${domain ? domain + '\\' : ''}${username} /add\n• Verifique se serviço 'Netlogon' está rodando\n• Porta 445 deve estar aberta no firewall\n\n🔧 WINRM (5985/5986):\n• Habilite WinRM no servidor:\n  Enable-PSRemoting -Force\n  Set-Item WSMan:\\localhost\\Client\\TrustedHosts -Value "${host}" -Force\n• Configure firewall:\n  New-NetFirewallRule -DisplayName "WinRM HTTP" -Direction Inbound -LocalPort 5985 -Protocol TCP -Action Allow\n\n🔧 SSH (22):\n• Instale OpenSSH Server:\n  Add-WindowsCapability -Online -Name OpenSSH.Server\n  Start-Service sshd\n  Set-Service sshd -StartupType Automatic\n\n💡 RECOMENDAÇÃO:\nComece habilitando WinRM (mais fácil) ou adicione o usuário ao grupo Administradores para PSExec funcionar.`;
+          } else if (errorCode === 'CONNECTION_REFUSED') {
+            errorTitle = `🚫 Conexão recusada em ${host}:${port}`;
+            errorDetails = `${errorMsg}\n\n✅ VERIFICAÇÕES:\n• Execute: ping ${host}\n• O host está online?\n• SSH/WinRM está instalado e rodando?\n• Porta ${port} está aberta no firewall?\n• Tente: telnet ${host} ${port}\n\n📋 COMANDOS ÚTEIS:\n  sudo systemctl status sshd\n  sudo systemctl start sshd`;
+          } else if (errorCode === 'PORT_CLOSED') {
+            errorTitle = `🚪 Porta ${port} fechada em ${host}`;
+            errorDetails = `${errorMsg}\n\nHost respondeu, mas porta ${port} está fechada/filtrada.\n\n✅ VERIFICAÇÕES:\n• SSH está rodando?\n  sudo systemctl status sshd\n• Porta SSH está correta? (padrão: 22)\n• Firewall bloqueando?\n  sudo ufw status\n  sudo ufw allow ${port}/tcp\n• Tente conectar:\n  telnet ${host} ${port}`;
+          } else if (errorCode === 'DNS_ERROR') {
+            errorTitle = `🌐 DNS não resolveu ${host}`;
+            errorDetails = `${errorMsg}\n\n✅ VERIFICAÇÕES:\n• Hostname está correto?\n• DNS está acessível?\n• Tente: nslookup ${host}\n• Alternativa: use o endereço IP diretamente`;
+          } else if (errorCode === 'NETWORK_UNREACHABLE') {
+            errorTitle = `📡 Rede inacessível - ${host}`;
+            errorDetails = `${errorMsg}\n\n✅ VERIFICAÇÕES:\n• Existe rota de rede até ${host}?\n• VPN está ativa (se necessário)?\n• Execute: tracert ${host} (Windows) ou traceroute ${host} (Linux)\n• Firewall corporativo bloqueando?\n• Segmentação de rede permite a comunicação?`;
+          } else if (errorCode === 'NETWORK_ERROR') {
+            errorTitle = `⚠️ Erro de rede`;
+            errorDetails = `${errorMsg}\n\n✅ VERIFICAÇÕES:\n• Conectividade de rede OK?\n• Firewall local/remoto bloqueando?\n• Execute: ping ${host}\n• Cable/Wi-Fi funcionando?`;
+          } else if (errorCode === 'TIMEOUT') {
+            errorTitle = `⏱️ Timeout ao conectar em ${host}`;
+            errorDetails = `${errorMsg}\n\nHost não respondeu em tempo hábil.\n\n✅ POSSÍVEIS CAUSAS:\n• Host ${host} está OFFLINE\n• Host não alcançável pela rede\n• Firewall bloqueando completamente\n• IP incorreto ou não existe na rede\n\n🔍 VERIFIQUE:\n• Execute: ping ${host}\n• Host está ligado?\n• IP/hostname está correto?`;
+          } else {
+            // Genérico 503
+            errorTitle = `❌ Host ${host} inacessível`;
+            errorDetails = `O backend não conseguiu estabelecer conexão.\n\n🔌 CONECTIVIDADE:\n• Execute: ping ${host}\n• Host está online e acessível?\n• Porta ${port} está aberta no firewall?\n\n🔐 SERVIÇO:\n• SSH/WinRM está ativo?\n• Porta ${port} é a correta?\n  - SSH padrão: 22\n  - WinRM HTTP: 5985\n  - WinRM HTTPS: 5986\n\n📡 REDE:\n• Existe rota de rede entre backend e ${host}?\n• VPN está ativa (se necessário)?\n• Segurança de rede permite a conexão?`;
+          }
+        }
+        // 401 = Autenticação falhou
+        else if (status === 401) {
+          errorTitle = `🔐 Autenticação falhou`;
+          errorDetails = `${errorMsg || `Usuário '${username}' ou senha incorretos.`}\n\n✅ VERIFICAÇÕES:\n• Usuário '${username}' existe no ${host}?\n• Senha está correta? (atenção a maiúsculas/minúsculas)\n• Usuário está bloqueado ou expirado?\n• Execute no servidor:\n  Linux: id ${username}\n  Windows: net user ${username}\n\n💡 DICA SSH:\n• Teste manual: ssh ${username}@${host} -p ${port}\n• Verifique logs: /var/log/auth.log (Linux)`;
+        }
+        // 403 = Permissão negada
+        else if (status === 403) {
+          if (errorCode === 'PERMISSION_DENIED') {
+            errorTitle = `🚷 Permissão negada`;
+            errorDetails = `${errorMsg}\n\n✅ VERIFICAÇÕES:\n• Chave SSH autorizada? Arquivo: ~/.ssh/authorized_keys\n• Permissões corretas:\n  chmod 700 ~/.ssh\n  chmod 600 ~/.ssh/authorized_keys\n• Usuário '${username}' tem acesso SSH/WinRM?\n• SELinux/AppArmor bloqueando? (Linux)\n• Política de grupo bloqueando? (Windows)\n\n📋 COMANDOS ÚTEIS:\n  Ver permissões: ls -la ~/.ssh/\n  Verificar grupo: groups ${username}`;
+          } else {
+            errorTitle = `🚷 Acesso negado`;
+            errorDetails = `Usuário '${username}' não tem permissões suficientes.\n\n✅ VERIFICAÇÕES:\n• Usuário tem acesso SSH/WinRM?\n• Usuário tem privilégios sudo/administrador?\n• Arquivo authorized_keys configurado?\n• Grupo correto: sudo (Linux) / Administrators (Windows)`;
+          }
+        }
+        // 504 = Timeout
+        else if (status === 504) {
+          errorTitle = `⏱️ Timeout (>60s)`;
+          errorDetails = `${errorMsg || `Host ${host} não respondeu em tempo hábil.`}\n\n✅ VERIFICAÇÕES:\n• Host ${host} está muito lento?\n• Latência de rede alta?\n• Execute: ping ${host} -t (verificar latência)\n• Serviço SSH/WinRM travado?\n• Host sobrecarregado (CPU/memória)?\n\n💡 DICA:\n• Teste com timeout maior\n• Verifique carga do servidor\n• Reinicie o serviço SSH/WinRM se necessário`;
+        }
+        // 500 = Erro interno do backend
+        else if (status === 500) {
+          errorTitle = `⚙️ Erro interno do backend`;
+          errorDetails = `${errorMsg || 'O backend encontrou um erro inesperado.'}\n\n📋 AÇÃO NECESSÁRIA:\n• Verifique os logs do backend (console do servidor)\n• Pode ser:\n  - Biblioteca SSH/WinRM com problema\n  - Permissões do usuário do backend\n  - Dependência faltando\n\n🔧 DEBUG:\n• Restart do backend pode resolver\n• Verifique requirements.txt instalados`;
+        }
+        // Outros erros HTTP
+        else {
+          errorTitle = `❌ Erro HTTP ${status}`;
+          errorDetails = errorMsg || 'Erro desconhecido do servidor.\n\nVerifique os logs do backend para mais detalhes.';
+        }
+      }
+      // Erros de rede do cliente (frontend → backend)
+      else if (
+        axiosError?.code === 'ECONNABORTED' ||
+        (axiosError?.message && axiosError.message.includes('timeout'))
+      ) {
+        const timeoutSeconds = axiosError?.timeout ?? 60;
+        errorTitle = `⏱️ Timeout na requisição (> ${timeoutSeconds}s)`;
+        errorDetails = `A requisição ao backend demorou muito.\n\n✅ POSSÍVEIS CAUSAS:\n• O host ${host} está muito lento para responder\n• Backend está processando por mais de ${timeoutSeconds}s\n• Conexão SSH/WinRM demorando muito\n• Host pode estar offline ou rede instável\n\n💡 TENTE:\n1. Verificar se o host responde: ping ${host}\n2. Testar conexão manual: ssh ${username}@${host}\n3. Restart do backend se estiver travado`;
+      }
+      // Erro de conexão frontend → backend
+      else if (
+        axiosError?.code === 'ERR_NETWORK' ||
+        (axiosError?.message && axiosError.message.includes('Network Error'))
+      ) {
+        errorTitle = `🔌 Backend não responde`;
+        errorDetails = `Não foi possível conectar ao backend.\n\n✅ VERIFICAÇÕES:\n• Backend está rodando?\n  URL: http://localhost:5000\n• Execute: cd backend && python app.py\n• Firewall local bloqueando porta 5000?\n• CORS configurado corretamente?\n\n📋 TESTE:\n• Abra: http://localhost:5000/api/v1/health\n• Deve retornar status OK`;
+      }
+      // Erro JavaScript genérico
+      else if (error instanceof Error) {
+        errorTitle = `⚠️ ${error.message}`;
+        errorDetails = `Erro inesperado no frontend.\n\n🔍 DETALHES:\n${error.message}\n\n💡 AÇÃO:\n• Verifique console do navegador (F12)\n• Compartilhe o erro completo para suporte`;
+      }
+      // Erro completamente desconhecido
+      else {
+        let serializedError = '';
+        try {
+          serializedError = JSON.stringify(error, null, 2);
+        } catch {
+          serializedError = String(error);
+        }
+        errorTitle = `❓ Erro desconhecido`;
+        errorDetails = `Tipo de erro não reconhecido.\n\n🔍 DEBUG:\nAbra o console (F12) e compartilhe o erro completo.\n\nErro: ${serializedError}`;
+      }
+      
+      // Mostrar modal de erro detalhado
+      setErrorModalIcon(errorCode);
+      setErrorModalTitle(errorTitle);
+      setErrorModalContent(errorDetails);
+      setErrorCategory(errorCategory);
+      setErrorModalVisible(true);
+      
+      setPrechecks((prev) =>
+        prev.map((entry) =>
+          entry.key === 'connectivity'
+            ? { 
+                ...entry, 
+                status: 'failed', 
+                detail: `❌ ${errorTitle}` 
+              }
+            : entry.status === 'running' || entry.status === 'pending'
+            ? { ...entry, status: 'pending', detail: 'Cancelado devido à falha de conexão.' }
+            : entry,
+        ),
+      );
+
+      setPrecheckRunning(false);
+      message.error(`Falha na conexão - veja detalhes no modal`, 5);
+    }
   };
 
   const buildInstallPlan = (): string[] => {
@@ -311,7 +1165,7 @@ After=network-online.target
 User=node_exporter
 Group=node_exporter
 Type=simple
-ExecStart=/usr/local/bin/node_exporter --web.listen-address=\":${exporterPort}\"${useBasicAuth ? ' --web.config.file=/etc/node_exporter/config.yml' : ''}${extraCollectors.length ? ' --collector.' + extraCollectors.join(' --collector.') : ''}
+ExecStart=/usr/local/bin/node_exporter --web.listen-address=':${exporterPort}'${useBasicAuth ? ' --web.config.file=/etc/node_exporter/config.yml' : ''}${extraCollectors.length ? ' --collector.' + extraCollectors.join(' --collector.') : ''}
 Restart=on-failure
 
 [Install]
@@ -403,37 +1257,212 @@ EOF"`,
     }
 
     if (autoRegister) {
+      // Preparar metadata do Consul incluindo informações de autenticação
+      const consulMeta = {
+        datacenter: selectedNodeAddress,
+        module: targetType === 'linux' ? 'selfnode_exporter' : 'windows_exporter',
+        env: 'production',
+        ...(useBasicAuth && basicAuthUser && basicAuthPassword && targetType === 'linux' ? {
+          basic_auth_enabled: 'true',
+          basic_auth_user: basicAuthUser
+        } : {})
+      };
+      
+      // Health check com ou sem autenticação
+      const healthCheckConfig = useBasicAuth && basicAuthUser && basicAuthPassword && targetType === 'linux'
+        ? `"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s","Header":{"Authorization":["Basic $(echo -n '${basicAuthUser}:${basicAuthPassword}' | base64)"]}}`
+        : `"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s"}`;
+      
       plan.push(
-        `[CONSUL] Registrar servico (datacenter=${selectedDatacenter}): curl -X PUT http://CONSUL_API/v1/agent/service/register -d '{"ID":"${targetType}-exporter-${host}","Name":"${targetType}-exporter","Address":"${host}","Port":${exporterPort},"Meta":{"datacenter":"${selectedDatacenter}"},"Check":{"HTTP":"http://${host}:${exporterPort}/metrics","Interval":"30s"}}'`,
+        `[CONSUL] Registrar servico (datacenter=${selectedNodeAddress}): curl -X PUT http://CONSUL_API/v1/agent/service/register -d '{"ID":"${targetType}-exporter-${host}","Name":"${targetType}-exporter","Address":"${host}","Port":${exporterPort},"Meta":${JSON.stringify(consulMeta)},${healthCheckConfig}}'`,
       );
     }
 
     plan.push(
-      `[VERIFICACAO] Confirmar scraping no Prometheus apontando para http://${host}:${exporterPort}/metrics.`,
+      `[VERIFICACAO] Confirmar scraping no Prometheus apontando para http://${host}:${exporterPort}/metrics${useBasicAuth && targetType === 'linux' ? ` (com Basic Auth: ${basicAuthUser})` : ''}.`,
     );
 
     return plan;
   };
+
+  void buildInstallPlan;
 
   const handleInstall = async () => {
     setInstallRunning(true);
     setInstallSuccess(null);
     setInstallLogs([]);
 
-    const stepsLog = buildInstallPlan();
+    try {
+      // Validar campos obrigatórios
+      const authType = form.getFieldValue('authType');
+      const host = form.getFieldValue('host');
+      const port = form.getFieldValue('port');
+      const username = form.getFieldValue('username');
+      const password = form.getFieldValue('password');
+      const keyPath = form.getFieldValue('keyPath');
+      const useDomain = form.getFieldValue('useDomain');
+      const domain = form.getFieldValue('domain');
 
-    appendLog('Iniciando rotina remota...');
-    for (const log of stepsLog) {
-      appendLog(log);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      if (!host || !port || !username) {
+        message.error('Preencha todos os campos obrigatórios');
+        setInstallRunning(false);
+        return;
+      }
+
+      if (authType === 'password' && !password) {
+        message.error('Senha é obrigatória para autenticação por senha');
+        setInstallRunning(false);
+        return;
+      }
+
+      if (authType === 'key' && !keyPath && !privateKeyFile) {
+        message.error('Chave SSH é obrigatória para autenticação por chave');
+        setInstallRunning(false);
+        return;
+      }
+
+      appendLog('🚀 Iniciando instalação remota...');
+      appendLog(`📡 Conectando em ${host}:${port} como ${username}...`);
+      
+      // Abrir modal de logs automaticamente
+      setLogModalVisible(true);
+
+      if (selectedNodeAddress) {
+        appendLog(`🏢 Nó Consul selecionado: ${selectedNodeLabel}`);
+      }
+
+      // Preparar request para o backend
+      const methodToSend: InstallerRequest['method'] =
+        targetType === 'windows'
+          ? (resolvedWindowsMethod ?? 'psexec')
+          : connectionMethod === 'fallback'
+          ? 'winrm'
+          : 'ssh';
+
+      appendLog(`🛠️ Método de instalação selecionado: ${methodToSend.toUpperCase()}`);
+
+      const installRequest: InstallerRequest = {
+        os_type: targetType,
+        method: methodToSend,
+        host,
+        username,
+        collector_profile: selectedCollectors.join(','),
+        register_in_consul: autoRegister,
+      };
+
+      if (selectedNodeAddress) {
+        installRequest.consul_node = selectedNodeAddress;
+      }
+
+      if (targetType === 'linux') {
+        const parsedPort = parseInt(String(port ?? '22'), 10);
+        installRequest.ssh_port = Number.isNaN(parsedPort) ? 22 : parsedPort;
+
+        if (authType === 'password') {
+          installRequest.password = password;
+        } else {
+          installRequest.key_file = privateKeyFile || keyPath;
+        }
+
+        installRequest.use_sudo = true;
+
+        if (useBasicAuth && basicAuthUser && basicAuthPassword) {
+          installRequest.basic_auth_user = basicAuthUser;
+          installRequest.basic_auth_password = basicAuthPassword;
+          appendLog(`🔒 Basic Auth habilitado (usuário: ${basicAuthUser})`);
+        }
+      } else {
+        if (authType === 'password' && password) {
+          installRequest.password = password;
+        }
+
+        if (useDomain && domain) {
+          installRequest.domain = domain;
+          appendLog(`🏢 Usando conta de domínio: ${domain}\\${username}`);
+        }
+
+        if (methodToSend === 'winrm') {
+          const winrmPort = parseInt(String(port ?? '5985'), 10);
+          installRequest.port = Number.isNaN(winrmPort) ? 5985 : winrmPort;
+          installRequest.use_ssl = false;
+        } else if (methodToSend === 'ssh') {
+          const sshPort = parseInt(String(port ?? '22'), 10);
+          installRequest.ssh_port = Number.isNaN(sshPort) ? 22 : sshPort;
+        } else if (!installRequest.psexec_path) {
+          installRequest.psexec_path = 'psexec.exe';
+        }
+      }
+
+      appendLog('📤 Enviando requisição para o backend...');
+
+      // Chamar API de instalação
+      const response = await consulAPI.startInstallation(installRequest);
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Erro ao iniciar instalação');
+      }
+
+      const installationId = response.data.installation_id;
+      appendLog(`✅ Instalação iniciada (ID: ${installationId})`);
+      appendLog('📊 Acompanhando progresso...');
+
+      // Polling do status (poderia ser WebSocket no futuro)
+      const pollStatus = async () => {
+        try {
+          const statusResponse = await consulAPI.getInstallationStatus(installationId);
+          const status = statusResponse.data;
+
+          // Atualizar logs se houver novos
+          if (status.logs && status.logs.length > 0) {
+            status.logs.forEach((log: string) => {
+              if (!installLogs.find(l => l.message === log)) {
+                appendLog(log);
+              }
+            });
+          }
+
+          // Verificar se completou
+          if (status.status === 'completed') {
+            appendLog('✅ Instalação concluída com sucesso!');
+            setInstallSuccess(true);
+            setInstallRunning(false);
+            setCurrentStep(4); // Ir para tela de validação
+            message.success('Exporter instalado e validado!');
+            return;
+          }
+
+          if (status.status === 'failed') {
+            appendLog(`❌ Instalação falhou: ${status.message}`);
+            setInstallSuccess(false);
+            setInstallRunning(false);
+            setCurrentStep(4); // Ir para tela de validação mesmo com falha
+            message.error('Falha na instalação');
+            return;
+          }
+
+          // Continuar polling se ainda estiver rodando
+          if (status.status === 'running' || status.status === 'pending') {
+            appendLog(`⏳ Progresso: ${status.progress}% - ${status.message}`);
+            setTimeout(pollStatus, 2000); // Poll a cada 2 segundos
+          }
+        } catch (error) {
+          console.error('Erro ao verificar status:', error);
+          appendLog(`⚠️ Erro ao verificar status: ${error}`);
+          setTimeout(pollStatus, 3000); // Retry após 3 segundos
+        }
+      };
+
+      // Iniciar polling
+      setTimeout(pollStatus, 1000);
+
+    } catch (error) {
+      console.error('Erro na instalação:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      appendLog(`❌ Erro: ${errorMessage}`);
+      setInstallSuccess(false);
+      setInstallRunning(false);
+      message.error('Erro ao iniciar instalação');
     }
-
-    appendLog('Instalacao finalizada sem erros.');
-    setInstallRunning(false);
-    setInstallSuccess(true);
-    setCurrentStep(3);
-    message.success('Exporter instalado e validado.');
   };
 
   const handleReset = () => {
@@ -456,8 +1485,11 @@ EOF"`,
     setBasicAuthUser('prometheus');
     setBasicAuthPassword('');
     setAutoRegister(true);
-    setSelectedDatacenter('palmas');
+    setSelectedNodeAddress(datacenterOptions[0]?.value || '');
     setConnectionMethod('ssh');
+    setResolvedWindowsMethod(null);
+    setPrivateKeyFile('');
+    setExistingInstallation(null);
   };
 
   const availableCollectorOptions = useMemo(
@@ -468,14 +1500,34 @@ EOF"`,
   const collectorHelpText = selectedCollectors.length
     ? `${selectedCollectors.length} coletor(es) selecionado(s)`
     : 'Nenhum coletor selecionado';
-  const datacenterOptions = useMemo(
-    () => [
-      { value: 'palmas', label: 'Palmas (PRD)' },
-      { value: 'rio', label: 'Rio (DR)' },
-      { value: 'lab', label: 'Laboratorio' },
-    ],
-    [],
-  );
+
+  // Buscar nós do Consul para o seletor
+  useEffect(() => {
+    const fetchNodes = async () => {
+      setLoadingNodes(true);
+      try {
+        const response = await consulAPI.getNodes();
+        const activeNodes = (response.data?.data || response.data || [])
+          .filter((node: ConsulNode) => (node.Status ?? 'alive') === 'alive')
+          .sort((a: ConsulNode, b: ConsulNode) => a.Node.localeCompare(b.Node));
+        
+        setNodes(activeNodes);
+
+        // Auto-selecionar o primeiro nó se nenhum estiver selecionado
+        if (!selectedNodeAddress && activeNodes.length > 0) {
+          setSelectedNodeAddress(activeNodes[0].Address);
+          setSelectedNodeName(activeNodes[0].Node);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar nós do Consul:', error);
+        message.error('Falha ao carregar nós do Consul. Verifique a conexão com o backend.');
+      } finally {
+        setLoadingNodes(false);
+      }
+    };
+
+    fetchNodes();
+  }, [selectedNodeAddress]);
 
   useEffect(() => {
     const allowedValues = new Set(availableCollectorOptions.map((option) => option.value));
@@ -508,78 +1560,75 @@ EOF"`,
               label: 'SSH (porta 22)',
             },
           ]
-        : [
-            {
-              value: 'fallback' as const,
-              label: 'WinRM / PowerShell remoto (recomendado)',
-            },
-            {
-              value: 'ssh' as const,
-              label: 'OpenSSH (porta 22)',
-            },
-          ];
+        : [];  // Windows não tem opções - é automático
 
     const connectionHint =
       targetType === 'linux'
-        ? 'O instalador executa todos os comandos via SSH com privilegios elevados via sudo.'
-        : 'WinRM/PowerShell aplica o instalador MSI e configura o servico automaticamente; use SSH apenas se o Windows OpenSSH estiver configurado.';
+        ? 'O instalador executa todos os comandos via SSH com privilégios elevados via sudo.'
+        : '🔄 O instalador tenta automaticamente múltiplos métodos de conexão:\n\n1️⃣ PSExec (porta 445/SMB) - Mais comum\n2️⃣ WinRM (porta 5985) - Se PSExec falhar\n3️⃣ SSH/OpenSSH (porta 22) - Último recurso\n\nNão é necessário configurar nada manualmente - o sistema escolhe o melhor método disponível!';
 
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Paragraph>
-          Escolha o sistema alvo e o metodo de conexao inicial. Esse passo define como os pre-checks serao conduzidos.
+          Escolha o sistema alvo. Para Windows, o instalador tenta automaticamente todos os métodos de conexão disponíveis.
         </Paragraph>
 
         <Row gutter={16}>
-          <Col xs={24} md={12}>
+          <Col xs={24} md={targetType === 'linux' ? 12 : 24}>
             <Card title="Sistema operacional" size="small" variant="borderless" style={{ background: '#fafafa' }}>
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 <Select
                   value={targetType}
-                  onChange={(value: 'linux' | 'windows') => setTargetType(value)}
+                  onChange={(value: 'linux' | 'windows') => {
+                    setTargetType(value);
+                    form.setFieldsValue({ targetType: value });
+                  }}
                   style={{ width: '100%' }}
                 >
                   <Option value="linux">
                     <Space>
                       <LinuxOutlined />
-                      Linux
+                      Linux (via SSH)
                     </Space>
                   </Option>
                   <Option value="windows">
                     <Space>
                       <WindowsOutlined />
-                      Windows
+                      Windows (conexão automática)
                     </Space>
                   </Option>
                 </Select>
-                <Paragraph type="secondary" style={{ margin: 0 }}>
-                  Linux utiliza conexao SSH. Windows pode operar via WinRM/PowerShell ou SSH quando previamente habilitado.
-                </Paragraph>
-              </Space>
-            </Card>
-          </Col>
-
-          <Col xs={24} md={12}>
-            <Card title="Metodo de conexao" size="small" variant="borderless" style={{ background: '#fafafa' }}>
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Select
-                  value={connectionMethod}
-                  onChange={(value: 'ssh' | 'fallback') => setConnectionMethod(value)}
-                  style={{ width: '100%' }}
-                  disabled={connectionOptions.length === 1}
-                >
-                  {connectionOptions.map((option) => (
-                    <Option value={option.value} key={option.value}>
-                      {option.label}
-                    </Option>
-                  ))}
-                </Select>
-                <Paragraph type="secondary" style={{ margin: 0 }}>
+                <Paragraph type="secondary" style={{ margin: 0, whiteSpace: 'pre-line' }}>
                   {connectionHint}
                 </Paragraph>
               </Space>
             </Card>
           </Col>
+
+          {/* Só mostrar seleção de método se for Linux */}
+          {targetType === 'linux' && (
+            <Col xs={24} md={12}>
+              <Card title="Método de conexão" size="small" variant="borderless" style={{ background: '#fafafa' }}>
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Select
+                    value={connectionMethod}
+                    onChange={(value: 'ssh' | 'fallback') => setConnectionMethod(value)}
+                    style={{ width: '100%' }}
+                    disabled={connectionOptions.length === 1}
+                  >
+                    {connectionOptions.map((option) => (
+                      <Option value={option.value} key={option.value}>
+                        {option.label}
+                      </Option>
+                    ))}
+                  </Select>
+                  <Paragraph type="secondary" style={{ margin: 0 }}>
+                    SSH é o método padrão para servidores Linux.
+                  </Paragraph>
+                </Space>
+              </Card>
+            </Col>
+          )}
         </Row>
 
         <Space>
@@ -593,42 +1642,54 @@ EOF"`,
 
   const renderPrecheckContent = () => {
     // Determinar labels e placeholders baseado no tipo de conexão
-    const isWindowsFallback = targetType === 'windows' && connectionMethod === 'fallback';
-    const isWindowsSSH = targetType === 'windows' && connectionMethod === 'ssh';
+    const isWindows = targetType === 'windows';
     const isLinux = targetType === 'linux';
 
-    const portLabel = isWindowsFallback ? 'Porta WinRM' : 'Porta SSH';
-    const portPlaceholder = isWindowsFallback ? '5985' : '22';
-    const portMessage = isWindowsFallback ? 'Informe a porta WinRM' : 'Informe a porta SSH';
+    const portLabel = 'Porta SSH';
+    const portPlaceholder = '22';
+    const portMessage = 'Informe a porta SSH';
 
     const userPlaceholder = isLinux ? 'root' : 'Administrator';
     const keyPathPlaceholder =
       targetType === 'windows'
         ? 'C:\\Users\\Administrator\\.ssh\\id_rsa'
         : '/home/user/.ssh/id_rsa';
-    const authOptions =
-      isWindowsFallback
-        ? [{ value: 'password', label: 'Senha (WinRM/PowerShell)' }]
-        : [
-            { value: 'password', label: isWindowsSSH ? 'Senha (OpenSSH)' : 'Senha' },
-            { value: 'key', label: 'Chave SSH' },
-          ];
+    
+    // Windows: apenas senha (multi-connector cuida de tudo)
+    // Linux: senha ou chave SSH
+    const authOptions = isWindows
+      ? [{ value: 'password', label: 'Senha (conexão automática)' }]
+      : [
+          { value: 'password', label: 'Senha' },
+          { value: 'key', label: 'Chave SSH' },
+        ];
 
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Paragraph>
           Informe o alvo e execute os pre-checks para validar conectividade, sistema
-          operacional e dependencias antes de instalar o exporter.
+          operacional e dependências antes de instalar o exporter.
         </Paragraph>
+
+        {isWindows && (
+          <Alert
+            message="🔄 Conexão Automática Multi-Método"
+            description="Para Windows, o sistema tenta automaticamente PSExec → WinRM → SSH. Você só precisa fornecer IP e credenciais!"
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
 
         <Form
           layout="vertical"
           form={form}
-          initialValues={{ port: isWindowsFallback ? 5985 : 22, authType: 'password' }}
-          style={{ maxWidth: 720 }}
+          initialValues={{ port: 22, authType: 'password' }}
+          style={{ maxWidth: 920 }}
         >
+          {/* Linha 1: IP/Hostname, Porta (só Linux), Tipo de Autenticação */}
           <Row gutter={16}>
-            <Col xs={24} md={14}>
+            <Col xs={24} md={isWindows ? 14 : 10}>
               <Form.Item
                 name="host"
                 label="IP ou hostname"
@@ -637,74 +1698,200 @@ EOF"`,
                 <Input placeholder="Ex: 192.168.1.20" allowClear />
               </Form.Item>
             </Col>
-            <Col xs={24} md={10}>
+            
+            {/* Porta: apenas para Linux */}
+            {isLinux && (
+              <Col xs={24} md={6}>
+                <Form.Item
+                  name="port"
+                  label={portLabel}
+                  rules={[{ required: true, message: portMessage }]}
+                >
+                  <Input placeholder={portPlaceholder} allowClear />
+                </Form.Item>
+              </Col>
+            )}
+            
+            <Col xs={24} md={isWindows ? 10 : 8}>
               <Form.Item
-                name="port"
-                label={portLabel}
-                rules={[{ required: true, message: portMessage }]}
+                name="authType"
+                label="Autenticação"
+                rules={[{ required: true, message: 'Selecione o método de autenticação' }]}
               >
-                <Input placeholder={portPlaceholder} allowClear />
+                <Select disabled={authOptions.length === 1}>
+                  {authOptions.map((option) => (
+                    <Option value={option.value} key={option.value}>
+                      {option.label}
+                    </Option>
+                  ))}
+                </Select>
               </Form.Item>
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="username"
-                label="Usuario"
-                rules={[{ required: true, message: 'Informe o usuario remoto' }]}
-              >
-                <Input placeholder={userPlaceholder} allowClear />
-              </Form.Item>
-            </Col>
-          <Col xs={24} md={12}>
-            <Form.Item
-              name="authType"
-              label="Autenticacao"
-              rules={[{ required: true, message: 'Selecione o metodo de autenticacao' }]}
-            >
-              <Select disabled={authOptions.length === 1}>
-                {authOptions.map((option) => (
-                  <Option value={option.value} key={option.value}>
-                    {option.label}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-          </Col>
-        </Row>
-
-        <Form.Item noStyle shouldUpdate={(prev, cur) => prev.authType !== cur.authType}>
-          {({ getFieldValue }) =>
-            getFieldValue('authType') === 'password' ? (
-              <Form.Item
-                name="password"
-                label="Senha"
-                rules={[{ required: true, message: 'Informe a senha' }]}
-              >
-                <Input.Password placeholder="Senha do usuario" allowClear />
-              </Form.Item>
-            ) : (
-              <Form.Item
-                name="keyPath"
-                label="Caminho da chave privada"
-                rules={[{ required: true, message: 'Informe o caminho da chave' }]}
-              >
-                <Input placeholder={keyPathPlaceholder} allowClear />
-              </Form.Item>
-            )
-          }
-        </Form.Item>
-      </Form>
+          {/* Linha 2: Switch de Domínio ANTES + Domínio/Usuário/Senha na mesma linha */}
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.authType !== cur.authType || prev.targetType !== cur.targetType}>
+            {({ getFieldValue }) => {
+              const authType = getFieldValue('authType');
+              const currentTargetType = getFieldValue('targetType');
+              const isWindowsTarget = currentTargetType === 'windows';
+              
+              if (authType === 'password') {
+                return (
+                  <>
+                    {/* Switch de Domínio ANTES dos campos (apenas Windows) */}
+                    {isWindowsTarget && (
+                      <Row gutter={16} style={{ marginBottom: 16 }}>
+                        <Col xs={24}>
+                          <Card size="small" style={{ background: '#f0f5ff', border: '1px solid #adc6ff' }}>
+                            <Space>
+                              <Form.Item
+                                name="useDomain"
+                                valuePropName="checked"
+                                style={{ marginBottom: 0 }}
+                              >
+                                <Switch />
+                              </Form.Item>
+                              <span style={{ fontWeight: 500 }}>
+                                Conta de Domínio (Active Directory)
+                              </span>
+                              <Tooltip title="Ative esta opção se o usuário pertence a um domínio Windows">
+                                <span style={{ color: '#8c8c8c', cursor: 'help' }}>ℹ️</span>
+                              </Tooltip>
+                            </Space>
+                          </Card>
+                        </Col>
+                      </Row>
+                    )}
+                    
+                    {/* Campos de Autenticação: Domínio | Usuário | Senha na mesma linha */}
+                    <Form.Item noStyle shouldUpdate={(prev, cur) => prev.useDomain !== cur.useDomain}>
+                      {({ getFieldValue }) => {
+                        const useDomain = getFieldValue('useDomain');
+                        
+                        return (
+                          <Row gutter={16}>
+                            {/* Campo Domínio - só aparece se Switch ativo */}
+                            {isWindowsTarget && useDomain && (
+                              <Col xs={24} md={8}>
+                                <Form.Item
+                                  name="domain"
+                                  label="Domínio"
+                                  rules={[
+                                    { required: true, message: 'Informe o domínio' },
+                                    { pattern: /^[a-zA-Z0-9.-]+$/, message: 'Domínio inválido' }
+                                  ]}
+                                  tooltip="Nome NetBIOS (ex: GRUPOWINK) ou FQDN (ex: grupowink.local)"
+                                  normalize={(value) => value?.toUpperCase()}
+                                >
+                                  <Input 
+                                    placeholder="Ex: GRUPOWINK" 
+                                    allowClear
+                                  />
+                                </Form.Item>
+                              </Col>
+                            )}
+                            
+                            {/* Campo Usuário */}
+                            <Col xs={24} md={isWindowsTarget && useDomain ? 8 : 12}>
+                              <Form.Item
+                                name="username"
+                                label="Usuário"
+                                rules={[{ required: true, message: 'Informe o usuário' }]}
+                                tooltip={
+                                  isWindowsTarget && !useDomain
+                                    ? "Conta local (sem domínio)"
+                                    : isWindowsTarget && useDomain
+                                    ? "Apenas o nome do usuário (sem DOMINIO\\)"
+                                    : undefined
+                                }
+                              >
+                                <Input 
+                                  placeholder={
+                                    isWindowsTarget && useDomain 
+                                      ? "usuario.silva" 
+                                      : userPlaceholder
+                                  } 
+                                  allowClear 
+                                />
+                              </Form.Item>
+                            </Col>
+                            
+                            {/* Campo Senha */}
+                            <Col xs={24} md={isWindowsTarget && useDomain ? 8 : 12}>
+                              <Form.Item
+                                name="password"
+                                label="Senha"
+                                rules={[{ required: true, message: 'Informe a senha' }]}
+                              >
+                                <Input.Password placeholder="Senha do usuário" allowClear />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                        );
+                      }}
+                    </Form.Item>
+                  </>
+                );
+              } else {
+                return (
+                  <Row gutter={16}>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="username"
+                        label="Usuario"
+                        rules={[{ required: true, message: 'Informe o usuario remoto' }]}
+                      >
+                        <Input placeholder={userPlaceholder} allowClear />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Item
+                        name="keyPath"
+                        label="Chave privada SSH"
+                        rules={[{ required: !privateKeyFile, message: 'Faça upload da chave ou informe o caminho' }]}
+                      >
+                        <Input 
+                          placeholder={keyPathPlaceholder} 
+                          allowClear
+                          value={privateKeyFile || undefined}
+                          disabled={!!privateKeyFile}
+                          addonAfter={
+                            <Upload
+                              beforeUpload={(file) => {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  // TODO: Enviar para backend e receber caminho
+                                  setPrivateKeyFile(`/tmp/${file.name}`);
+                                  form.setFieldsValue({ keyPath: `/tmp/${file.name}` });
+                                  message.success(`Chave ${file.name} carregada`);
+                                };
+                                reader.readAsText(file);
+                                return false; // Prevenir upload automático
+                              }}
+                              showUploadList={false}
+                              maxCount={1}
+                            >
+                              <Button icon={<UploadOutlined />} size="small">
+                                Upload
+                              </Button>
+                            </Upload>
+                          }
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                );
+              }
+            }}
+          </Form.Item>
+        </Form>
       <Alert
-        message="Modo de conexao"
+        message="Modo de conexão"
         description={
-          isWindowsFallback
-            ? 'Tentativas automaticas para Windows envolvem WinRM, PowerShell remoto e script auxiliar.'
-            : connectionMethod === 'ssh' && isWindowsSSH
-            ? 'SSH no Windows requer o servico OpenSSH Server ativo, porta 22 liberada e credenciais administrativas.'
-            : 'SSH utiliza sudo para aplicar configuracoes; garanta que a porta 22 esteja acessivel.'
+          isWindows
+            ? '🔄 Para Windows, o sistema tenta automaticamente: PSExec (SMB/445) → WinRM (5985) → SSH (22). Logs detalhados de cada tentativa aparecem no console do backend.'
+            : `SSH utiliza sudo para aplicar configurações; garanta que a porta ${watchedPort || '22'} esteja acessível.`
         }
         type="info"
         showIcon
@@ -737,7 +1924,23 @@ EOF"`,
                 }
                 description={item.description}
               />
-              {item.detail && <Text type="secondary">{item.detail}</Text>}
+              {item.detail && (
+                <div style={{ 
+                  marginTop: 8,
+                  padding: 12,
+                  background: item.status === 'failed' ? '#fff2f0' : '#fafafa',
+                  border: `1px solid ${item.status === 'failed' ? '#ffccc7' : '#f0f0f0'}`,
+                  borderRadius: 4,
+                  whiteSpace: 'pre-wrap',
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  lineHeight: '1.6'
+                }}>
+                  <Text type={item.status === 'failed' ? 'danger' : 'secondary'}>
+                    {item.detail}
+                  </Text>
+                </div>
+              )}
             </List.Item>
           )}
         />
@@ -770,32 +1973,82 @@ EOF"`,
         <Col xs={24} md={12}>
           <Card title="Sistema alvo" size="small" variant="borderless" style={{ background: '#fafafa' }}>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Select
-                value={targetType}
-                onChange={(value: 'linux' | 'windows') => setTargetType(value)}
-                style={{ width: '100%' }}
-              >
-                <Option value="linux"><Space><LinuxOutlined />Linux</Space></Option>
-                <Option value="windows"><Space><WindowsOutlined />Windows</Space></Option>
-              </Select>
+              <Alert
+                message={targetType === 'linux' ? 'Linux' : 'Windows'}
+                description={`Sistema operacional selecionado na etapa 1: ${targetType === 'linux' ? 'Linux' : 'Windows Server'}`}
+                type="info"
+                showIcon
+                icon={targetType === 'linux' ? <LinuxOutlined /> : <WindowsOutlined />}
+              />
+              <Paragraph type="secondary" style={{ margin: 0 }}>
+                Para mudar o sistema operacional, volte para a etapa 1.
+              </Paragraph>
 
               <Select
                 value={selectedVersion}
                 onChange={setSelectedVersion}
                 style={{ width: '100%' }}
-                options={exporterVersions}
+                placeholder="Selecione a versão"
+                options={exporterVersions.filter(v => {
+                  // Filtrar apenas versões compatíveis com o OS selecionado
+                  if (targetType === 'linux') {
+                    return !v.label.includes('Windows');
+                  } else {
+                    return !v.label.includes('Linux') || v.value === 'latest';
+                  }
+                })}
               />
 
               <Select
-                value={selectedDatacenter}
-                onChange={setSelectedDatacenter}
+                value={selectedNodeAddress}
+                onChange={setSelectedNodeAddress}
                 style={{ width: '100%' }}
                 options={datacenterOptions}
+                loading={loadingGroups}
+                placeholder={loadingGroups ? "Carregando grupos..." : "Selecione o grupo selfnode"}
+                disabled={loadingGroups || datacenterOptions.length === 0}
+                notFoundContent={loadingGroups ? "Carregando..." : "Nenhum grupo selfnode encontrado"}
               />
 
               <Space>
                 <Text>Registrar automaticamente no Consul</Text>
-                <Switch checked={autoRegister} onChange={setAutoRegister} />
+                <Switch 
+                  checked={autoRegister} 
+                  onChange={(checked) => {
+                    // ⚠️ FLUXO CORRETO: Verificar IP duplicado SOMENTE quando MARCAR o switch
+                    if (checked) {
+                      // Verificar se existe IP duplicado guardado do pre-check
+                      const hasIPDuplicate = sessionStorage.getItem('consulIPDuplicate') === 'true';
+                      const duplicateServices = JSON.parse(sessionStorage.getItem('consulIPServices') || '[]');
+                      
+                      if (hasIPDuplicate && duplicateServices.length > 0) {
+                        // 🚨 Mostrar modal reutilizando layout padrão de alertas
+                        setWarningModalTitle('🚫 IP/Host já existe no Consul');
+                        setWarningModalContent({
+                          duplicateConsul: true,
+                          existingInstall: false,
+                          services: duplicateServices,
+                          portOpen: false,
+                          serviceRunning: false,
+                          hasConfig: false,
+                          targetType: targetType
+                        });
+                        setWarningModalMode('toggle-auto-register');
+                        setWarningModalVisible(true);
+                        // NÃO marcar aqui, esperar confirmação do modal
+                        return;
+                      }
+                    }
+                    
+                    // Se chegou aqui, pode marcar/desmarcar normalmente (sem IP duplicado)
+                    setAutoRegister(checked);
+                    if (checked) {
+                      message.success('✅ Registro no Consul ATIVADO', 3);
+                    } else {
+                      message.info('Registro automático DESATIVADO', 3);
+                    }
+                  }} 
+                />
               </Space>
             </Space>
           </Card>
@@ -885,15 +2138,43 @@ EOF"`,
         </Row>
       )}
 
+      {existingInstallation?.detected && (
+        <Alert
+          message="Instalação Existente Detectada"
+          description={
+            <Space direction="vertical" size="small">
+              <Text>Foi detectada uma instalação existente do exporter neste host:</Text>
+              {existingInstallation.portOpen && <Text>• Porta {targetType === 'windows' ? '9182' : '9100'} está em uso</Text>}
+              {existingInstallation.serviceRunning && <Text>• Serviço está em execução</Text>}
+              {existingInstallation.hasConfig && <Text>• Configurações existentes encontradas</Text>}
+              <Text strong style={{ marginTop: 8, display: 'block' }}>
+                Prosseguir irá sobrescrever a instalação atual. Use esta opção se deseja atualizar configurações (ex: adicionar Basic Auth).
+              </Text>
+            </Space>
+          }
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <Space>
         <Button onClick={() => setCurrentStep(0)}>Voltar</Button>
-        <Button type="primary" icon={<SettingOutlined />} onClick={() => setCurrentStep(2)}>
+        <Button type="primary" icon={<SettingOutlined />} onClick={() => setCurrentStep(3)}>
           Prosseguir para instalacao
         </Button>
       </Space>
     </Space>
   );
-  const renderInstallContent = () => (
+  const renderInstallContent = () => {
+    const methodSummary =
+      targetType === 'windows'
+        ? resolvedWindowsMethod
+          ? resolvedWindowsMethod.toUpperCase()
+          : 'Automático (PSExec → WinRM → SSH)'
+        : 'SSH';
+
+    return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Paragraph>
         Revise as configuracoes e acompanhe o progresso da instalacao em tempo real.
@@ -911,13 +2192,11 @@ EOF"`,
             <Text strong>Sistema:</Text> <Text type="secondary">{targetType.toUpperCase()}</Text>
           </List.Item>
           <List.Item>
-            <Text strong>Datacenter:</Text> <Text type="secondary">{selectedDatacenter}</Text>
+            <Text strong>Nó Consul:</Text> <Text type="secondary">{selectedNodeLabel}</Text>
           </List.Item>
           <List.Item>
             <Text strong>Metodo:</Text>{' '}
-            <Text type="secondary">
-              {connectionMethod === 'fallback' ? 'WinRM / PowerShell' : 'SSH'}
-            </Text>
+            <Text type="secondary">{methodSummary}</Text>
           </List.Item>
           <List.Item>
             <Text strong>Versao do exporter:</Text>{' '}
@@ -978,20 +2257,31 @@ EOF"`,
       </Card>
 
       <Space>
-        <Button onClick={() => setCurrentStep(1)} disabled={installRunning}>
+        <Button onClick={() => setCurrentStep(1)} disabled={installRunning || installSuccess !== null}>
           Voltar
         </Button>
-        <Button
-          type="primary"
-          icon={<ThunderboltOutlined />}
-          loading={installRunning}
-          onClick={handleInstall}
-        >
-          Iniciar instalacao
-        </Button>
+        {installSuccess === null && (
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            loading={installRunning}
+            onClick={handleInstall}
+            disabled={installRunning}
+          >
+            Iniciar instalacao
+          </Button>
+        )}
+        {installSuccess !== null && (
+          <Button
+            type="default"
+            onClick={() => setLogModalVisible(true)}
+          >
+            Ver Logs
+          </Button>
+        )}
       </Space>
     </Space>
-  );
+  };
   const renderValidationContent = () => (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Paragraph>
@@ -1031,7 +2321,7 @@ EOF"`,
         <Button icon={<ToolOutlined />} onClick={handleReset}>
           Nova instalacao
         </Button>
-        <Button type="primary" onClick={() => setCurrentStep(2)}>
+        <Button type="primary" onClick={() => setLogModalVisible(true)}>
           Ver logs novamente
         </Button>
       </Space>
@@ -1071,6 +2361,7 @@ EOF"`,
           items={steps.map((item) => ({
             key: item.key,
             title: item.title,
+        Upload,
             icon: item.icon,
           }))}
           responsive
@@ -1081,21 +2372,327 @@ EOF"`,
 
         {renderStepContent()}
       </Card>
+
+      {/* Modal de Logs de Instalação */}
+      <Modal
+        title="Logs de Instalação em Tempo Real"
+        open={logModalVisible}
+        onCancel={() => setLogModalVisible(false)}
+        width={900}
+        footer={[
+          <Button key="close" onClick={() => setLogModalVisible(false)}>
+            Fechar
+          </Button>,
+        ]}
+        style={{ top: 50 }}
+      >
+        <div
+          style={{
+            height: '600px',
+            overflowY: 'auto',
+            background: '#001529',
+            color: '#fff',
+            padding: '16px',
+            fontFamily: 'monospace',
+            fontSize: '13px',
+            borderRadius: '4px',
+          }}
+        >
+          {installLogs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px', color: '#888' }}>
+              Aguardando início da instalação...
+            </div>
+          ) : (
+            installLogs.map((log) => (
+              <div key={log.key} style={{ marginBottom: '4px' }}>
+                {log.message}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal de Confirmação de Instalação Existente/Duplicada */}
+      <Modal
+        title={<span style={{ fontSize: '18px', fontWeight: 600 }}>{warningModalTitle}</span>}
+        open={warningModalVisible}
+        onCancel={() => {
+          setWarningModalVisible(false);
+          setWarningModalContent(null);
+          setWarningModalMode(null);
+        }}
+        width={750}
+        footer={warningModalFooter}
+      >
+        <div style={{ marginTop: 16 }}>
+          {/* Alerta combinado quando AMBOS os problemas são detectados */}
+          {warningModalContent?.duplicateConsul && warningModalContent?.existingInstall && (
+            <Alert
+              message="🔥 SITUAÇÃO CRÍTICA: Múltiplos Problemas"
+              description={
+                <div style={{ fontSize: '13px' }}>
+                  <Text strong style={{ color: '#cf1322' }}>
+                    Este host apresenta DOIS problemas simultâneos:
+                  </Text>
+                  <div style={{ marginTop: 8, marginBottom: 8 }}>
+                    <Text>1️⃣ IP já registrado no Consul</Text><br />
+                    <Text>2️⃣ Instalação existente no servidor</Text>
+                  </div>
+                  <Text type="danger">
+                    Prosseguir pode causar sérios problemas de monitoramento!
+                  </Text>
+                </div>
+              }
+              type="error"
+              showIcon
+              banner
+              style={{ marginBottom: 16 }}
+            />
+          )}
+          
+          {/* Duplicação no Consul */}
+          {warningModalContent?.duplicateConsul && (
+            <Alert
+              message="🚫 IP/Host já existe no Consul"
+              description={
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <Text>
+                    O IP/Host já está registrado no Consul com os seguintes serviços:
+                  </Text>
+                  <div style={{
+                    background: '#fff',
+                    border: '1px solid #ffccc7',
+                    borderRadius: 4,
+                    padding: 12,
+                    marginTop: 8
+                  }}>
+                    {warningModalContent.services.map((service, idx) => (
+                      <div key={idx} style={{ 
+                        fontFamily: 'monospace',
+                        fontSize: '13px',
+                        color: '#cf1322',
+                        marginBottom: 4
+                      }}>
+                        • {service}
+                      </div>
+                    ))}
+                  </div>
+                  <Text strong style={{ color: '#ff4d4f', marginTop: 12, display: 'block' }}>
+                    ⚠️ RISCO: Continuar irá criar entradas duplicadas e pode causar:
+                  </Text>
+                  <ul style={{ marginTop: 4, color: '#8c8c8c' }}>
+                    <li>Conflitos de dados no monitoramento</li>
+                    <li>Métricas duplicadas no Prometheus</li>
+                    <li>Confusão na identificação de hosts</li>
+                    <li>Alertas incorretos ou duplicados</li>
+                  </ul>
+                </Space>
+              }
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
+
+          {/* Instalação existente no servidor */}
+          {warningModalContent?.existingInstall && (
+            <Alert
+              message="⚙️ Instalação existente detectada no servidor"
+              description={
+                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                  <Text>
+                    Detectamos componentes já instalados no servidor remoto:
+                  </Text>
+                  <div style={{
+                    background: '#fffbe6',
+                    border: '1px solid #ffe58f',
+                    borderRadius: 4,
+                    padding: 12,
+                    marginTop: 8
+                  }}>
+                    {warningModalContent.portOpen && (
+                      <div style={{ marginBottom: 4, color: '#d46b08' }}>
+                        ✓ Porta do exporter está em uso
+                      </div>
+                    )}
+                    {warningModalContent.serviceRunning && (
+                      <div style={{ marginBottom: 4, color: '#d46b08' }}>
+                        ✓ Serviço {warningModalContent.targetType === 'windows' ? 'windows_exporter' : 'node_exporter'} está rodando
+                      </div>
+                    )}
+                    {warningModalContent.hasConfig && (
+                      <div style={{ marginBottom: 4, color: '#d46b08' }}>
+                        ✓ Arquivo de configuração encontrado
+                      </div>
+                    )}
+                  </div>
+                  <Text strong style={{ color: '#fa8c16', marginTop: 12, display: 'block' }}>
+                    ⚠️ ATENÇÃO: Continuar irá sobrescrever:
+                  </Text>
+                  <ul style={{ marginTop: 4, color: '#8c8c8c' }}>
+                    {warningModalContent.targetType === 'windows' ? (
+                      <>
+                        <li>Configurações personalizadas existentes</li>
+                        <li>Coletores habilitados anteriormente</li>
+                        <li>Serviço Windows (será recriado)</li>
+                        <li>Parâmetros de linha de comando</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>Configurações personalizadas existentes</li>
+                        <li>Coletores habilitados anteriormente</li>
+                        <li>Autenticação básica (se configurada)</li>
+                        <li>Serviço systemd (será recriado)</li>
+                      </>
+                    )}
+                  </ul>
+                </Space>
+              }
+              type="warning"
+              showIcon
+            />
+          )}
+
+          {/* Recomendações */}
+          <div style={{
+            marginTop: 16,
+            padding: 16,
+            background: '#e6f7ff',
+            border: '1px solid #91d5ff',
+            borderRadius: 6
+          }}>
+            <Text strong style={{ fontSize: '14px', color: '#0050b3' }}>
+              💡 Recomendações:
+            </Text>
+            <ul style={{ marginTop: 8, marginBottom: 0, color: '#595959' }}>
+              {/* Cenário: AMBOS os problemas */}
+              {warningModalContent?.duplicateConsul && warningModalContent?.existingInstall && (
+                <>
+                  <li><Text type="danger" strong>CRÍTICO: Dois problemas simultâneos detectados!</Text></li>
+                  <li><Text strong>Opção 1 (Recomendada):</Text> Use outro host/IP para a instalação</li>
+                  <li><Text strong>Opção 2:</Text> Desmarque "Registrar no Consul" para apenas ATUALIZAR o exporter existente (mantém registro atual)</li>
+                  <li><Text strong>Opção 3:</Text> Desregistre manualmente do Consul E remova instalação antiga completamente</li>
+                  <li>Documente as alterações para referência futura</li>
+                </>
+              )}
+              
+              {/* Cenário: APENAS IP duplicado no Consul */}
+              {warningModalContent?.duplicateConsul && !warningModalContent?.existingInstall && (
+                <>
+                  <li><Text strong>Verifique se o IP/hostname está correto</Text></li>
+                  <li>Considere usar outro IP/hostname ou remover o registro duplicado do Consul</li>
+                  <li>Se for instalação nova, certifique-se de usar IP único</li>
+                  <li>Se for reinstalação, desmarque "Registrar no Consul" para manter o registro atual</li>
+                </>
+              )}
+              
+              {/* Cenário: APENAS instalação existente no servidor */}
+              {!warningModalContent?.duplicateConsul && warningModalContent?.existingInstall && (
+                <>
+                  <li><Text strong>✅ CENÁRIO DE ATUALIZAÇÃO:</Text> Este é um caso normal de atualização/reinstalação</li>
+                  <li><Text strong>Faça backup das configurações existentes</Text> (se houver personalizações importantes)</li>
+                  {warningModalContent.targetType === 'windows' ? (
+                    <>
+                      <li>Pare o serviço antes: <Text code>Stop-Service windows_exporter</Text> (opcional, o instalador faz isso)</li>
+                      <li>Considere documentar coletores habilitados atuais para reconfigurar depois</li>
+                      <li>A instalação substituirá o serviço Windows existente</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>Pare o serviço antes: <Text code>sudo systemctl stop node_exporter</Text> (opcional, o instalador faz isso)</li>
+                      <li>Backup de autenticação básica: <Text code>/etc/node_exporter/config.yml</Text> (se configurada)</li>
+                      <li>A instalação substituirá o serviço systemd existente</li>
+                    </>
+                  )}
+                  <li><Text type="success">💡 Pode continuar com segurança se marcar/desmarcar "Registrar no Consul" conforme necessário</Text></li>
+                </>
+              )}
+            </ul>
+          </div>
+          
+          {/* Nota sobre "Registrar no Consul" */}
+          {warningModalContent?.duplicateConsul && (
+            <Alert
+              message="ℹ️ Campo 'Registrar no Consul' foi DESMARCADO automaticamente"
+              description="Como o IP já existe no Consul, a opção foi desabilitada para evitar duplicação. Você pode marcá-la novamente se desejar sobrescrever o registro existente."
+              type="info"
+              showIcon
+              style={{ marginTop: 12 }}
+            />
+          )}
+        </div>
+      </Modal>
+
+      {/* Modal de Erro de Conexão */}
+      <Modal
+        title={<span style={{ fontSize: '18px', fontWeight: 600 }}>{errorModalTitle}</span>}
+        open={errorModalVisible}
+        onCancel={() => setErrorModalVisible(false)}
+        width={700}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setErrorModalVisible(false)}>
+            Entendi
+          </Button>,
+        ]}
+      >
+        <div style={{ marginTop: 16 }}>
+          <div style={{
+            background: '#f6f6f6',
+            border: '1px solid #e8e8e8',
+            borderRadius: 6,
+            padding: 16,
+            maxHeight: '500px',
+            overflowY: 'auto'
+          }}>
+            {errorModalContent.split('\n').map((line, index) => {
+              // Identificar seções importantes
+              const isHeader = line.startsWith('✅') || line.startsWith('📋') || line.startsWith('💡') || line.startsWith('🔍');
+              const isCommand = line.startsWith('•') || line.trim().startsWith('sudo') || line.trim().startsWith('ping') || line.trim().startsWith('telnet') || line.trim().startsWith('ssh') || line.trim().startsWith('nslookup') || line.trim().startsWith('tracert') || line.trim().startsWith('id') || line.trim().startsWith('chmod') || line.trim().startsWith('ls');
+              
+              return (
+                <div key={index} style={{
+                  marginBottom: isHeader ? 12 : (isCommand ? 4 : 8),
+                  lineHeight: '1.6'
+                }}>
+                  {isHeader ? (
+                    <Text strong style={{ fontSize: '14px', color: '#1890ff' }}>{line}</Text>
+                  ) : isCommand ? (
+                    <Text code style={{ 
+                      display: 'block',
+                      background: '#fff',
+                      padding: '4px 8px',
+                      borderRadius: 4,
+                      fontSize: '13px',
+                      fontFamily: 'Consolas, Monaco, monospace',
+                      color: '#d63031'
+                    }}>{line}</Text>
+                  ) : line.trim() === '' ? (
+                    <div style={{ height: 8 }} />
+                  ) : (
+                    <Text style={{ fontSize: '13px', color: '#595959' }}>{line}</Text>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          {errorCategory && (
+            <div style={{
+              marginTop: 16,
+              padding: '8px 12px',
+              background: '#e6f7ff',
+              border: '1px solid #91d5ff',
+              borderRadius: 4,
+              fontSize: '12px',
+              color: '#096dd9'
+            }}>
+              <Text strong>Categoria:</Text> {errorCategory} | <Text strong>Código:</Text> {errorModalIcon}
+            </div>
+          )}
+        </div>
+      </Modal>
     </PageContainer>
   );
 };
 
 export default Installer;
-
-
-
-
-
-
-
-
-
-
-
-
-

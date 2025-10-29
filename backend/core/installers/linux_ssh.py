@@ -41,16 +41,63 @@ NODE_EXPORTER_COLLECTOR_DETAILS = {
 }
 
 
-def test_port(host: str, port: int, timeout: int = 2) -> bool:
-    """Test if a port is open"""
+def test_port(host: str, port: int, timeout: int = 10) -> bool:
+    """
+    Test if a port is open on a host
+    
+    Returns:
+        True: Port is open and accepting connections
+        False: Port is closed/filtered but host responded quickly (connection refused)
+        
+    Raises:
+        socket.gaierror: DNS resolution failed
+        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
+        ConnectionRefusedError: Connection actively refused by host
+        Exception: Other network errors (unreachable, no route, etc)
+    """
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0
-    except:
-        return False
+        
+        # Analyze result codes:
+        # 0 = success, port open
+        # 10061 (Windows) or 111 (Linux) = connection refused (host UP, port closed)
+        # 10060 (Windows) or 110 (Linux) = timeout (host DOWN or unreachable)
+        
+        if result == 0:
+            return True
+        elif result in (10061, 111):  # Connection refused - host is UP but port closed
+            return False
+        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
+            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
+        else:
+            # Other error codes - treat as network issue
+            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
+            
+    except socket.gaierror as e:
+        # DNS resolution failed - cannot resolve hostname
+        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
+    except socket.timeout:
+        # Connection timed out - propagate the exception
+        raise
+    except OSError as e:
+        # Handle OS-level errors (unreachable, no route, etc)
+        error_msg = str(e).lower()
+        if "timed out" in error_msg or "timeout" in error_msg:
+            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
+        else:
+            raise Exception(f"Network error testing {host}:{port}: {e}")
+    except Exception as e:
+        # Other unexpected errors
+        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except:
+                pass
 
 
 class LinuxSSHInstaller(BaseInstaller):
@@ -76,25 +123,59 @@ class LinuxSSHInstaller(BaseInstaller):
 
     async def validate_connection(self) -> Tuple[bool, str]:
         """Validate connection parameters before connecting"""
-        await self.log(f"Validando parâmetros de conexão para {self.host}...", "info")
+        await self.log(f"Validando parâmetros de conexão para {self.host}:{self.ssh_port}...", "info")
 
-        # Test SSH port
-        await self.log(f"Testando porta SSH {self.ssh_port}...", "info")
-        port_open = await asyncio.to_thread(test_port, self.host, self.ssh_port, 5)
-
-        if not port_open:
-            return False, f"Porta SSH {self.ssh_port} não está acessível em {self.host}"
-
-        await self.log(f"Porta SSH {self.ssh_port} acessível", "success")
-        return True, "OK"
+        # Test SSH port with 10 second timeout
+        await self.log(f"Testando conectividade com {self.host}:{self.ssh_port}...", "info")
+        
+        try:
+            port_open = await asyncio.to_thread(test_port, self.host, self.ssh_port, 10)
+            
+            if not port_open:
+                # Port closed/filtered - host responded but port is closed
+                await self.log(f"❌ Porta {self.ssh_port} fechada em {self.host}", "error")
+                raise Exception(f"PORT_CLOSED|Porta {self.ssh_port} fechada/filtrada. Host responde mas porta não está aberta.|SERVICO")
+            
+            await self.log(f"✅ Porta SSH {self.ssh_port} acessível em {self.host}", "success")
+            return True, "OK"
+            
+        except socket.gaierror as e:
+            # DNS resolution failed
+            await self.log(f"❌ Erro DNS ao resolver {self.host}: {e}", "error")
+            raise Exception(f"DNS_ERROR|Não foi possível resolver o hostname '{self.host}'. Verifique o DNS ou use o endereço IP diretamente.|DNS")
+        
+        except socket.timeout as e:
+            # Connection timed out - host unreachable, offline, or very slow
+            await self.log(f"❌ Timeout ao conectar em {self.host}:{self.ssh_port}", "error")
+            raise Exception(f"TIMEOUT|Host {self.host} não respondeu em 10 segundos. Pode estar offline, inacessível ou IP incorreto.|CONECTIVIDADE")
+        
+        except Exception as e:
+            error_msg = str(e)
+            # Check if it's already a structured error
+            if "|" in error_msg:
+                raise
+            
+            # Generic network error
+            await self.log(f"❌ Erro ao testar conexão: {e}", "error")
+            
+            # Try to identify the error type
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                raise Exception(f"TIMEOUT|Timeout ao conectar em {self.host}:{self.ssh_port}. Host pode estar offline ou inacessível.|CONECTIVIDADE")
+            elif "unreachable" in error_msg.lower() or "no route" in error_msg.lower():
+                raise Exception(f"NETWORK_UNREACHABLE|Host {self.host} está inacessível. Sem rota de rede. Verifique VPN, roteamento ou firewall.|REDE")
+            elif "refused" in error_msg.lower():
+                raise Exception(f"CONNECTION_REFUSED|Conexão recusada em {self.host}:{self.ssh_port}. SSH não está rodando ou porta incorreta.|SERVICO")
+            else:
+                raise Exception(f"NETWORK_ERROR|Erro de rede ao conectar em {self.host}:{self.ssh_port}: {error_msg}|REDE")
 
     async def connect(self) -> bool:
-        """Connect via SSH"""
+        """Connect via SSH with detailed error handling"""
         try:
+            # Validate port first - will raise structured exception if fails
             valid, msg = await self.validate_connection()
             if not valid:
-                await self.log(msg, "error")
-                return False
+                # This shouldn't happen anymore, but keep as fallback
+                raise Exception(f"CONNECTION_FAILED|{msg}|CONECTIVIDADE")
 
             self.ssh_client = paramiko.SSHClient()
             self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -103,7 +184,7 @@ class LinuxSSHInstaller(BaseInstaller):
                 'hostname': self.host,
                 'username': self.username,
                 'port': self.ssh_port,
-                'timeout': 10
+                'timeout': 30  # 30 segundos para timeout
             }
 
             if self.key_file:
@@ -111,20 +192,64 @@ class LinuxSSHInstaller(BaseInstaller):
             elif self.password:
                 kwargs['password'] = self.password
 
-            await self.log("Conectando via SSH...", "info")
+            await self.log(f"Conectando via SSH em {self.host}:{self.ssh_port}...", "info")
             await asyncio.to_thread(self.ssh_client.connect, **kwargs)
-            await self.log("Conectado via SSH com sucesso", "success")
+            await self.log("✅ Conectado via SSH com sucesso", "success")
             return True
 
-        except paramiko.AuthenticationException:
-            await self.log("Falha de autenticação SSH", "error")
-            return False
+        except paramiko.AuthenticationException as e:
+            # Senha ou chave SSH incorreta
+            await self.log(f"❌ Autenticação falhou: {e}", "error")
+            raise Exception(f"AUTH_FAILED|Autenticação falhou. Usuário '{self.username}' ou senha/chave incorretos.|AUTENTICACAO")
+        
         except paramiko.SSHException as e:
-            await self.log(f"Erro SSH: {e}", "error")
-            return False
+            error_msg = str(e).lower()
+            if "no authentication methods available" in error_msg:
+                await self.log(f"❌ Nenhum método de autenticação disponível: {e}", "error")
+                raise Exception(f"AUTH_METHOD_UNAVAILABLE|Nenhum método de autenticação aceito pelo servidor. Configure senha ou chave SSH.|AUTENTICACAO")
+            elif "no hostkey" in error_msg or "host key" in error_msg:
+                await self.log(f"❌ Problema com host key: {e}", "error")
+                raise Exception(f"HOSTKEY_ERROR|Problema com host key SSH. Execute: ssh-keyscan {self.host} >> ~/.ssh/known_hosts|SSH")
+            else:
+                await self.log(f"❌ Erro SSH: {e}", "error")
+                raise Exception(f"SSH_ERROR|Erro SSH: {str(e)}|SSH")
+        
+        except socket.timeout:
+            await self.log(f"❌ Timeout ao conectar em {self.host}:{self.ssh_port}", "error")
+            raise Exception(f"TIMEOUT|Timeout ao conectar em {self.host}:{self.ssh_port}. Host não respondeu em 30 segundos.|CONECTIVIDADE")
+        
+        except socket.gaierror as e:
+            # Erro de DNS
+            await self.log(f"❌ Erro DNS ao resolver {self.host}: {e}", "error")
+            raise Exception(f"DNS_ERROR|Não foi possível resolver o hostname '{self.host}'. Verifique o DNS ou use o IP diretamente.|DNS")
+        
+        except ConnectionRefusedError:
+            await self.log(f"❌ Conexão recusada em {self.host}:{self.ssh_port}", "error")
+            raise Exception(f"CONNECTION_REFUSED|Conexão recusada em {self.host}:{self.ssh_port}. Serviço SSH não está respondendo ou porta incorreta.|SERVICO")
+        
+        except socket.error as e:
+            error_msg = str(e).lower()
+            if "network is unreachable" in error_msg or "no route to host" in error_msg:
+                await self.log(f"❌ Rede inacessível para {self.host}: {e}", "error")
+                raise Exception(f"NETWORK_UNREACHABLE|Host {self.host} está inacessível. Sem rota de rede disponível. Verifique VPN ou firewall.|REDE")
+            elif "connection refused" in error_msg:
+                await self.log(f"❌ Conexão recusada em {self.host}:{self.ssh_port}: {e}", "error")
+                raise Exception(f"CONNECTION_REFUSED|Conexão recusada em {self.host}:{self.ssh_port}. SSH não está rodando ou firewall bloqueando.|SERVICO")
+            elif "connection timed out" in error_msg:
+                await self.log(f"❌ Timeout de conexão para {self.host}: {e}", "error")
+                raise Exception(f"TIMEOUT|Timeout de conexão. Host {self.host} não respondeu. Verifique se está online.|CONECTIVIDADE")
+            else:
+                await self.log(f"❌ Erro de socket: {e}", "error")
+                raise Exception(f"NETWORK_ERROR|Erro de rede ao conectar em {self.host}:{self.ssh_port}: {str(e)}|REDE")
+        
         except Exception as e:
-            await self.log(f"Erro ao conectar: {e}", "error")
-            return False
+            error_msg = str(e).lower()
+            # Verificar se já é uma exceção estruturada
+            if "|" in str(e):
+                raise
+            
+            await self.log(f"❌ Erro desconhecido ao conectar: {e}", "error")
+            raise Exception(f"UNKNOWN_ERROR|Erro ao conectar: {str(e)}|DESCONHECIDO")
 
     async def disconnect(self):
         """Disconnect SSH"""

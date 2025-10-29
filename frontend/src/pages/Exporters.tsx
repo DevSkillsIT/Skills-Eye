@@ -513,6 +513,7 @@ const Exporters: React.FC = () => {
           project: values.project || editingExporter.meta?.project,
           env: values.env || editingExporter.meta?.env,
         },
+        node_addr: editingExporter.nodeAddr || editingExporter.node, // CRITICAL: Necessário para identificar o nó
       };
 
       await consulAPI.updateService(editingExporter.id, updatePayload);

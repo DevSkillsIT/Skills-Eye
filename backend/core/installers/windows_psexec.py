@@ -1,15 +1,28 @@
 """
 Windows Exporter installer via PSexec
-Uses subprocess to run PSexec commands
-PSexec must be installed and available in PATH or specified path
+Uses pypsexec library for pure Python implementation
+No need for PSExec.exe executable
 """
 import asyncio
 import socket
-import subprocess
+import logging
 import requests
 from typing import Tuple, Optional, Dict
 from pathlib import Path
 from .base import BaseInstaller
+
+try:
+    from pypsexec.client import Client
+    from pypsexec.exceptions import PypsexecException, SCMRException
+    PYPSEXEC_AVAILABLE = True
+except ImportError:
+    PYPSEXEC_AVAILABLE = False
+    Client = None
+    PypsexecException = Exception
+    SCMRException = Exception
+
+
+logger = logging.getLogger(__name__)
 
 
 # Collector configurations
@@ -20,20 +33,67 @@ WINDOWS_EXPORTER_COLLECTORS = {
 }
 
 
-def test_port(host: str, port: int, timeout: int = 2) -> bool:
-    """Test if a port is open"""
+def test_port(host: str, port: int, timeout: int = 10) -> bool:
+    """
+    Test if a port is open on a host
+    
+    Returns:
+        True: Port is open and accepting connections
+        False: Port is closed/filtered but host responded quickly (connection refused)
+        
+    Raises:
+        socket.gaierror: DNS resolution failed
+        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
+        ConnectionRefusedError: Connection actively refused by host
+        Exception: Other network errors (unreachable, no route, etc)
+    """
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, port))
-        sock.close()
-        return result == 0
-    except:
-        return False
+        
+        # Analyze result codes:
+        # 0 = success, port open
+        # 10061 (Windows) or 111 (Linux) = connection refused (host UP, port closed)
+        # 10060 (Windows) or 110 (Linux) = timeout (host DOWN or unreachable)
+        
+        if result == 0:
+            return True
+        elif result in (10061, 111):  # Connection refused - host is UP but port closed
+            return False
+        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
+            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
+        else:
+            # Other error codes - treat as network issue
+            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
+            
+    except socket.gaierror as e:
+        # DNS resolution failed - cannot resolve hostname
+        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
+    except socket.timeout:
+        # Connection timed out - propagate the exception
+        raise
+    except OSError as e:
+        # Handle OS-level errors (unreachable, no route, etc)
+        error_msg = str(e).lower()
+        if "timed out" in error_msg or "timeout" in error_msg:
+            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
+        else:
+            raise Exception(f"Network error testing {host}:{port}: {e}")
+    except Exception as e:
+        # Other unexpected errors
+        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except:
+                pass
 
 
 class WindowsPSExecInstaller(BaseInstaller):
-    """Windows Exporter installer via PSexec"""
+    """Windows Exporter installer via pypsexec library"""
 
     def __init__(
         self,
@@ -41,139 +101,300 @@ class WindowsPSExecInstaller(BaseInstaller):
         username: str,
         password: str,
         domain: Optional[str] = None,
-        psexec_path: str = "psexec.exe",
+        psexec_path: Optional[str] = None,  # Not used anymore, kept for compatibility
         client_id: str = "default"
     ):
         super().__init__(host, client_id)
         self.username = username
         self.password = password
         self.domain = domain  # Domain for domain accounts
-        self.psexec_path = psexec_path
-
-        # Build full username
-        if domain:
-            self.full_username = f"{domain}\\{username}"
-        else:
-            self.full_username = username
+        self.client = None
+        
+        # pypsexec expects username without domain prefix
+        # domain is passed separately to the client
 
     async def validate_connection(self) -> Tuple[bool, str]:
-        """Validate connection parameters"""
-        await self.log(f"Validando PSexec para {self.host}...", "info")
+        """Validate connection parameters with network checks"""
+        await self.log(f"🔧 Validando pypsexec para {self.host}...", "info")
 
-        # Check if psexec exists
+        # Check if pypsexec is available
+        if not PYPSEXEC_AVAILABLE:
+            return False, "DEPENDENCY_MISSING|pypsexec não está instalado. Execute: pip install pypsexec|dependency"
+
+        # Test network connectivity and DNS
+        await self.log(f"🌐 Testando conectividade com {self.host}...", "info")
+        
         try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [self.psexec_path],
-                capture_output=True,
-                timeout=5
-            )
-            # PSexec returns error when run without args, but that's expected
-        except FileNotFoundError:
-            return False, f"PSexec não encontrado em: {self.psexec_path}"
-        except subprocess.TimeoutExpired:
-            pass  # Expected
+            # Test SMB port (445) with detailed error handling
+            port_open = await asyncio.to_thread(test_port, self.host, 445, 10)
+            if not port_open:
+                await self.log("⚠️ Porta SMB 445 não está acessível (bloqueada por firewall)", "warning")
+                return False, "PORT_CLOSED|Porta SMB 445 está bloqueada ou inacessível|network"
+            
+            await self.log("✅ Porta SMB 445 está acessível", "success")
+            
+        except socket.gaierror as e:
+            # DNS resolution failed
+            await self.log(f"❌ Falha na resolução DNS: {e}", "error")
+            return False, f"DNS_ERROR|Não foi possível resolver o hostname {self.host}|network"
+            
+        except socket.timeout as e:
+            # Connection timeout - host offline or unreachable
+            await self.log(f"❌ Timeout: {e}", "error")
+            return False, f"TIMEOUT|Host {self.host} não respondeu (offline ou rede inacessível)|network"
+            
         except Exception as e:
-            return False, f"Erro ao verificar PSexec: {e}"
+            # Other network errors
+            await self.log(f"❌ Erro de rede: {e}", "error")
+            return False, f"NETWORK_ERROR|Erro de conectividade: {e}|network"
 
-        # Test SMB port (445)
-        port_open = await asyncio.to_thread(test_port, self.host, 445, 5)
-        if not port_open:
-            await self.log("Porta SMB 445 não está acessível (pode estar bloqueada por firewall)", "warning")
-
-        await self.log("PSexec disponível", "success")
+        await self.log("✅ pypsexec disponível e host acessível", "success")
         return True, "OK"
 
     async def connect(self) -> bool:
-        """Test connection via PSexec"""
+        """Test connection via pypsexec"""
         try:
             valid, msg = await self.validate_connection()
             if not valid:
-                await self.log(msg, "error")
-                return False
+                await self.log(f"❌ {msg}", "error")
+                # Raise structured exception
+                raise Exception(msg)
 
-            await self.log("Testando conexão PSexec...", "info")
+            await self.log("🔌 Testando conexão pypsexec...", "info")
 
-            # Test with simple command
-            exit_code, output, error = await self.execute_command("echo Connected")
+            # 🔧 Preparar username com domínio se necessário
+            # pypsexec aceita: "DOMAIN\\username" ou "username@domain" ou "username"
+            username_to_use = self.username
+            
+            # Se username já tem domínio (DOMAIN\username ou username@domain), usar como está
+            if "\\" not in username_to_use and "@" not in username_to_use and self.domain:
+                # Adicionar domínio no formato DOMAIN\username
+                username_to_use = f"{self.domain}\\{self.username}"
+                await self.log(f"🔑 Usando credenciais de domínio: {username_to_use}", "info")
+            else:
+                await self.log(f"🔑 Usando credenciais: {username_to_use}", "info")
 
-            if exit_code == 0:
-                await self.log("Conexão PSexec bem-sucedida", "success")
+            # Create pypsexec client
+            def _connect():
+                if Client is None:
+                    raise RuntimeError("pypsexec client is unavailable")
+                client = Client(
+                    self.host,
+                    username=username_to_use,
+                    password=self.password,
+                    port=445,
+                    encrypt=False  # Usar modo compatível com PsExec.exe (sem SMB encryption)
+                )
+                try:
+                    client.connect()
+
+                    # Garantir limpeza caso restem artefatos de execuções anteriores
+                    try:
+                        client.cleanup()
+                    except Exception as cleanup_err:
+                        # Apenas registrar; não bloquear sequência normal
+                        logger.warning(f"[psexec] Falha ao executar cleanup inicial: {cleanup_err}")
+
+                    client.create_service()
+                    # Teste simples (sem flags especiais)
+                    stdout, stderr, rc = client.run_executable(
+                        "cmd.exe",
+                        arguments="/c echo Connected"
+                    )
+
+                    try:
+                        client.remove_service()
+                    except Exception as remove_err:
+                        logger.warning(f"[psexec] Falha ao remover serviço temporário: {remove_err}")
+                        # Tentar limpeza forçada
+                        try:
+                            client.cleanup()
+                        except Exception as cleanup_err:
+                            logger.warning(f"[psexec] Cleanup após remoção falhou: {cleanup_err}")
+
+                    client.disconnect()
+                    return rc == 0, stdout, stderr
+                except Exception as e:
+                    try:
+                        client.cleanup()
+                    except Exception as cleanup_err:
+                        logger.warning(f"[psexec] Cleanup em exceção falhou: {cleanup_err}")
+                    try:
+                        client.disconnect()
+                    except:
+                        pass
+                    raise e
+
+            success, stdout, stderr = await asyncio.to_thread(_connect)
+
+            if success:
+                await self.log("✅ Conexão pypsexec bem-sucedida", "success")
                 return True
             else:
-                await self.log(f"Falha na conexão PSexec: {error}", "error")
-                return False
+                await self.log(f"❌ Falha na conexão pypsexec: {stderr}", "error")
+                raise Exception(f"CONNECTION_FAILED|Falha ao executar comando teste: {stderr}|connection")
 
+        except PypsexecException as e:
+            error_msg = str(e)
+            await self.log(f"❌ Erro pypsexec: {error_msg}", "error")
+            
+            # Map common errors to structured format
+            if "STATUS_LOGON_FAILURE" in error_msg or "0xc000006d" in error_msg:
+                raise Exception("AUTH_FAILED|Usuário ou senha inválidos|authentication")
+            elif "STATUS_LOGON_TYPE_NOT_GRANTED" in error_msg or "0xc0000192" in error_msg:
+                raise Exception("PERMISSION_DENIED|Usuário não tem permissão de logon remoto neste computador. Adicione o usuário ao grupo 'Administradores' ou 'Usuários da Área de Trabalho Remota'|authentication")
+            elif "STATUS_ACCOUNT_RESTRICTION" in error_msg or "0xc000006e" in error_msg:
+                raise Exception("AUTH_FAILED|Conta com restrições - verifique se é administrador local|authentication")
+            elif "STATUS_ACCESS_DENIED" in error_msg or "Access is denied" in error_msg or "0xc0000022" in error_msg:
+                raise Exception("PERMISSION_DENIED|Acesso negado - credenciais sem permissões administrativas|authentication")
+            elif "STATUS_CANNOT_DELETE" in error_msg or "0xc0000121" in error_msg:
+                raise Exception("PERMISSION_DENIED|Erro de permissão ao gerenciar serviço - verifique se o usuário é administrador local|authentication")
+            elif "STATUS_OBJECT_NAME_NOT_FOUND" in error_msg or "0xc0000034" in error_msg:
+                raise Exception("SERVICE_ERROR|Erro ao criar/gerenciar serviço remoto - pode precisar de permissões elevadas|service")
+            elif "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+                raise Exception("TIMEOUT|Conexão expirou (timeout)|timeout")
+            elif "connection" in error_msg.lower() and "refused" in error_msg.lower():
+                raise Exception("CONNECTION_REFUSED|Conexão recusada pelo servidor|connection")
+            else:
+                raise Exception(f"PSEXEC_ERROR|{error_msg}|psexec")
+                
         except Exception as e:
-            await self.log(f"Erro ao conectar via PSexec: {e}", "error")
-            return False
+            error_msg = str(e)
+            # If already structured, re-raise
+            if "|" in error_msg and error_msg.count("|") >= 2:
+                raise
+            await self.log(f"❌ Erro ao conectar via pypsexec: {error_msg}", "error")
+            raise Exception(f"CONNECTION_ERROR|{error_msg}|connection")
 
     async def disconnect(self):
-        """PSexec doesn't maintain persistent connections"""
-        await self.log("PSexec não mantém conexões persistentes", "debug")
+        """Disconnect pypsexec client"""
+        if self.client:
+            try:
+                await asyncio.to_thread(self.client.disconnect)
+                await self.log("🔌 pypsexec desconectado", "debug")
+            except:
+                pass
+            self.client = None
 
     async def execute_command(self, command: str, powershell: bool = False) -> Tuple[int, str, str]:
-        """Execute remote command via PSexec"""
+        """Execute remote command via pypsexec"""
         try:
-            # Build PSexec command
-            psexec_cmd = [
-                self.psexec_path,
-                f"\\\\{self.host}",
-                "-u", self.full_username,
-                "-p", self.password,
-                "-accepteula",  # Auto-accept EULA
-                "-nobanner"  # Suppress banner
-            ]
-
-            if powershell:
-                psexec_cmd.extend([
-                    "powershell.exe",
-                    "-ExecutionPolicy", "Bypass",
-                    "-NoProfile",
-                    "-Command", command
-                ])
-            else:
-                psexec_cmd.extend(["cmd.exe", "/c", command])
-
+            # 🔧 Preparar username com domínio (mesmo código do connect)
+            username_to_use = self.username
+            if "\\" not in username_to_use and "@" not in username_to_use and self.domain:
+                username_to_use = f"{self.domain}\\{self.username}"
+            
             def _exec():
-                result = subprocess.run(
-                    psexec_cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 minute timeout
+                if Client is None:
+                    raise RuntimeError("pypsexec client is unavailable")
+                client = Client(
+                    self.host,
+                    username=username_to_use,
+                    password=self.password,
+                    port=445,
+                    encrypt=False  # Manter consistência com a verificação de conexão
                 )
-                return result.returncode, result.stdout, result.stderr
+                try:
+                    client.connect()
+
+                    try:
+                        client.cleanup()
+                    except Exception as cleanup_err:
+                        logger.warning(f"[psexec] Falha ao executar cleanup inicial: {cleanup_err}")
+
+                    client.create_service()
+
+                    if powershell:
+                        stdout, stderr, rc = client.run_executable(
+                            "powershell.exe",
+                            arguments=f'-ExecutionPolicy Bypass -NoProfile -Command "{command}"'
+                        )
+                    else:
+                        stdout, stderr, rc = client.run_executable(
+                            "cmd.exe",
+                            arguments=f'/c {command}'
+                        )
+
+                    try:
+                        client.remove_service()
+                    except Exception as remove_err:
+                        logger.warning(f"[psexec] Falha ao remover serviço temporário: {remove_err}")
+                        try:
+                            client.cleanup()
+                        except Exception as cleanup_err:
+                            logger.warning(f"[psexec] Cleanup após remoção falhou: {cleanup_err}")
+
+                    client.disconnect()
+
+                    stdout_str = stdout.decode('utf-8') if isinstance(stdout, bytes) else (stdout or "")
+                    stderr_str = stderr.decode('utf-8') if isinstance(stderr, bytes) else (stderr or "")
+
+                    return rc, stdout_str, stderr_str
+                except Exception as e:
+                    try:
+                        client.cleanup()
+                    except Exception as cleanup_err:
+                        logger.warning(f"[psexec] Cleanup em exceção falhou: {cleanup_err}")
+                    try:
+                        client.disconnect()
+                    except:
+                        pass
+                    raise e
 
             return await asyncio.to_thread(_exec)
 
-        except subprocess.TimeoutExpired:
-            return 1, "", "Timeout ao executar comando"
         except Exception as e:
             return 1, "", str(e)
 
     async def detect_os(self) -> Optional[str]:
-        """Detect operating system"""
-        await self.log("Detectando sistema operacional...", "info")
+        """Detect operating system with multiple fallback methods"""
+        await self.log("🔍 Detectando sistema operacional...", "info")
 
-        exit_code, output, _ = await self.execute_command("ver", powershell=False)
-
-        if exit_code == 0 and 'Windows' in output:
+        # Método 1: Tentar via PowerShell (mais confiável)
+        await self.log("📋 Tentando detectar via PowerShell (Win32_OperatingSystem)...", "info")
+        exit_code, output, error = await self.execute_command(
+            "(Get-WmiObject -Class Win32_OperatingSystem).Caption",
+            powershell=True
+        )
+        
+        if exit_code == 0 and output and 'Windows' in output:
+            self.os_type = 'windows'
+            self.os_details['version'] = output.strip()
+            self.os_details['name'] = output.strip()
+            await self.log(f"✅ Windows detectado: {output.strip()}", "info")
+            return 'windows'
+        
+        # Método 2: Tentar via comando 'ver'
+        await self.log("📋 Tentando detectar via comando 'ver'...", "info")
+        exit_code, output, error = await self.execute_command("ver", powershell=False)
+        
+        if exit_code == 0 and output and 'Windows' in output:
             self.os_type = 'windows'
             self.os_details['name'] = output.strip()
-
-            # Get more details
-            exit_code, version, _ = await self.execute_command(
-                "(Get-WmiObject -Class Win32_OperatingSystem).Caption",
-                powershell=True
-            )
-            if exit_code == 0:
-                self.os_details['version'] = version.strip()
-
-            await self.log(f"Windows detectado: {self.os_details.get('name', 'Unknown')}", "success")
+            self.os_details['version'] = output.strip()
+            await self.log(f"✅ Windows detectado: {output.strip()}", "info")
             return 'windows'
-
-        await self.log("SO não é Windows ou não detectado", "error")
-        return None
+        
+        # Método 3: Tentar via systeminfo
+        await self.log("📋 Tentando detectar via 'systeminfo'...", "info")
+        exit_code, output, error = await self.execute_command(
+            "systeminfo | findstr /B /C:\"OS Name\"",
+            powershell=False
+        )
+        
+        if exit_code == 0 and output and 'Windows' in output:
+            self.os_type = 'windows'
+            self.os_details['name'] = output.strip()
+            self.os_details['version'] = output.strip()
+            await self.log(f"✅ Windows detectado: {output.strip()}", "info")
+            return 'windows'
+        
+        # Método 4: Assumir Windows se chegou até aqui (estamos usando pypsexec que é Windows-only)
+        await self.log("⚠️ Não foi possível detectar versão específica, mas assumindo Windows (conexão SMB funcionou)", "warning")
+        self.os_type = 'windows'
+        self.os_details['name'] = 'Windows (versão não detectada)'
+        self.os_details['version'] = 'Unknown'
+        return 'windows'
 
     async def check_disk_space(self, required_mb: int = 200) -> bool:
         """Check available disk space"""

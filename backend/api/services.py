@@ -19,6 +19,10 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# GET ROUTES - Rotas específicas ANTES de rotas com :path
+# ============================================================================
+
 @router.get("/", include_in_schema=True)
 @router.get("")
 async def list_services(
@@ -125,239 +129,30 @@ async def list_services(
         )
 
 
-@router.get("/{service_id}", include_in_schema=True)
-async def get_service(
-    service_id: str = Path(..., description="ID do serviço"),
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde buscar")
+@router.get("/metadata/unique-values", include_in_schema=True)
+async def get_unique_metadata_values(
+    field: str = Query(..., description="Campo de metadados (module, company, project, env, etc)")
 ):
     """
-    Obtém detalhes de um serviço específico pelo ID
+    Obtém valores únicos de um campo de metadados
 
-    Retorna todos os dados do serviço incluindo metadados completos
+    Útil para popular dropdowns e filtros na interface
     """
     try:
         consul = ConsulManager()
-        service = await consul.get_service_by_id(service_id, node_addr)
 
-        if not service:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
-            )
+        logger.info(f"Obtendo valores únicos para campo: {field}")
+        values = await consul.get_unique_values(field)
 
         return {
             "success": True,
-            "data": service,
-            "service_id": service_id
+            "field": field,
+            "values": sorted(list(values)),
+            "total": len(values)
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Erro ao obter serviço {service_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/", include_in_schema=True)
-@router.post("")
-async def create_service(
-    request: ServiceCreateRequest,
-    background_tasks: BackgroundTasks
-):
-    """
-    Cria um novo serviço no Consul com validações completas
-
-    Valida:
-    - Campos obrigatórios (module, company, project, env, name, instance)
-    - Formato correto do instance baseado no módulo
-    - Duplicatas (mesma combinação de module/company/project/env/name)
-
-    Retorna o ID do serviço criado
-    """
-    try:
-        consul = ConsulManager()
-
-        # Converter request para dict
-        service_data = request.model_dump()
-
-        # Validar dados do serviço
-        is_valid, errors = await consul.validate_service_data(service_data)
-        if not is_valid:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": "Erros de validação encontrados",
-                    "errors": errors
-                }
-            )
-
-        # Verificar duplicatas
-        meta = service_data.get("Meta", {})
-        is_duplicate = await consul.check_duplicate_service(
-            module=meta.get("module"),
-            company=meta.get("company"),
-            project=meta.get("project"),
-            env=meta.get("env"),
-            name=meta.get("name"),
-            target_node_addr=service_data.get("node_addr")
-        )
-
-        if is_duplicate:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "message": "Serviço duplicado",
-                    "detail": "Já existe um serviço com essa combinação de module/company/project/env/name"
-                }
-            )
-
-        # Registrar serviço
-        logger.info(f"Registrando novo serviço: {service_data.get('id')}")
-        success = await consul.register_service(
-            service_data,
-            service_data.get("node_addr")
-        )
-
-        if success:
-            # Log assíncrono
-            background_tasks.add_task(
-                log_action,
-                f"Serviço criado: {service_data.get('id')} - {meta.get('name')}"
-            )
-
-            return {
-                "success": True,
-                "message": "Serviço criado com sucesso",
-                "service_id": service_data.get("id"),
-                "data": service_data
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Falha ao registrar serviço no Consul"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao criar serviço: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.put("/{service_id}", include_in_schema=True)
-async def update_service(
-    service_id: str = Path(..., description="ID do serviço a atualizar"),
-    request: ServiceUpdateRequest = None,
-    background_tasks: BackgroundTasks = None
-):
-    """
-    Atualiza um serviço existente
-
-    Nota: Consul não tem endpoint de update nativo, então fazemos:
-    1. Deregister do serviço antigo
-    2. Register do serviço com novos dados
-    """
-    try:
-        consul = ConsulManager()
-
-        # Buscar serviço existente
-        existing_service = await consul.get_service_by_id(
-            service_id,
-            request.node_addr if request else None
-        )
-
-        if not existing_service:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
-            )
-
-        # Mesclar dados existentes com novos dados
-        updated_service = existing_service.copy()
-        if request:
-            update_data = request.model_dump(exclude_unset=True)
-            for key, value in update_data.items():
-                if value is not None and key != "node_addr":
-                    updated_service[key] = value
-
-        # Atualizar serviço
-        logger.info(f"Atualizando serviço: {service_id}")
-        success = await consul.update_service(
-            service_id,
-            updated_service,
-            request.node_addr if request else None
-        )
-
-        if success:
-            background_tasks.add_task(
-                log_action,
-                f"Serviço atualizado: {service_id}"
-            )
-
-            return {
-                "success": True,
-                "message": "Serviço atualizado com sucesso",
-                "service_id": service_id,
-                "data": updated_service
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Falha ao atualizar serviço no Consul"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao atualizar serviço {service_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.delete("/{service_id}", include_in_schema=True)
-async def delete_service(
-    service_id: str = Path(..., description="ID do serviço a remover"),
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde remover"),
-    background_tasks: BackgroundTasks = None
-):
-    """
-    Remove um serviço do Consul
-    """
-    try:
-        consul = ConsulManager()
-
-        # Verificar se serviço existe
-        existing_service = await consul.get_service_by_id(service_id, node_addr)
-        if not existing_service:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
-            )
-
-        # Remover serviço
-        logger.info(f"Removendo serviço: {service_id}")
-        success = await consul.deregister_service(service_id, node_addr)
-
-        if success:
-            background_tasks.add_task(
-                log_action,
-                f"Serviço removido: {service_id}"
-            )
-
-            return {
-                "success": True,
-                "message": "Serviço removido com sucesso",
-                "service_id": service_id
-            }
-        else:
-            raise HTTPException(
-                status_code=500,
-                detail="Falha ao remover serviço do Consul"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao remover serviço {service_id}: {e}", exc_info=True)
+        logger.error(f"Erro ao obter valores únicos: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -453,30 +248,138 @@ async def search_services(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/metadata/unique-values", include_in_schema=True)
-async def get_unique_metadata_values(
-    field: str = Query(..., description="Campo de metadados (module, company, project, env, etc)")
+@router.get("/{service_id:path}", include_in_schema=True)
+async def get_service(
+    service_id: str = Path(..., description="ID do serviço"),
+    node_addr: Optional[str] = Query(None, description="Endereço do nó onde buscar")
 ):
     """
-    Obtém valores únicos de um campo de metadados
+    Obtém detalhes de um serviço específico pelo ID
 
-    Útil para popular dropdowns e filtros na interface
+    IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
+
+    Retorna todos os dados do serviço incluindo metadados completos
     """
     try:
         consul = ConsulManager()
 
-        logger.info(f"Obtendo valores únicos para campo: {field}")
-        values = await consul.get_unique_values(field)
+        # CRITICAL: Sanitizar o service_id recebido da URL
+        service_id = ConsulManager.sanitize_service_id(service_id)
+
+        service = await consul.get_service_by_id(service_id, node_addr)
+
+        if not service:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Serviço '{service_id}' não encontrado"
+            )
 
         return {
             "success": True,
-            "field": field,
-            "values": sorted(list(values)),
-            "total": len(values)
+            "data": service,
+            "service_id": service_id
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Erro ao obter valores únicos: {e}", exc_info=True)
+        logger.error(f"Erro ao obter serviço {service_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# POST ROUTES - Rotas específicas ANTES de rotas com :path
+# ============================================================================
+
+@router.post("/", include_in_schema=True)
+@router.post("")
+async def create_service(
+    request: ServiceCreateRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Cria um novo serviço no Consul com validações completas
+
+    Valida:
+    - Campos obrigatórios (module, company, project, env, name, instance)
+    - Formato correto do instance baseado no módulo
+    - Duplicatas (mesma combinação de module/company/project/env/name)
+
+    Retorna o ID do serviço criado
+    """
+    try:
+        consul = ConsulManager()
+
+        # Converter request para dict
+        service_data = request.model_dump()
+
+        # CRITICAL: Sanitizar o ID antes de processar (similar ao BlackboxManager)
+        # Isso garante que IDs com caracteres especiais sejam normalizados
+        if 'id' in service_data and service_data['id']:
+            service_data['id'] = ConsulManager.sanitize_service_id(service_data['id'])
+            logger.info(f"ID sanitizado para: {service_data['id']}")
+
+        # Validar dados do serviço
+        is_valid, errors = await consul.validate_service_data(service_data)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Erros de validação encontrados",
+                    "errors": errors
+                }
+            )
+
+        # Verificar duplicatas
+        meta = service_data.get("Meta", {})
+        is_duplicate = await consul.check_duplicate_service(
+            module=meta.get("module"),
+            company=meta.get("company"),
+            project=meta.get("project"),
+            env=meta.get("env"),
+            name=meta.get("name"),
+            target_node_addr=service_data.get("node_addr")
+        )
+
+        if is_duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Serviço duplicado",
+                    "detail": "Já existe um serviço com essa combinação de module/company/project/env/name"
+                }
+            )
+
+        # Registrar serviço
+        logger.info(f"Registrando novo serviço: {service_data.get('id')}")
+        success = await consul.register_service(
+            service_data,
+            service_data.get("node_addr")
+        )
+
+        if success:
+            # Log assíncrono
+            background_tasks.add_task(
+                log_action,
+                f"Serviço criado: {service_data.get('id')} - {meta.get('name')}"
+            )
+
+            return {
+                "success": True,
+                "message": "Serviço criado com sucesso",
+                "service_id": service_data.get("id"),
+                "data": service_data
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Falha ao registrar serviço no Consul"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao criar serviço: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -526,6 +429,102 @@ async def bulk_register_services(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# PUT ROUTES - Rotas com :path
+# ============================================================================
+
+@router.put("/{service_id:path}", include_in_schema=True)
+async def update_service(
+    service_id: str = Path(..., description="ID do serviço a atualizar"),
+    request: ServiceUpdateRequest = None,
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Atualiza um serviço existente
+
+    IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
+
+    Nota: Consul não tem endpoint de update nativo, então fazemos:
+    1. Deregister do serviço antigo
+    2. Register do serviço com novos dados
+    """
+    try:
+        consul = ConsulManager()
+
+        # CRITICAL: Sanitizar o service_id recebido da URL
+        # Garante que mesmo IDs com caracteres especiais sejam normalizados
+        service_id = ConsulManager.sanitize_service_id(service_id)
+        logger.info(f"Atualizando serviço com ID sanitizado: {service_id}")
+
+        # Buscar serviço existente
+        existing_service = await consul.get_service_by_id(
+            service_id,
+            request.node_addr if request else None
+        )
+
+        if not existing_service:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Serviço '{service_id}' não encontrado"
+            )
+
+        # Mesclar dados existentes com novos dados
+        # IMPORTANTE: Normalizar campos para formato do Consul (Uppercase)
+        updated_service = existing_service.copy()
+        if request:
+            update_data = request.model_dump(exclude_unset=True)
+
+            # Mapear campos lowercase (frontend) para Uppercase (Consul)
+            field_mapping = {
+                "address": "Address",
+                "port": "Port",
+                "tags": "Tags",
+                "name": "Name",
+            }
+
+            for key, value in update_data.items():
+                if value is not None and key != "node_addr":
+                    # Usar o nome correto do campo (Uppercase se estiver no mapeamento)
+                    consul_key = field_mapping.get(key, key)
+                    updated_service[consul_key] = value
+
+        # Atualizar serviço
+        logger.info(f"Atualizando serviço: {service_id}")
+        success = await consul.update_service(
+            service_id,
+            updated_service,
+            request.node_addr if request else None
+        )
+
+        if success:
+            background_tasks.add_task(
+                log_action,
+                f"Serviço atualizado: {service_id}"
+            )
+
+            return {
+                "success": True,
+                "message": "Serviço atualizado com sucesso",
+                "service_id": service_id,
+                "data": updated_service
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Falha ao atualizar serviço no Consul"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao atualizar serviço {service_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# DELETE ROUTES - Rotas específicas ANTES de rotas com :path
+# ============================================================================
+
 @router.delete("/bulk/deregister", include_in_schema=True)
 async def bulk_deregister_services(
     service_ids: List[str],
@@ -564,6 +563,61 @@ async def bulk_deregister_services(
 
     except Exception as e:
         logger.error(f"Erro na remoção em lote: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{service_id:path}", include_in_schema=True)
+async def delete_service(
+    service_id: str = Path(..., description="ID do serviço a remover"),
+    node_addr: Optional[str] = Query(None, description="Endereço do nó onde remover"),
+    background_tasks: BackgroundTasks = None
+):
+    """
+    Remove um serviço do Consul
+
+    IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
+    """
+    try:
+        consul = ConsulManager()
+
+        # CRITICAL: Sanitizar o service_id recebido da URL
+        # Garante que mesmo IDs com caracteres especiais sejam normalizados
+        service_id = ConsulManager.sanitize_service_id(service_id)
+        logger.info(f"Removendo serviço com ID sanitizado: {service_id}")
+
+        # Verificar se serviço existe
+        existing_service = await consul.get_service_by_id(service_id, node_addr)
+        if not existing_service:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Serviço '{service_id}' não encontrado"
+            )
+
+        # Remover serviço
+        logger.info(f"Removendo serviço: {service_id}")
+        success = await consul.deregister_service(service_id, node_addr)
+
+        if success:
+            background_tasks.add_task(
+                log_action,
+                f"Serviço removido: {service_id}"
+            )
+
+            return {
+                "success": True,
+                "message": "Serviço removido com sucesso",
+                "service_id": service_id
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Falha ao remover serviço do Consul"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao remover serviço {service_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

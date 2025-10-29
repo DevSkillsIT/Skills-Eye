@@ -15,6 +15,7 @@ import {
   FolderOutlined,
   HistoryOutlined,
   FileTextOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import ConfigFiles from './pages/ConfigFiles';
 import Dashboard from './pages/Dashboard';
@@ -28,6 +29,8 @@ import KvBrowser from './pages/KvBrowser';
 import ServicePresets from './pages/ServicePresets';
 import BlackboxGroups from './pages/BlackboxGroups';
 import AuditLog from './pages/AuditLog';
+import PrometheusConfig from './pages/PrometheusConfig';
+import MetadataFields from './pages/MetadataFields';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -77,6 +80,16 @@ const App: React.FC = () => {
       path: '/config-files',
       name: 'Arquivos de configuracao',
       icon: <FileTextOutlined />,
+    },
+    {
+      path: '/prometheus-config',
+      name: 'Config Prometheus',
+      icon: <SettingOutlined />,
+    },
+    {
+      path: '/metadata-fields',
+      name: 'Campos Metadata',
+      icon: <DatabaseOutlined />,
     },
     {
       path: '/kv-browser',
@@ -134,6 +147,8 @@ const App: React.FC = () => {
             <Route path="/presets" element={<ServicePresets />} />
             <Route path="/kv-browser" element={<KvBrowser />} />
             <Route path="/config-files" element={<ConfigFiles />} />
+            <Route path="/prometheus-config" element={<PrometheusConfig />} />
+            <Route path="/metadata-fields" element={<MetadataFields />} />
             <Route path="/audit-log" element={<AuditLog />} />
             <Route path="/installer" element={<Installer />} />
           </Routes>
