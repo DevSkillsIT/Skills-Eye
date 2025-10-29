@@ -1529,3 +1529,298 @@ async def validate_prometheus_config(
     except Exception as e:
         logger.error(f"Erro ao validar configuração: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ENDPOINTS - ALERTMANAGER
+# ============================================================================
+
+class AlertmanagerRoute(BaseModel):
+    """Modelo para rota do Alertmanager"""
+    match: Optional[Dict[str, str]] = None
+    match_re: Optional[Dict[str, str]] = None
+    receiver: str
+    group_by: List[str] = []
+    group_wait: Optional[str] = None
+    group_interval: Optional[str] = None
+    repeat_interval: Optional[str] = None
+    continue_route: bool = False
+    routes: List[Dict[str, Any]] = []
+
+
+class AlertmanagerReceiver(BaseModel):
+    """Modelo para receptor do Alertmanager"""
+    name: str
+    webhook_configs: List[Dict[str, Any]] = []
+    email_configs: List[Dict[str, Any]] = []
+    telegram_configs: List[Dict[str, Any]] = []
+    slack_configs: List[Dict[str, Any]] = []
+
+
+class AlertmanagerInhibitRule(BaseModel):
+    """Modelo para regra de inibição"""
+    source_match: Optional[Dict[str, str]] = None
+    source_match_re: Optional[Dict[str, str]] = None
+    target_match: Optional[Dict[str, str]] = None
+    target_match_re: Optional[Dict[str, str]] = None
+    equal: List[str] = []
+
+
+def _parse_alertmanager_routes(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extrai rotas do alertmanager config
+
+    Args:
+        config: Dicionário com configuração completa do alertmanager
+
+    Returns:
+        Lista de rotas processadas para exibição
+    """
+    routes = []
+
+    # Obter rota raiz
+    root_route = config.get('route', {})
+
+    # Processar sub-rotas
+    sub_routes = root_route.get('routes', [])
+
+    for idx, route in enumerate(sub_routes):
+        # Determinar padrão de match
+        match_pattern = None
+        if 'match' in route:
+            match_pattern = ', '.join([f"{k}: {v}" for k, v in route['match'].items()])
+        elif 'match_re' in route:
+            match_pattern = ', '.join([f"{k}: {v}" for k, v in route['match_re'].items()])
+
+        routes.append({
+            'index': idx,
+            'match_pattern': match_pattern or 'default',
+            'match_type': 'regex' if 'match_re' in route else 'exact',
+            'receiver': route.get('receiver', root_route.get('receiver', 'unknown')),
+            'group_by': route.get('group_by', root_route.get('group_by', [])),
+            'group_wait': route.get('group_wait', root_route.get('group_wait')),
+            'group_interval': route.get('group_interval', root_route.get('group_interval')),
+            'repeat_interval': route.get('repeat_interval', root_route.get('repeat_interval')),
+            'continue': route.get('continue', False),
+            'raw': route
+        })
+
+    return routes
+
+
+def _parse_alertmanager_receivers(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extrai receptores do alertmanager config
+
+    Args:
+        config: Dicionário com configuração completa do alertmanager
+
+    Returns:
+        Lista de receptores processados para exibição
+    """
+    receivers = []
+
+    receivers_list = config.get('receivers', [])
+
+    for idx, receiver in enumerate(receivers_list):
+        name = receiver.get('name', f'receiver-{idx}')
+
+        # Contar configurações de cada tipo
+        webhook_count = len(receiver.get('webhook_configs', []))
+        email_count = len(receiver.get('email_configs', []))
+        telegram_count = len(receiver.get('telegram_configs', []))
+        slack_count = len(receiver.get('slack_configs', []))
+
+        # Determinar tipo principal
+        types = []
+        if webhook_count > 0:
+            types.append(f'webhook ({webhook_count})')
+        if email_count > 0:
+            types.append(f'email ({email_count})')
+        if telegram_count > 0:
+            types.append(f'telegram ({telegram_count})')
+        if slack_count > 0:
+            types.append(f'slack ({slack_count})')
+
+        # Extrair targets (URLs, emails, etc)
+        targets = []
+        for wh in receiver.get('webhook_configs', []):
+            targets.append(wh.get('url', 'N/A'))
+        for em in receiver.get('email_configs', []):
+            targets.append(em.get('to', 'N/A'))
+
+        receivers.append({
+            'index': idx,
+            'name': name,
+            'types': ', '.join(types) if types else 'none',
+            'targets': targets,
+            'webhook_configs': receiver.get('webhook_configs', []),
+            'email_configs': receiver.get('email_configs', []),
+            'telegram_configs': receiver.get('telegram_configs', []),
+            'slack_configs': receiver.get('slack_configs', []),
+            'raw': receiver
+        })
+
+    return receivers
+
+
+def _parse_alertmanager_inhibit_rules(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extrai regras de inibição do alertmanager config
+
+    Args:
+        config: Dicionário com configuração completa do alertmanager
+
+    Returns:
+        Lista de regras processadas para exibição
+    """
+    rules = []
+
+    inhibit_rules = config.get('inhibit_rules', [])
+
+    for idx, rule in enumerate(inhibit_rules):
+        # Source match
+        source_pattern = None
+        if 'source_match' in rule:
+            source_pattern = ', '.join([f"{k}: {v}" for k, v in rule['source_match'].items()])
+        elif 'source_match_re' in rule:
+            source_pattern = ', '.join([f"{k}: {v}" for k, v in rule['source_match_re'].items()])
+
+        # Target match
+        target_pattern = None
+        if 'target_match' in rule:
+            target_pattern = ', '.join([f"{k}: {v}" for k, v in rule['target_match'].items()])
+        elif 'target_match_re' in rule:
+            target_pattern = ', '.join([f"{k}: {v}" for k, v in rule['target_match_re'].items()])
+
+        rules.append({
+            'index': idx,
+            'source_pattern': source_pattern or 'N/A',
+            'source_type': 'regex' if 'source_match_re' in rule else 'exact',
+            'target_pattern': target_pattern or 'N/A',
+            'target_type': 'regex' if 'target_match_re' in rule else 'exact',
+            'equal': rule.get('equal', []),
+            'raw': rule
+        })
+
+    return rules
+
+
+@router.get("/alertmanager/routes")
+async def get_alertmanager_routes(
+    file_path: str = Query(..., description="Path do arquivo alertmanager.yml"),
+    hostname: Optional[str] = Query(None, description="Hostname do servidor")
+):
+    """
+    Extrai rotas (routes) do alertmanager.yml
+
+    Args:
+        file_path: Path completo do arquivo (ex: /etc/alertmanager/alertmanager.yml)
+        hostname: Hostname do servidor (opcional)
+
+    Returns:
+        Lista de rotas processadas
+    """
+    try:
+        # Ler arquivo
+        content = multi_config.read_file_content(file_path, hostname)
+
+        # Parsear YAML
+        import yaml as pyyaml
+        config = pyyaml.safe_load(content)
+
+        # Extrair rotas
+        routes = _parse_alertmanager_routes(config)
+
+        return {
+            "success": True,
+            "routes": routes,
+            "total": len(routes),
+            "file_path": file_path
+        }
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Erro ao extrair rotas: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/alertmanager/receivers")
+async def get_alertmanager_receivers(
+    file_path: str = Query(..., description="Path do arquivo alertmanager.yml"),
+    hostname: Optional[str] = Query(None, description="Hostname do servidor")
+):
+    """
+    Extrai receptores (receivers) do alertmanager.yml
+
+    Args:
+        file_path: Path completo do arquivo (ex: /etc/alertmanager/alertmanager.yml)
+        hostname: Hostname do servidor (opcional)
+
+    Returns:
+        Lista de receptores processados
+    """
+    try:
+        # Ler arquivo
+        content = multi_config.read_file_content(file_path, hostname)
+
+        # Parsear YAML
+        import yaml as pyyaml
+        config = pyyaml.safe_load(content)
+
+        # Extrair receptores
+        receivers = _parse_alertmanager_receivers(config)
+
+        return {
+            "success": True,
+            "receivers": receivers,
+            "total": len(receivers),
+            "file_path": file_path
+        }
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Erro ao extrair receptores: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/alertmanager/inhibit-rules")
+async def get_alertmanager_inhibit_rules(
+    file_path: str = Query(..., description="Path do arquivo alertmanager.yml"),
+    hostname: Optional[str] = Query(None, description="Hostname do servidor")
+):
+    """
+    Extrai regras de inibição (inhibit_rules) do alertmanager.yml
+
+    Args:
+        file_path: Path completo do arquivo (ex: /etc/alertmanager/alertmanager.yml)
+        hostname: Hostname do servidor (opcional)
+
+    Returns:
+        Lista de regras processadas
+    """
+    try:
+        # Ler arquivo
+        content = multi_config.read_file_content(file_path, hostname)
+
+        # Parsear YAML
+        import yaml as pyyaml
+        config = pyyaml.safe_load(content)
+
+        # Extrair regras de inibição
+        rules = _parse_alertmanager_inhibit_rules(config)
+
+        return {
+            "success": True,
+            "inhibit_rules": rules,
+            "total": len(rules),
+            "file_path": file_path
+        }
+
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Erro ao extrair regras de inibição: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
