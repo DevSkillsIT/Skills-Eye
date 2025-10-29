@@ -141,6 +141,13 @@ const PrometheusConfig: React.FC = () => {
   const [alertViewMode, setAlertViewMode] = useState<'group' | 'individual'>('group'); // Toggle para visões de alertas
   const [tableSize, setTableSize] = useState<'small' | 'middle' | 'large'>('middle'); // Densidade da tabela
   const [activeTabKey, setActiveTabKey] = useState<string>('jobs'); // Controla qual aba está ativa
+  const [alertmanagerViewMode, setAlertmanagerViewMode] = useState<'routes' | 'receivers' | 'inhibit-rules'>('routes'); // Toggle para visões do Alertmanager
+
+  // Alertmanager data states
+  const [alertmanagerRoutes, setAlertmanagerRoutes] = useState<any[]>([]);
+  const [alertmanagerReceivers, setAlertmanagerReceivers] = useState<any[]>([]);
+  const [alertmanagerInhibitRules, setAlertmanagerInhibitRules] = useState<any[]>([]);
+  const [loadingAlertmanager, setLoadingAlertmanager] = useState(false);
 
   // Monaco Editor states
   const [monacoEditorVisible, setMonacoEditorVisible] = useState(false);
@@ -355,6 +362,46 @@ const PrometheusConfig: React.FC = () => {
     }
   }, []); // Sem dependências: função estável que recebe tudo via parâmetro
 
+  // Carregar dados do Alertmanager (routes, receivers, inhibit_rules)
+  const fetchAlertmanagerData = useCallback(async (filePath: string, serverIdWithPort?: string) => {
+    setLoadingAlertmanager(true);
+    try {
+      // Extrair hostname
+      let hostnameParam = '';
+      if (serverIdWithPort) {
+        const hostname = serverIdWithPort.split(':')[0];
+        hostnameParam = `&hostname=${encodeURIComponent(hostname)}`;
+      }
+
+      // Buscar todas as 3 visões em paralelo
+      const [routesRes, receiversRes, inhibitRulesRes] = await Promise.all([
+        axios.get(`${API_URL}/prometheus-config/alertmanager/routes?file_path=${encodeURIComponent(filePath)}${hostnameParam}`),
+        axios.get(`${API_URL}/prometheus-config/alertmanager/receivers?file_path=${encodeURIComponent(filePath)}${hostnameParam}`),
+        axios.get(`${API_URL}/prometheus-config/alertmanager/inhibit-rules?file_path=${encodeURIComponent(filePath)}${hostnameParam}`)
+      ]);
+
+      if (routesRes.data.success) {
+        setAlertmanagerRoutes(routesRes.data.routes || []);
+      }
+      if (receiversRes.data.success) {
+        setAlertmanagerReceivers(receiversRes.data.receivers || []);
+      }
+      if (inhibitRulesRes.data.success) {
+        setAlertmanagerInhibitRules(inhibitRulesRes.data.inhibit_rules || []);
+      }
+
+      setFileType('alertmanager');
+      message.success(`Alertmanager carregado: ${routesRes.data.total} rotas, ${receiversRes.data.total} receptores, ${inhibitRulesRes.data.total} regras`);
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || 'Erro ao carregar Alertmanager');
+      setAlertmanagerRoutes([]);
+      setAlertmanagerReceivers([]);
+      setAlertmanagerInhibitRules([]);
+    } finally {
+      setLoadingAlertmanager(false);
+    }
+  }, []);
+
   // Processar dados para visão de alertas (grupo vs individual)
   const processedJobs = useMemo(() => {
     if (fileType !== 'rules' || alertViewMode === 'group') {
@@ -387,6 +434,24 @@ const PrometheusConfig: React.FC = () => {
 
     return individualAlerts;
   }, [jobs, fileType, alertViewMode]);
+
+  // Processar dados do Alertmanager baseado na visão selecionada
+  const processedAlertmanagerData = useMemo(() => {
+    if (fileType !== 'alertmanager') {
+      return [];
+    }
+
+    switch (alertmanagerViewMode) {
+      case 'routes':
+        return alertmanagerRoutes;
+      case 'receivers':
+        return alertmanagerReceivers;
+      case 'inhibit-rules':
+        return alertmanagerInhibitRules;
+      default:
+        return [];
+    }
+  }, [fileType, alertmanagerViewMode, alertmanagerRoutes, alertmanagerReceivers, alertmanagerInhibitRules]);
 
   // OTIMIZAÇÃO: Carregamento inicial - combina carregamento de servidores + arquivos
   useEffect(() => {
@@ -478,10 +543,19 @@ const PrometheusConfig: React.FC = () => {
 
   useEffect(() => {
     if (selectedFile) {
-      fetchJobs(selectedFile, selectedServer);
+      // Detectar se é arquivo alertmanager
+      const isAlertmanagerFile = selectedFile.toLowerCase().includes('alertmanager');
+
+      if (isAlertmanagerFile) {
+        // Carregar dados do Alertmanager (routes, receivers, inhibit_rules)
+        fetchAlertmanagerData(selectedFile, selectedServer);
+      } else {
+        // Carregar jobs normalmente (prometheus, blackbox, rules)
+        fetchJobs(selectedFile, selectedServer);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFile, fetchJobs]); // Não adicionar selectedServer para evitar loop (já está sincronizado)
+  }, [selectedFile, fetchJobs, fetchAlertmanagerData]); // Não adicionar selectedServer para evitar loop (já está sincronizado)
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
@@ -1114,23 +1188,49 @@ const PrometheusConfig: React.FC = () => {
         { key: 'actions', title: 'Ações', visible: true, locked: true },
       ];
     } else if (fileType === 'alertmanager') {
-      return [
-        { key: 'name', title: 'Name', visible: true, locked: true },
-        { key: 'webhook', title: 'Webhook Configs', visible: true },
-        { key: 'email', title: 'Email Configs', visible: true },
-        { key: 'actions', title: 'Ações', visible: true, locked: true },
-      ];
+      // Colunas dinâmicas baseadas na visão do Alertmanager
+      switch (alertmanagerViewMode) {
+        case 'routes':
+          return [
+            { key: 'match_pattern', title: 'Match Pattern', visible: true, locked: true },
+            { key: 'receiver', title: 'Receiver', visible: true },
+            { key: 'group_by', title: 'Group By', visible: true },
+            { key: 'group_wait', title: 'Group Wait', visible: true },
+            { key: 'repeat_interval', title: 'Repeat Interval', visible: true },
+            { key: 'continue', title: 'Continue', visible: true },
+            { key: 'actions', title: 'Ações', visible: true, locked: true },
+          ];
+        case 'receivers':
+          return [
+            { key: 'name', title: 'Nome', visible: true, locked: true },
+            { key: 'types', title: 'Tipos', visible: true },
+            { key: 'targets', title: 'Destinos', visible: true },
+            { key: 'actions', title: 'Ações', visible: true, locked: true },
+          ];
+        case 'inhibit-rules':
+          return [
+            { key: 'source_pattern', title: 'Source Alert', visible: true, locked: true },
+            { key: 'target_pattern', title: 'Target Alert', visible: true },
+            { key: 'equal', title: 'Equal Labels', visible: true },
+            { key: 'actions', title: 'Ações', visible: true, locked: true },
+          ];
+        default:
+          return [
+            { key: 'name', title: 'Name', visible: true, locked: true },
+            { key: 'actions', title: 'Ações', visible: true, locked: true },
+          ];
+      }
     }
     return [
       { key: 'name', title: 'Name', visible: true, locked: true },
       { key: 'actions', title: 'Ações', visible: true, locked: true },
     ];
-  }, [fileType, alertViewMode]);
+  }, [fileType, alertViewMode, alertmanagerViewMode]);
 
   // Atualizar columnConfig quando o tipo de arquivo ou modo de visão mudar
   useEffect(() => {
     setColumnConfig(getColumnPresets());
-  }, [fileType, alertViewMode, getColumnPresets]);
+  }, [fileType, alertViewMode, alertmanagerViewMode, getColumnPresets]);
 
   // NOVO: Colunas dinâmicas baseadas no tipo de arquivo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1388,32 +1488,194 @@ const PrometheusConfig: React.FC = () => {
         }
       );
     } else if (fileType === 'alertmanager') {
-      baseColumns.push(
-        {
-          title: 'Webhook Configs',
-          dataIndex: 'webhook_configs',
-          key: 'webhook',
-          width: 150,
-          render: (configs: any[]) =>
-            configs?.length > 0 ? (
-              <Badge count={configs.length} style={{ backgroundColor: '#722ed1' }} />
-            ) : (
-              <Tag>Nenhum</Tag>
+      // Colunas dinâmicas baseadas na visão selecionada
+      if (alertmanagerViewMode === 'routes') {
+        // VISÃO: ROTAS
+        baseColumns.push(
+          {
+            title: 'Match Pattern',
+            dataIndex: 'match_pattern',
+            key: 'match_pattern',
+            width: 250,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Space direction="vertical" size={2}>
+                <Text strong>{record.match_pattern}</Text>
+                {record.match_type === 'regex' && (
+                  <Tag color="purple" style={{ fontSize: 10 }}>REGEX</Tag>
+                )}
+              </Space>
             ),
-        },
-        {
-          title: 'Email Configs',
-          dataIndex: 'email_configs',
-          key: 'email',
-          width: 150,
-          render: (configs: any[]) =>
-            configs?.length > 0 ? (
-              <Badge count={configs.length} style={{ backgroundColor: '#52c41a' }} />
-            ) : (
-              <Tag>Nenhum</Tag>
+          },
+          {
+            title: 'Receiver',
+            dataIndex: 'receiver',
+            key: 'receiver',
+            width: 180,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tag color="blue" icon={<CloudServerOutlined />}>
+                {record.receiver}
+              </Tag>
             ),
-        }
-      );
+          },
+          {
+            title: 'Group By',
+            dataIndex: 'group_by',
+            key: 'group_by',
+            width: 200,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              record.group_by?.length > 0 ? (
+                <Space size={4} wrap>
+                  {record.group_by.map((label: string, idx: number) => (
+                    <Tag key={idx} color="cyan">{label}</Tag>
+                  ))}
+                </Space>
+              ) : <Tag>Nenhum</Tag>
+            ),
+          },
+          {
+            title: 'Group Wait',
+            dataIndex: 'group_wait',
+            key: 'group_wait',
+            width: 110,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => record.group_wait ? <Tag color="orange">{record.group_wait}</Tag> : <Tag>Padrão</Tag>,
+          },
+          {
+            title: 'Repeat Interval',
+            dataIndex: 'repeat_interval',
+            key: 'repeat_interval',
+            width: 140,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => record.repeat_interval ? <Tag color="green">{record.repeat_interval}</Tag> : <Tag>Padrão</Tag>,
+          },
+          {
+            title: 'Continue',
+            dataIndex: 'continue',
+            key: 'continue',
+            width: 90,
+            align: 'center',
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => record.continue ? (
+              <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+            ) : (
+              <CloseCircleOutlined style={{ color: '#d9d9d9', fontSize: 16 }} />
+            ),
+          }
+        );
+      } else if (alertmanagerViewMode === 'receivers') {
+        // VISÃO: RECEPTORES
+        baseColumns.push(
+          {
+            title: 'Nome',
+            dataIndex: 'name',
+            key: 'name',
+            width: 200,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Text strong style={{ color: '#1890ff' }}>{record.name}</Text>
+            ),
+          },
+          {
+            title: 'Tipos',
+            dataIndex: 'types',
+            key: 'types',
+            width: 250,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => {
+              const typeList = record.types.split(', ');
+              return (
+                <Space size={4} wrap>
+                  {typeList.map((type: string, idx: number) => {
+                    const color = type.includes('webhook') ? 'purple' :
+                                  type.includes('email') ? 'green' :
+                                  type.includes('telegram') ? 'cyan' :
+                                  type.includes('slack') ? 'orange' : 'default';
+                    return <Tag key={idx} color={color}>{type}</Tag>;
+                  })}
+                </Space>
+              );
+            },
+          },
+          {
+            title: 'Destinos',
+            dataIndex: 'targets',
+            key: 'targets',
+            width: 400,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              record.targets?.length > 0 ? (
+                <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                  {record.targets.slice(0, 2).map((target: string, idx: number) => (
+                    <Text key={idx} code copyable style={{ fontSize: 11 }}>
+                      {target}
+                    </Text>
+                  ))}
+                  {record.targets.length > 2 && (
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      +{record.targets.length - 2} mais...
+                    </Text>
+                  )}
+                </Space>
+              ) : <Tag>Nenhum destino</Tag>
+            ),
+          }
+        );
+      } else if (alertmanagerViewMode === 'inhibit-rules') {
+        // VISÃO: REGRAS DE INIBIÇÃO
+        baseColumns.push(
+          {
+            title: 'Source Alert',
+            dataIndex: 'source_pattern',
+            key: 'source_pattern',
+            width: 280,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Space direction="vertical" size={2}>
+                <Text strong style={{ color: '#ff4d4f' }}>{record.source_pattern}</Text>
+                {record.source_type === 'regex' && (
+                  <Tag color="purple" style={{ fontSize: 10 }}>REGEX</Tag>
+                )}
+              </Space>
+            ),
+          },
+          {
+            title: 'Target Alert',
+            dataIndex: 'target_pattern',
+            key: 'target_pattern',
+            width: 280,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Space direction="vertical" size={2}>
+                <Text>{record.target_pattern}</Text>
+                {record.target_type === 'regex' && (
+                  <Tag color="purple" style={{ fontSize: 10 }}>REGEX</Tag>
+                )}
+              </Space>
+            ),
+          },
+          {
+            title: 'Equal Labels',
+            dataIndex: 'equal',
+            key: 'equal',
+            width: 200,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              record.equal?.length > 0 ? (
+                <Space size={4} wrap>
+                  {record.equal.map((label: string, idx: number) => (
+                    <Tag key={idx} color="geekblue" icon={<DatabaseOutlined />}>
+                      {label}
+                    </Tag>
+                  ))}
+                </Space>
+              ) : <Tag>Nenhum</Tag>
+            ),
+          }
+        );
+      }
     } else if (fileType === 'rules') {
       // Visão por grupo (padrão)
       if (alertViewMode === 'group') {
@@ -1663,7 +1925,7 @@ const PrometheusConfig: React.FC = () => {
     });
 
     return baseColumns;
-  }, [itemKey, fileType, handleEditJob, alertViewMode]);
+  }, [itemKey, fileType, handleEditJob, alertViewMode, alertmanagerViewMode]);
 
   // Colunas visíveis com configuração e redimensionamento (padrão Blackbox)
   const visibleColumns = useMemo(() => {
@@ -1957,6 +2219,32 @@ const PrometheusConfig: React.FC = () => {
               </Space.Compact>
             )}
 
+            {fileType === 'alertmanager' && (
+              <Space.Compact size="large">
+                <Button
+                  type={alertmanagerViewMode === 'routes' ? 'primary' : 'default'}
+                  size="large"
+                  onClick={() => setAlertmanagerViewMode('routes')}
+                >
+                  Rotas
+                </Button>
+                <Button
+                  type={alertmanagerViewMode === 'receivers' ? 'primary' : 'default'}
+                  size="large"
+                  onClick={() => setAlertmanagerViewMode('receivers')}
+                >
+                  Receptores
+                </Button>
+                <Button
+                  type={alertmanagerViewMode === 'inhibit-rules' ? 'primary' : 'default'}
+                  size="large"
+                  onClick={() => setAlertmanagerViewMode('inhibit-rules')}
+                >
+                  Regras de Inibição
+                </Button>
+              </Space.Compact>
+            )}
+
             <Dropdown
               menu={{
                 items: [
@@ -2006,9 +2294,14 @@ const PrometheusConfig: React.FC = () => {
                 <div style={{ minHeight: 500 }}>
                   <ProTable
                   columns={visibleColumns}
-                  dataSource={processedJobs}
-                  rowKey={fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey}
-                  loading={loadingJobs}
+                  dataSource={fileType === 'alertmanager' ? processedAlertmanagerData : processedJobs}
+                  rowKey={
+                    fileType === 'alertmanager' ?
+                      (alertmanagerViewMode === 'routes' ? 'index' :
+                       alertmanagerViewMode === 'receivers' ? 'index' : 'index') :
+                    fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey
+                  }
+                  loading={fileType === 'alertmanager' ? loadingAlertmanager : loadingJobs}
                   search={false}
                   size={tableSize}
                   options={false}
