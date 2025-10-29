@@ -275,7 +275,6 @@ const PrometheusConfig: React.FC = () => {
       if (serverIdWithPort) {
         const hostname = serverIdWithPort.split(':')[0];
         url += `&hostname=${encodeURIComponent(hostname)}`;
-        console.log(`[fetchJobs] OTIMIZAÇÃO: Passando hostname=${hostname} (evita SSH em múltiplos servidores)`);
       }
 
       const response = await axios.get(url);
