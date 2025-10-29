@@ -154,18 +154,6 @@ export interface BlackboxGroupResponse {
   group: BlackboxGroup;
 }
 
-export interface ConfigHost {
-  id: string;
-  name: string;
-  description?: string;
-}
-
-export interface ConfigFileInfo {
-  path: string;
-  size?: number;
-  modified?: string;
-}
-
 /**
  * INTERFACES PARA EDIÇÃO DIRETA DE ARQUIVO
  *
@@ -673,21 +661,6 @@ export const consulAPI = {
 
   getSearchStats: () =>
     api.get<{ success: boolean; statistics: Statistics }>('/search/stats'),
-
-  // Config files
-  listConfigHosts: () =>
-    api.get<{ success: boolean; hosts: ConfigHost[] }>('/config-files/hosts'),
-
-  listConfigFiles: (hostId: string) =>
-    api.get<{ success: boolean; files: ConfigFileInfo[] }>(
-      `/config-files/${encodeURIComponent(hostId)}`,
-    ),
-
-  getConfigFile: (hostId: string, filePath: string) =>
-    api.get<{ success: boolean; content: string }>(
-      `/config-files/${encodeURIComponent(hostId)}/content`,
-      { params: { path: filePath } },
-    ),
 
   // KV Store
   getKV: (key: string) =>

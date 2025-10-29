@@ -18,7 +18,6 @@ from api.nodes import router as nodes_router
 from api.config import router as config_router
 from api.blackbox import router as blackbox_router
 from api.kv import router as kv_router
-from api.config_files import router as config_files_router
 from api.presets import router as presets_router
 from api.search import router as search_router
 from api.consul_insights import router as consul_insights_router
@@ -167,7 +166,6 @@ app.include_router(nodes_router, prefix="/api/v1/nodes", tags=["nodes"])
 app.include_router(config_router, prefix="/api/v1/config", tags=["config"])
 app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["blackbox"])
 app.include_router(kv_router, prefix="/api/v1/kv", tags=["kv"])
-app.include_router(config_files_router, prefix="/api/v1/config-files", tags=["config-files"])
 app.include_router(presets_router, prefix="/api/v1/presets", tags=["presets"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["consul"])

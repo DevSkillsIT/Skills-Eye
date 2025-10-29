@@ -185,30 +185,3 @@ class KVPutRequest(BaseModel):
     """Requisição para escrita no Consul KV"""
     key: str = Field(..., description="Chave completa (prefixo skills/cm/)")
     value: Dict[str, Any] = Field(..., description="Valor JSON serializável")
-
-class ConfigHostSummary(BaseModel):
-    """Host permitido para leitura de arquivos remotos."""
-    id: str
-    name: str
-    description: Optional[str] = None
-
-
-class ConfigHostListResponse(BaseModel):
-    success: bool
-    hosts: List[ConfigHostSummary]
-
-
-class ConfigFileInfo(BaseModel):
-    path: str
-    size: Optional[int] = None
-    modified: Optional[str] = None
-
-
-class ConfigFileListResponse(BaseModel):
-    success: bool
-    files: List[ConfigFileInfo]
-
-
-class ConfigFileContentResponse(BaseModel):
-    success: bool
-    content: str

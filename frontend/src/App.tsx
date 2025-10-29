@@ -17,7 +17,6 @@ import {
   FileTextOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
-import ConfigFiles from './pages/ConfigFiles';
 import Dashboard from './pages/Dashboard';
 import Services from './pages/Services';
 import ServiceGroups from './pages/ServiceGroups';
@@ -75,11 +74,6 @@ const App: React.FC = () => {
       path: '/presets',
       name: 'Presets de Servicos',
       icon: <AppstoreOutlined />,
-    },
-    {
-      path: '/config-files',
-      name: 'Arquivos de configuracao',
-      icon: <FileTextOutlined />,
     },
     {
       path: '/prometheus-config',
@@ -147,7 +141,6 @@ const App: React.FC = () => {
             <Route path="/blackbox-groups" element={<BlackboxGroups />} />
             <Route path="/presets" element={<ServicePresets />} />
             <Route path="/kv-browser" element={<KvBrowser />} />
-            <Route path="/config-files" element={<ConfigFiles />} />
             <Route path="/prometheus-config" element={<PrometheusConfig />} />
             <Route path="/metadata-fields" element={<MetadataFields />} />
             <Route path="/audit-log" element={<AuditLog />} />
