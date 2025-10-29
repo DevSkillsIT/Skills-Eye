@@ -273,6 +273,39 @@ const PrometheusConfig: React.FC = () => {
     }
   };
 
+  // Processar dados para visão de alertas (grupo vs individual)
+  const processedJobs = useMemo(() => {
+    if (fileType !== 'rules' || alertViewMode === 'group') {
+      return jobs; // Retornar dados normais (visão por grupo)
+    }
+
+    // Visão individual: "achatar" todos os alertas em uma lista única
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const individualAlerts: any[] = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jobs.forEach((group: any) => {
+      const groupName = group.name || 'Sem nome';
+      const rules = group.rules || [];
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rules.forEach((rule: any) => {
+        if (rule.alert) {
+          individualAlerts.push({
+            ...rule,
+            // Adicionar informações do grupo
+            _group_name: groupName,
+            _group_interval: group.interval,
+            // Usar alert como chave primária
+            name: rule.alert,
+          });
+        }
+      });
+    });
+
+    return individualAlerts;
+  }, [jobs, fileType, alertViewMode]);
+
   // Carregar lista de servidores
   const fetchServers = async () => {
     try {
@@ -931,13 +964,26 @@ const PrometheusConfig: React.FC = () => {
         { key: 'actions', title: 'Ações', visible: true, locked: true },
       ];
     } else if (fileType === 'rules') {
-      return [
-        { key: 'name', title: 'Name', visible: true, locked: true },
-        { key: 'interval', title: 'Intervalo', visible: true },
-        { key: 'rules_count', title: 'Total Regras', visible: true },
-        { key: 'alerts_detail', title: 'Alertas Configurados', visible: true },
-        { key: 'actions', title: 'Ações', visible: true, locked: true },
-      ];
+      if (alertViewMode === 'group') {
+        return [
+          { key: 'name', title: 'Name', visible: true, locked: true },
+          { key: 'interval', title: 'Intervalo', visible: true },
+          { key: 'rules_count', title: 'Total Regras', visible: true },
+          { key: 'alerts_detail', title: 'Alertas Configurados', visible: true },
+          { key: 'actions', title: 'Ações', visible: true, locked: true },
+        ];
+      } else {
+        // Visão individual
+        return [
+          { key: 'name', title: 'Alerta', visible: true, locked: true },
+          { key: 'group', title: 'Grupo', visible: true },
+          { key: 'severity', title: 'Severity', visible: true },
+          { key: 'for', title: 'For', visible: true },
+          { key: 'expr', title: 'Expression', visible: true },
+          { key: 'summary', title: 'Resumo', visible: true },
+          { key: 'actions', title: 'Ações', visible: true, locked: true },
+        ];
+      }
     } else if (fileType === 'blackbox') {
       return [
         { key: 'module_name', title: 'Module Name', visible: true, locked: true },
@@ -958,12 +1004,12 @@ const PrometheusConfig: React.FC = () => {
       { key: 'name', title: 'Name', visible: true, locked: true },
       { key: 'actions', title: 'Ações', visible: true, locked: true },
     ];
-  }, [fileType]);
+  }, [fileType, alertViewMode]);
 
-  // Atualizar columnConfig quando o tipo de arquivo mudar
+  // Atualizar columnConfig quando o tipo de arquivo ou modo de visão mudar
   useEffect(() => {
     setColumnConfig(getColumnPresets());
-  }, [fileType, getColumnPresets]);
+  }, [fileType, alertViewMode, getColumnPresets]);
 
   // NOVO: Colunas dinâmicas baseadas no tipo de arquivo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1110,36 +1156,60 @@ const PrometheusConfig: React.FC = () => {
               return <Badge count={relabelConfigs.length} style={{ backgroundColor: '#52c41a' }} />;
             }
 
+            // Melhor visualização: mostrar de forma mais compacta e legível
+            const mainMapping = targetConfigs[0];
+
             return (
-              <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                {targetConfigs.slice(0, 2).map((rc: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: 11 }}>
-                    <Tag color="geekblue" style={{ fontSize: 10 }}>
-                      {rc.target_label}
-                    </Tag>
-                    <Text type="secondary" style={{ fontSize: 10 }}>→</Text>
-                    <code style={{ fontSize: 10, marginLeft: 4 }}>{rc.replacement}</code>
-                  </div>
-                ))}
-                {relabelConfigs.length > 2 && (
-                  <Tooltip
-                    title={
-                      <div>
-                        {relabelConfigs.slice(2).map((rc: any, idx: number) => (
-                          <div key={idx} style={{ marginBottom: 4 }}>
-                            <strong>{rc.target_label || rc.source_labels?.join(',')}</strong>
-                            {rc.replacement && ` → ${rc.replacement}`}
-                          </div>
-                        ))}
+              <Tooltip
+                title={
+                  <div>
+                    <div style={{ marginBottom: 8, fontWeight: 'bold' }}>
+                      Configurações de Mapeamento ({relabelConfigs.length} total)
+                    </div>
+                    {targetConfigs.map((rc: any, idx: number) => (
+                      <div key={idx} style={{
+                        marginBottom: 8,
+                        padding: 8,
+                        background: 'rgba(255,255,255,0.1)',
+                        borderRadius: 4
+                      }}>
+                        <div><strong>Target:</strong> {rc.target_label}</div>
+                        <div><strong>Replacement:</strong> {rc.replacement}</div>
+                        {rc.source_labels && (
+                          <div><strong>Source:</strong> {rc.source_labels.join(', ')}</div>
+                        )}
+                        {rc.action && (
+                          <div><strong>Action:</strong> {rc.action}</div>
+                        )}
                       </div>
-                    }
-                  >
-                    <Tag style={{ fontSize: 10, cursor: 'pointer' }}>
-                      +{relabelConfigs.length - 2} configs
-                    </Tag>
-                  </Tooltip>
-                )}
-              </Space>
+                    ))}
+                    {relabelConfigs.length > targetConfigs.length && (
+                      <div style={{ marginTop: 8, opacity: 0.7 }}>
+                        +{relabelConfigs.length - targetConfigs.length} outras configurações
+                      </div>
+                    )}
+                  </div>
+                }
+              >
+                <Space size={4} wrap>
+                  <Badge
+                    count={relabelConfigs.length}
+                    style={{ backgroundColor: '#52c41a' }}
+                    showZero
+                  />
+                  {mainMapping && (
+                    <>
+                      <Text code style={{ fontSize: 11 }}>
+                        {mainMapping.target_label}
+                      </Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>→</Text>
+                      <Text code style={{ fontSize: 11 }}>
+                        {mainMapping.replacement}
+                      </Text>
+                    </>
+                  )}
+                </Space>
+              </Tooltip>
             );
           },
         }
@@ -1224,36 +1294,42 @@ const PrometheusConfig: React.FC = () => {
         }
       );
     } else if (fileType === 'rules') {
-      baseColumns.push(
-        {
-          title: 'Intervalo',
-          dataIndex: 'interval',
-          key: 'interval',
-          width: 100,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          render: (_: any, record: any) => record.interval ? (
-            <Tag color="blue" icon={<ClockCircleOutlined />}>
-              {record.interval}
-            </Tag>
-          ) : <Tag>Padrão</Tag>,
-        },
-        {
-          title: 'Total Regras',
-          dataIndex: 'rules',
-          key: 'rules_count',
-          width: 110,
-          render: (rules: any[]) =>
-            rules?.length > 0 ? (
-              <Badge count={rules.length} showZero style={{ backgroundColor: '#ff4d4f' }} />
-            ) : (
-              <Tag>0</Tag>
-            ),
-        },
-        {
-          title: 'Alertas Configurados',
-          key: 'alerts_detail',
-          width: 500,
-          render: (_: any, record: any) => {
+      // Visão por grupo (padrão)
+      if (alertViewMode === 'group') {
+        baseColumns.push(
+          {
+            title: 'Intervalo',
+            dataIndex: 'interval',
+            key: 'interval',
+            width: 100,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => record.interval ? (
+              <Tag color="blue" icon={<ClockCircleOutlined />}>
+                {record.interval}
+              </Tag>
+            ) : <Tag>Padrão</Tag>,
+          },
+          {
+            title: 'Total Regras',
+            dataIndex: 'rules',
+            key: 'rules_count',
+            width: 110,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => {
+              const rules = record.rules || [];
+              return rules.length > 0 ? (
+                <Badge count={rules.length} showZero style={{ backgroundColor: '#ff4d4f' }} />
+              ) : (
+                <Tag>0</Tag>
+              );
+            },
+          },
+          {
+            title: 'Alertas Configurados',
+            key: 'alerts_detail',
+            width: 500,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => {
             const alerts = record.rules?.filter((r: any) => r.alert) || [];
             if (alerts.length === 0) return <Tag>Nenhum alerta</Tag>;
 
@@ -1327,6 +1403,81 @@ const PrometheusConfig: React.FC = () => {
           },
         }
       );
+      } else {
+        // Visão individual: mostrar cada alerta como linha separada
+        baseColumns.push(
+          {
+            title: 'Grupo',
+            dataIndex: '_group_name',
+            key: 'group',
+            width: 150,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tag color="purple">{record._group_name}</Tag>
+            ),
+          },
+          {
+            title: 'Severity',
+            dataIndex: ['labels', 'severity'],
+            key: 'severity',
+            width: 120,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => {
+              const severity = record.labels?.severity;
+              if (!severity) return <Tag>N/A</Tag>;
+              return (
+                <Tag
+                  color={
+                    severity === 'critical' ? 'red' :
+                    severity === 'warning' ? 'orange' :
+                    'blue'
+                  }
+                >
+                  {severity}
+                </Tag>
+              );
+            },
+          },
+          {
+            title: 'For',
+            dataIndex: 'for',
+            key: 'for',
+            width: 100,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => record.for ? (
+              <Tag color="blue" icon={<ClockCircleOutlined />}>
+                {record.for}
+              </Tag>
+            ) : <Tag>-</Tag>,
+          },
+          {
+            title: 'Expression',
+            dataIndex: 'expr',
+            key: 'expr',
+            width: 400,
+            ellipsis: true,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tooltip title={record.expr}>
+                <code style={{ fontSize: 11 }}>{record.expr}</code>
+              </Tooltip>
+            ),
+          },
+          {
+            title: 'Resumo',
+            dataIndex: ['annotations', 'summary'],
+            key: 'summary',
+            width: 300,
+            ellipsis: true,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              <Tooltip title={record.annotations?.description}>
+                {record.annotations?.summary || '-'}
+              </Tooltip>
+            ),
+          }
+        );
+      }
     }
 
     // Coluna de ações (sempre no final)
@@ -1350,7 +1501,7 @@ const PrometheusConfig: React.FC = () => {
     });
 
     return baseColumns;
-  }, [itemKey, fileType, handleEditJob]);
+  }, [itemKey, fileType, handleEditJob, alertViewMode]);
 
   // Colunas visíveis com configuração e redimensionamento (padrão Blackbox)
   const visibleColumns = useMemo(() => {
@@ -1570,6 +1721,42 @@ const PrometheusConfig: React.FC = () => {
         </Row>
       </Card>
 
+      {/* Card de Ações e Filtros (padrão Blackbox) - ALTURA FIXA 72px */}
+      <Card size="small" style={{ marginBottom: 16, minHeight: 72, overflow: 'hidden' }}>
+        <Space wrap>
+          <ColumnSelector
+            columns={columnConfig}
+            onChange={setColumnConfig}
+            storageKey={`prometheus-columns-${fileType}`}
+          />
+
+          {fileType === 'rules' && (
+            <>
+              <Button
+                type={alertViewMode === 'group' ? 'primary' : 'default'}
+                onClick={() => setAlertViewMode('group')}
+              >
+                Visão por Grupo
+              </Button>
+              <Button
+                type={alertViewMode === 'individual' ? 'primary' : 'default'}
+                onClick={() => setAlertViewMode('individual')}
+              >
+                Visão por Alerta
+              </Button>
+            </>
+          )}
+
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={() => selectedFile && fetchJobs(selectedFile)}
+            disabled={!selectedFile}
+          >
+            Recarregar Tabela
+          </Button>
+        </Space>
+      </Card>
+
       <Tabs
         defaultActiveKey="jobs"
         onChange={(activeKey) => {
@@ -1590,15 +1777,6 @@ const PrometheusConfig: React.FC = () => {
             ),
             children: (
               <Card style={{ minHeight: 400 }}>
-                {/* Toolbar com ColumnSelector */}
-                <Space style={{ marginBottom: 16 }} wrap>
-                  <ColumnSelector
-                    columns={columnConfig}
-                    onChange={setColumnConfig}
-                    storageKey={`prometheus-columns-${fileType}`}
-                  />
-                </Space>
-
                 <Alert
                   message="📋 Visualização dos Jobs - Somente Leitura"
                   description={
@@ -1618,8 +1796,8 @@ const PrometheusConfig: React.FC = () => {
                 />
                 <ProTable
                   columns={visibleColumns}
-                  dataSource={jobs}
-                  rowKey={itemKey}
+                  dataSource={processedJobs}
+                  rowKey={fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey}
                   loading={loadingJobs}
                   search={false}
                   options={{
