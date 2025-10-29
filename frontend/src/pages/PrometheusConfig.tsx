@@ -393,22 +393,32 @@ const PrometheusConfig: React.FC = () => {
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
-    if (selectedServer && allFiles.length > 0) {
-      const serverHostname = selectedServer.split(':')[0];
-      const filteredFiles = allFiles.filter(f => f.host.includes(serverHostname));
+    // OTIMIZAÇÃO: Só executar se houver arquivos e servidor selecionado
+    if (!selectedServer || allFiles.length === 0) {
+      return;
+    }
 
-      if (filteredFiles.length > 0) {
+    const serverHostname = selectedServer.split(':')[0];
+    const filteredFiles = allFiles.filter(f => f.host.includes(serverHostname));
+
+    if (filteredFiles.length > 0) {
+      // IMPORTANTE: Só auto-selecionar se não houver arquivo selecionado
+      // Isso previne sobrescrever seleção manual do usuário
+      if (!selectedFile) {
         const prometheusFile = filteredFiles.find(f => f.filename === 'prometheus.yml');
         if (prometheusFile) {
           setSelectedFile(prometheusFile.path);
         } else {
           setSelectedFile(filteredFiles[0].path);
         }
-      } else {
-        setSelectedFile(null);
       }
+    } else {
+      // Servidor não tem arquivos, limpar seleção
+      setSelectedFile(null);
     }
-  }, [allFiles]); // Apenas quando allFiles mudar, não quando selectedServer mudar
+    // CORREÇÃO: Adicionar selectedServer nas dependências pois é usado na lógica
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allFiles, selectedServer]); // Monitorar ambos: allFiles E selectedServer
 
   const handleReload = async () => {
     // CRÍTICO: Garantir que servidor está selecionado antes de recarregar
