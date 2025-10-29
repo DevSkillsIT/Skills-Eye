@@ -41,6 +41,7 @@ import {
   Steps,
   Row,
   Col,
+  Dropdown,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -60,6 +61,7 @@ import {
   InfoCircleOutlined,
   LoadingOutlined,
   SyncOutlined,
+  ColumnHeightOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { usePrometheusFields } from '../hooks/usePrometheusFields';
@@ -1457,41 +1459,67 @@ const PrometheusConfig: React.FC = () => {
             dataIndex: ['annotations', 'summary'],
             key: 'summary',
             width: 300,
-            ellipsis: true,
+            ellipsis: {
+              showTitle: false,
+            },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            render: (_: any, record: any) => (
-              <Tooltip title={record.annotations?.description}>
-                {record.annotations?.summary || '-'}
-              </Tooltip>
-            ),
+            render: (_: any, record: any) => {
+              const summary = record.annotations?.summary || '-';
+              return (
+                <Tooltip
+                  title={summary}
+                  overlayStyle={{ maxWidth: 500 }}
+                  overlayInnerStyle={{ whiteSpace: 'pre-wrap' }}
+                >
+                  <span>{summary}</span>
+                </Tooltip>
+              );
+            },
           },
           {
             title: 'Description',
             dataIndex: ['annotations', 'description'],
             key: 'description',
             width: 400,
-            ellipsis: true,
+            ellipsis: {
+              showTitle: false,
+            },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            render: (_: any, record: any) => (
-              <Tooltip title={record.annotations?.description}>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {record.annotations?.description || '-'}
-                </Text>
-              </Tooltip>
-            ),
+            render: (_: any, record: any) => {
+              const description = record.annotations?.description || '-';
+              return (
+                <Tooltip
+                  title={description}
+                  overlayStyle={{ maxWidth: 600 }}
+                  overlayInnerStyle={{ whiteSpace: 'pre-wrap' }}
+                >
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {description}
+                  </Text>
+                </Tooltip>
+              );
+            },
           },
           {
             title: 'Expression',
             dataIndex: 'expr',
             key: 'expr',
             width: 400,
-            ellipsis: true,
+            ellipsis: {
+              showTitle: false,
+            },
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            render: (_: any, record: any) => (
-              <Tooltip title={record.expr}>
-                <code style={{ fontSize: 11 }}>{record.expr}</code>
-              </Tooltip>
-            ),
+            render: (_: any, record: any) => {
+              const expr = record.expr || '-';
+              return (
+                <Tooltip
+                  title={<code style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{expr}</code>}
+                  overlayStyle={{ maxWidth: 700 }}
+                >
+                  <code style={{ fontSize: 11 }}>{expr}</code>
+                </Tooltip>
+              );
+            },
           }
         );
       }
@@ -1741,52 +1769,46 @@ const PrometheusConfig: React.FC = () => {
       <Tabs
         defaultActiveKey="jobs"
         tabBarExtraContent={
-          <Space wrap size="small" style={{ marginBottom: 8 }}>
+          <Space size="middle" style={{ marginBottom: 8 }}>
             <ColumnSelector
+              key={`column-selector-${fileType}-${alertViewMode}`}
               columns={columnConfig}
               onChange={setColumnConfig}
               storageKey={`prometheus-columns-${fileType}`}
             />
 
             {fileType === 'rules' && (
-              <>
+              <Space.Compact>
                 <Button
                   type={alertViewMode === 'group' ? 'primary' : 'default'}
-                  size="small"
                   onClick={() => setAlertViewMode('group')}
                 >
                   Visão Grupo
                 </Button>
                 <Button
                   type={alertViewMode === 'individual' ? 'primary' : 'default'}
-                  size="small"
                   onClick={() => setAlertViewMode('individual')}
                 >
                   Visão Alerta
                 </Button>
-              </>
+              </Space.Compact>
             )}
 
-            <Button
-              icon={<ReloadOutlined />}
-              size="small"
-              onClick={() => selectedFile && fetchJobs(selectedFile)}
-              disabled={!selectedFile}
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'small', label: 'Compacto' },
+                  { key: 'middle', label: 'Médio' },
+                  { key: 'large', label: 'Grande' },
+                ],
+                onClick: ({ key }: { key: string }) => setTableSize(key as 'small' | 'middle' | 'large'),
+                selectedKeys: [tableSize],
+              }}
             >
-              Recarregar
-            </Button>
-
-            <Select
-              size="small"
-              value={tableSize}
-              onChange={setTableSize}
-              style={{ width: 100 }}
-              options={[
-                { label: 'Compacto', value: 'small' },
-                { label: 'Médio', value: 'middle' },
-                { label: 'Grande', value: 'large' },
-              ]}
-            />
+              <Button icon={<ColumnHeightOutlined />}>
+                Densidade
+              </Button>
+            </Dropdown>
           </Space>
         }
         onChange={(activeKey) => {
