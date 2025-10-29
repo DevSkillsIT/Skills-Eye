@@ -1722,8 +1722,8 @@ async def get_alertmanager_routes(
         Lista de rotas processadas
     """
     try:
-        # Ler arquivo
-        content = multi_config.read_file_content(file_path, hostname)
+        # Ler arquivo usando método correto
+        content = multi_config.get_file_content_raw(file_path)
 
         # Parsear YAML
         import yaml as pyyaml
@@ -1762,8 +1762,8 @@ async def get_alertmanager_receivers(
         Lista de receptores processados
     """
     try:
-        # Ler arquivo
-        content = multi_config.read_file_content(file_path, hostname)
+        # Ler arquivo usando método correto
+        content = multi_config.get_file_content_raw(file_path)
 
         # Parsear YAML
         import yaml as pyyaml
@@ -1802,8 +1802,8 @@ async def get_alertmanager_inhibit_rules(
         Lista de regras processadas
     """
     try:
-        # Ler arquivo
-        content = multi_config.read_file_content(file_path, hostname)
+        # Ler arquivo usando método correto
+        content = multi_config.get_file_content_raw(file_path)
 
         # Parsear YAML
         import yaml as pyyaml
