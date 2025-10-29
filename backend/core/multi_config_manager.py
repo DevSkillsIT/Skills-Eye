@@ -319,44 +319,122 @@ class MultiConfigManager:
         """
         # Verificar cache
         if self._fields_cache:
+            print(f"[CACHE] extract_all_fields: CACHE HIT - retornando {len(self._fields_cache)} fields do cache")
             return self._fields_cache
+
+        # Delegar para extract_all_fields_with_status e retornar apenas fields
+        result = self.extract_all_fields_with_status()
+        return result['fields']
+
+    def extract_all_fields_with_status(self) -> Dict[str, Any]:
+        """
+        Extrai TODOS os campos metadata de TODOS os arquivos
+        Retorna fields + status de cada servidor para tracking de progresso
+
+        Returns:
+            Dict com:
+            - fields: Lista consolidada de MetadataField
+            - server_status: Lista com status de cada servidor
+            - total_servers: Total de servidores
+            - successful_servers: Quantidade de servidores com sucesso
+        """
+        # Verificar cache
+        if self._fields_cache:
+            print(f"[CACHE] extract_all_fields: CACHE HIT - retornando {len(self._fields_cache)} fields do cache")
+            # Retornar com status de cache
+            return {
+                'fields': self._fields_cache,
+                'server_status': [
+                    {
+                        'hostname': host.hostname,
+                        'success': True,
+                        'from_cache': True,
+                        'files_count': 0,
+                        'fields_count': 0,
+                    }
+                    for host in self.hosts
+                ],
+                'total_servers': len(self.hosts),
+                'successful_servers': len(self.hosts),
+                'from_cache': True,
+            }
+
+        print(f"[CACHE] extract_all_fields: CACHE MISS - extraindo fields de todos os arquivos")
 
         all_fields_map: Dict[str, MetadataField] = {}
         fields_service = FieldsExtractionService()
+        server_status = []
 
-        # Listar todos os arquivos de configuração
-        config_files = self.list_config_files()
+        # OTIMIZAÇÃO: Listar arquivos por servidor para aproveitar cache _files_cache
+        # Isso evita SSH desnecessário se os arquivos já foram listados antes
+        # FAILBACK: Continua mesmo se um servidor falhar
+        for host in self.hosts:
+            host_status = {
+                'hostname': host.hostname,
+                'success': False,
+                'from_cache': False,
+                'files_count': 0,
+                'fields_count': 0,
+                'error': None,
+                'duration_ms': 0,
+            }
 
-        for config_file in config_files:
             try:
-                # Ler configuração
-                config = self.read_config_file(config_file)
+                import time
+                start_time = time.time()
 
-                # Extrair jobs (prometheus) ou scrape_configs (outros)
-                jobs = []
+                # Cada chamada usa cache com chave "all:{hostname}"
+                files_from_host = self.list_config_files(hostname=host.hostname)
+                host_status['files_count'] = len(files_from_host)
 
-                if 'scrape_configs' in config:
-                    # Prometheus
-                    jobs = config.get('scrape_configs', [])
-                elif 'modules' in config:
-                    # Blackbox - não tem jobs mas tem módulos
-                    # Pular por enquanto
-                    continue
-                elif 'route' in config:
-                    # Alertmanager - não tem relabel_configs
-                    continue
+                fields_before = len(all_fields_map)
 
-                # Extrair campos de cada job
-                for job in jobs:
-                    job_fields = fields_service.extract_fields_from_jobs([job])
+                # Processar cada arquivo do servidor
+                for config_file in files_from_host:
+                    try:
+                        # Ler configuração
+                        config = self.read_config_file(config_file)
 
-                    # Mesclar com campos existentes
-                    for field in job_fields:
-                        if field.name not in all_fields_map:
-                            all_fields_map[field.name] = field
+                        # Extrair jobs (prometheus) ou scrape_configs (outros)
+                        jobs = []
+
+                        if 'scrape_configs' in config:
+                            # Prometheus
+                            jobs = config.get('scrape_configs', [])
+                        elif 'modules' in config:
+                            # Blackbox - não tem jobs mas tem módulos
+                            continue
+                        elif 'route' in config:
+                            # Alertmanager - não tem relabel_configs
+                            continue
+
+                        # Extrair campos de cada job
+                        for job in jobs:
+                            job_fields = fields_service.extract_fields_from_jobs([job])
+
+                            # Mesclar com campos existentes
+                            for field in job_fields:
+                                if field.name not in all_fields_map:
+                                    all_fields_map[field.name] = field
+
+                    except Exception as e:
+                        logger.error(f"Erro ao processar {config_file.filename}: {e}")
+                        # Continua processando outros arquivos
+
+                fields_after = len(all_fields_map)
+                host_status['fields_count'] = fields_after - fields_before
+                host_status['success'] = True
+                host_status['duration_ms'] = int((time.time() - start_time) * 1000)
+
+                print(f"[SERVER OK] {host.hostname}: {host_status['files_count']} arquivos, {host_status['fields_count']} campos novos em {host_status['duration_ms']}ms")
 
             except Exception as e:
-                logger.error(f"Erro ao processar {config_file.filename}: {e}")
+                host_status['error'] = str(e)
+                logger.error(f"❌ Erro ao processar servidor {host.hostname}: {e}")
+                print(f"[SERVER ERROR] {host.hostname}: {str(e)}")
+                # Continua com próximo servidor (FAILBACK)
+
+            server_status.append(host_status)
 
         # Converter para lista ordenada
         all_fields = list(all_fields_map.values())
@@ -365,8 +443,16 @@ class MultiConfigManager:
         # Armazenar no cache
         self._fields_cache = all_fields
 
-        logger.info(f"Extraídos {len(all_fields)} campos únicos de {len(config_files)} arquivos")
-        return all_fields
+        successful_count = sum(1 for s in server_status if s['success'])
+        logger.info(f"Extraídos {len(all_fields)} campos únicos - {successful_count}/{len(self.hosts)} servidores com sucesso")
+
+        return {
+            'fields': all_fields,
+            'server_status': server_status,
+            'total_servers': len(self.hosts),
+            'successful_servers': successful_count,
+            'from_cache': False,
+        }
 
     def clear_cache(self):
         """Limpa cache de configurações e campos"""

@@ -47,12 +47,27 @@ class JobsListResponse(BaseModel):
     total: int
 
 
+class ServerStatus(BaseModel):
+    """Status de processamento de um servidor"""
+    hostname: str
+    success: bool
+    from_cache: bool = False
+    files_count: int = 0
+    fields_count: int = 0
+    error: Optional[str] = None
+    duration_ms: int = 0
+
+
 class FieldsResponse(BaseModel):
-    """Resposta com campos metadata"""
+    """Resposta com campos metadata + status de cada servidor"""
     success: bool
     fields: List[Dict[str, Any]]
     total: int
     last_updated: str
+    server_status: Optional[List[ServerStatus]] = None
+    total_servers: Optional[int] = None
+    successful_servers: Optional[int] = None
+    from_cache: bool = False
 
 
 class BackupResponse(BaseModel):
@@ -214,13 +229,18 @@ async def get_available_fields(enrich_with_values: bool = Query(True)):
         Lista consolidada de campos metadata
     """
     try:
-        # NOVO - Extrair de TODOS os arquivos
-        fields = multi_config.extract_all_fields()
+        # NOVO - Extrair de TODOS os arquivos COM STATUS de cada servidor
+        extraction_result = multi_config.extract_all_fields_with_status()
+        fields = extraction_result['fields']
 
         # Enriquecer com valores do Consul se solicitado
         if enrich_with_values:
-            consul = ConsulManager()
-            fields = await fields_service.enrich_fields_with_values(fields)
+            try:
+                consul = ConsulManager()
+                fields = await fields_service.enrich_fields_with_values(fields)
+            except Exception as e:
+                logger.warning(f"Não foi possível enriquecer campos com valores do Consul: {e}")
+                print(f"ConsulManager não disponível para enriquecer campos")
 
         # Converter para dict
         fields_dict = [field.to_dict() for field in fields]
@@ -229,7 +249,11 @@ async def get_available_fields(enrich_with_values: bool = Query(True)):
             success=True,
             fields=fields_dict,
             total=len(fields_dict),
-            last_updated=datetime.now().isoformat()
+            last_updated=datetime.now().isoformat(),
+            server_status=extraction_result.get('server_status'),
+            total_servers=extraction_result.get('total_servers'),
+            successful_servers=extraction_result.get('successful_servers'),
+            from_cache=extraction_result.get('from_cache', False),
         )
 
     except Exception as e:

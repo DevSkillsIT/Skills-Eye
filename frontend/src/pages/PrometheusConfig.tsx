@@ -42,6 +42,7 @@ import {
   Row,
   Col,
   Dropdown,
+  Timeline,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -62,6 +63,9 @@ import {
   LoadingOutlined,
   SyncOutlined,
   ColumnHeightOutlined,
+  ThunderboltOutlined,
+  WarningOutlined,
+  FireOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { usePrometheusFields } from '../hooks/usePrometheusFields';
@@ -82,6 +86,16 @@ interface ConfigFile {
   filename: string;
   host: string;
   exists: boolean;
+}
+
+interface ServerStatus {
+  hostname: string;
+  success: boolean;
+  from_cache: boolean;
+  files_count: number;
+  fields_count: number;
+  error?: string | null;
+  duration_ms: number;
 }
 
 interface FilesResponse {
@@ -178,12 +192,20 @@ const PrometheusConfig: React.FC = () => {
     error: string | null;
     total: number;
     lastUpdated: string | null;
+    serverStatus: ServerStatus[];
+    totalServers: number;
+    successfulServers: number;
+    fromCache: boolean;
   }>({
     fields: [],
     loading: false,
     error: null,
     total: 0,
     lastUpdated: null,
+    serverStatus: [],
+    totalServers: 0,
+    successfulServers: 0,
+    fromCache: false,
   });
 
   const loadPrometheusFields = async () => {
@@ -199,6 +221,10 @@ const PrometheusConfig: React.FC = () => {
           error: null,
           total: response.data.total,
           lastUpdated: response.data.last_updated,
+          serverStatus: response.data.server_status || [],
+          totalServers: response.data.total_servers || 0,
+          successfulServers: response.data.successful_servers || 0,
+          fromCache: response.data.from_cache || false,
         });
       }
     } catch (err: any) {
@@ -210,7 +236,7 @@ const PrometheusConfig: React.FC = () => {
     }
   };
 
-  const { fields, loading: loadingFields, error: fieldsError, total: totalFields, lastUpdated } = fieldsData;
+  const { fields, loading: loadingFields, error: fieldsError, total: totalFields, lastUpdated, serverStatus, totalServers, successfulServers, fromCache } = fieldsData;
   const reloadFields = loadPrometheusFields;
 
   // Carregar lista de arquivos
@@ -1975,6 +2001,71 @@ const PrometheusConfig: React.FC = () => {
                   closable
                   style={{ marginBottom: 16 }}
                 />
+
+                {/* Status de Extração dos Servidores */}
+                {serverStatus.length > 0 && !loadingFields && (
+                  <Alert
+                    message={
+                      <Space>
+                        {fromCache ? (
+                          <>
+                            <ThunderboltOutlined style={{ color: '#52c41a' }} />
+                            <span>Dados do Cache</span>
+                          </>
+                        ) : (
+                          <>
+                            <FireOutlined style={{ color: '#1890ff' }} />
+                            <span>Extração dos Servidores ({successfulServers}/{totalServers} com sucesso)</span>
+                          </>
+                        )}
+                      </Space>
+                    }
+                    description={
+                      <Timeline
+                        style={{ marginTop: 16 }}
+                        items={serverStatus.map((server: ServerStatus) => ({
+                          color: server.success ? 'green' : 'red',
+                          dot: server.success
+                            ? <CheckCircleOutlined style={{ fontSize: 16 }} />
+                            : <CloseCircleOutlined style={{ fontSize: 16 }} />,
+                          children: (
+                            <div>
+                              <Space>
+                                <CloudServerOutlined />
+                                <strong>{server.hostname}</strong>
+                                {server.from_cache ? (
+                                  <Tag color="cyan" icon={<ThunderboltOutlined />}>Cache</Tag>
+                                ) : (
+                                  <Tag color={server.success ? 'green' : 'red'}>
+                                    {server.success ? 'Sucesso' : 'Falha'}
+                                  </Tag>
+                                )}
+                                {server.duration_ms > 0 && (
+                                  <Tag icon={<ClockCircleOutlined />}>{server.duration_ms}ms</Tag>
+                                )}
+                              </Space>
+                              <div style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+                                {server.success ? (
+                                  <>
+                                    {server.files_count} arquivos processados, {server.fields_count} campos novos encontrados
+                                  </>
+                                ) : (
+                                  <span style={{ color: '#ff4d4f' }}>
+                                    <WarningOutlined /> Erro: {server.error || 'Servidor offline ou inacessível'}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ),
+                        }))}
+                      />
+                    }
+                    type={fromCache ? 'success' : (successfulServers === totalServers ? 'success' : 'warning')}
+                    showIcon
+                    closable
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
 
                 <Table
                   dataSource={fields}
