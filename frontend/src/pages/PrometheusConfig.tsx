@@ -1552,8 +1552,16 @@ const PrometheusConfig: React.FC = () => {
   const visibleColumns = useMemo(() => {
     const allColumns = getColumnsForType();
 
-    // Se columnConfig ainda está vazio, retornar todas as colunas
+    // Se columnConfig está vazio OU se as keys não correspondem (mudou o tipo de arquivo)
     if (columnConfig.length === 0) return allColumns;
+
+    // Verificar se columnConfig tem keys que existem nas colunas atuais
+    const hasValidKeys = columnConfig.some(config =>
+      allColumns.some(col => col.key === config.key)
+    );
+
+    // Se não tem keys válidas, retornar todas as colunas (arquivo mudou)
+    if (!hasValidKeys) return allColumns;
 
     // Filtrar apenas colunas visíveis baseado em columnConfig
     return columnConfig
