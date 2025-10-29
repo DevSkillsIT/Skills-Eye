@@ -661,11 +661,25 @@ class WindowsPSExecInstaller(BaseInstaller):
             reason, error_code, error_category = self._classify_install_failure(combined_text)
             self._raise_install_error(error_code, reason, error_category, output, error)
         
-        await self.log("✅ MSI instalado com sucesso - prosseguindo para configuração...", "success")
+        try:
+            await self.log("✅ MSI instalado com sucesso - prosseguindo para configuração...", "success")
+            await asyncio.sleep(0.1)  # Garantir que o log seja processado
+        except Exception as e:
+            print(f"[ERRO CRÍTICO] Falha ao fazer log: {e}")
+            import traceback
+            traceback.print_exc()
 
         # Etapa 2.5 - Configurar Basic Auth se habilitado
-        await self.log(f"🔍 DEBUG PRÉ-BASIC-AUTH: user={basic_auth_user}, pwd={'***' if basic_auth_password else 'None'}, hash={'SET' if bcrypt_hash else 'EMPTY'}", "info")
+        try:
+            await self.log(f"🔍 DEBUG PRÉ-BASIC-AUTH: user={basic_auth_user}, pwd={'***' if basic_auth_password else 'None'}, hash={'SET' if bcrypt_hash else 'EMPTY'}", "info")
+            await asyncio.sleep(0.1)  # Garantir que o log seja processado
+        except Exception as e:
+            print(f"[ERRO CRÍTICO] Falha no debug log: {e}")
+        
+        print(f"[DEBUG CONSOLE] Teste condição Basic Auth: {bool(basic_auth_user)} AND {bool(basic_auth_password)} AND {bool(bcrypt_hash)}")
+        
         if basic_auth_user and basic_auth_password and bcrypt_hash:
+            print(f"[DEBUG CONSOLE] ENTRANDO NO BLOCO DE BASIC AUTH!")
             await self.log("🔐 >>>>>> ENTRANDO NO BLOCO DE BASIC AUTH <<<<<<", "success")
             await self.log("🔐 INICIANDO configuração de Basic Auth...", "info")
             await self.progress(65, 100, "Configurando autenticação...")
