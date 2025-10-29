@@ -266,12 +266,19 @@ const PrometheusConfig: React.FC = () => {
 
   // Carregar estrutura de um arquivo (NOVO - usa /file/structure)
   // OTIMIZAÇÃO: useCallback previne recriação da função a cada render
-  const fetchJobs = useCallback(async (filePath: string) => {
+  const fetchJobs = useCallback(async (filePath: string, serverIdWithPort?: string) => {
     setLoadingJobs(true);
     try {
-      const response = await axios.get(
-        `${API_URL}/prometheus-config/file/structure?file_path=${encodeURIComponent(filePath)}`
-      );
+      // OTIMIZAÇÃO: Extrair hostname (IP) do selectedServer para passar na query
+      // Formato: "172.16.1.26:5522" → "172.16.1.26"
+      let url = `${API_URL}/prometheus-config/file/structure?file_path=${encodeURIComponent(filePath)}`;
+      if (serverIdWithPort) {
+        const hostname = serverIdWithPort.split(':')[0];
+        url += `&hostname=${encodeURIComponent(hostname)}`;
+        console.log(`[fetchJobs] OTIMIZAÇÃO: Passando hostname=${hostname} (evita SSH em múltiplos servidores)`);
+      }
+
+      const response = await axios.get(url);
       if (response.data.success) {
         setJobs(response.data.items);
         setFileType(response.data.type); // NOVO: guardar tipo
@@ -411,9 +418,10 @@ const PrometheusConfig: React.FC = () => {
 
   useEffect(() => {
     if (selectedFile) {
-      fetchJobs(selectedFile);
+      fetchJobs(selectedFile, selectedServer);
     }
-  }, [selectedFile, fetchJobs]); // Adicionar fetchJobs pois é useCallback
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFile, fetchJobs]); // Não adicionar selectedServer para evitar loop (já está sincronizado)
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
@@ -461,7 +469,7 @@ const PrometheusConfig: React.FC = () => {
       await fetchFiles();
       reloadFields();
       if (selectedFile) {
-        await fetchJobs(selectedFile);
+        await fetchJobs(selectedFile, selectedServer);
       }
 
       hideLoading();
@@ -931,7 +939,7 @@ const PrometheusConfig: React.FC = () => {
       setMonacoOriginalContent(monacoContent);
 
       // Recarregar dados da página
-      await fetchJobs(selectedFile);
+      await fetchJobs(selectedFile, selectedServer);
 
     } catch (error: any) {
       console.error('[MONACO] Erro geral:', error);
