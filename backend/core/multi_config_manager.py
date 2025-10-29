@@ -16,6 +16,7 @@ import logging
 import re
 from dataclasses import dataclass
 import paramiko
+import time  # PROFILING: Para medir performance
 
 from core.yaml_config_service import YamlConfigService
 from core.fields_extraction_service import FieldsExtractionService, MetadataField
@@ -269,10 +270,15 @@ class MultiConfigManager:
 
         # Verificar cache
         if cache_key in self._config_cache:
+            logger.info(f"[PROFILING] read_config_file: CACHE HIT para {cache_key}")
             return self._config_cache[cache_key]
+
+        logger.info(f"[PROFILING] read_config_file: CACHE MISS para {cache_key}")
 
         # Ler arquivo via SSH
         try:
+            # PROFILING: Medir SSH + read
+            start_ssh = time.time()
             client = self._get_ssh_client(config_file.host)
             sftp = client.open_sftp()
 
@@ -281,13 +287,17 @@ class MultiConfigManager:
                 content = f.read().decode('utf-8')
 
             sftp.close()
+            logger.info(f"[PROFILING]   SSH read: {(time.time() - start_ssh)*1000:.2f}ms")
             # OTIMIZAÇÃO: NÃO fechar conexão SSH - reutilizar nas próximas requisições
             # client.close()
 
+            # PROFILING: Medir parse YAML
+            start_parse = time.time()
             # Parse YAML
             yaml_service = YamlConfigService()
             from io import StringIO
             config = yaml_service.yaml.load(StringIO(content))
+            logger.info(f"[PROFILING]   YAML parse: {(time.time() - start_parse)*1000:.2f}ms")
 
             # Armazenar no cache
             self._config_cache[cache_key] = config
@@ -458,11 +468,24 @@ class MultiConfigManager:
         Returns:
             Dict com: type, main_key, items, raw_config
         """
+        # PROFILING: Medir performance total
+        start_total = time.time()
+
+        # PROFILING: Medir get_file_by_path
+        start_step = time.time()
         config_file = self.get_file_by_path(file_path)
+        logger.info(f"[PROFILING] get_file_by_path: {(time.time() - start_step)*1000:.2f}ms")
+
         if not config_file:
             raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
 
+        # PROFILING: Medir read_config_file (SSH + parse YAML)
+        start_step = time.time()
         config = self.read_config_file(config_file)
+        logger.info(f"[PROFILING] read_config_file: {(time.time() - start_step)*1000:.2f}ms")
+
+        # PROFILING: Medir processamento de estrutura
+        start_step = time.time()
 
         # Detectar tipo de estrutura
         structure = {
@@ -562,6 +585,10 @@ class MultiConfigManager:
                     'label': key.replace('_', ' ').title(),
                     'count': 1 if not isinstance(config[key], list) else len(config[key])
                 })
+
+        # PROFILING: Log tempo de processamento
+        logger.info(f"[PROFILING] structure_processing: {(time.time() - start_step)*1000:.2f}ms")
+        logger.info(f"[PROFILING] TOTAL get_config_structure: {(time.time() - start_total)*1000:.2f}ms")
 
         return structure
 
