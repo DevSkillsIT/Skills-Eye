@@ -321,32 +321,48 @@ const PrometheusConfig: React.FC = () => {
     return individualAlerts;
   }, [jobs, fileType, alertViewMode]);
 
-  // Carregar lista de servidores
-  const fetchServers = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/metadata-fields/servers`, {
-        timeout: 15000, // 15 segundos (primeira requisição pode consultar Consul)
-      });
-      if (response.data.success) {
-        setServers(response.data.servers);
-        // Selecionar master por padrão
-        if (response.data.master) {
-          setSelectedServer(response.data.master.id);
+  // OTIMIZAÇÃO: Carregamento inicial - combina carregamento de servidores + arquivos
+  useEffect(() => {
+    const loadInitialData = async () => {
+      try {
+        // PASSO 1: Carregar servidores
+        const response = await axios.get(`${API_URL}/metadata-fields/servers`, {
+          timeout: 15000,
+        });
+
+        if (!response.data.success) {
+          message.error('Falha ao carregar servidores');
+          return;
+        }
+
+        const serversList = response.data.servers;
+        const masterServer = response.data.master;
+
+        setServers(serversList);
+
+        if (!masterServer) {
+          message.warning('Nenhum servidor master encontrado');
+          return;
+        }
+
+        // PASSO 2: Setar servidor master (isso vai triggar fetchFiles via useEffect abaixo)
+        setSelectedServer(masterServer.id);
+
+      } catch (error) {
+        console.error('Erro ao carregar dados iniciais:', error);
+        // Type guard para Axios error
+        if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+          message.error('Tempo esgotado ao carregar servidores (servidor lento)');
+        } else {
+          message.error('Erro ao carregar servidores');
         }
       }
-    } catch (error: any) {
-      console.error('Erro ao carregar servidores:', error);
-      if (error.code === 'ECONNABORTED') {
-        message.error('Tempo esgotado ao carregar servidores (servidor lento)');
-      }
-    }
-  };
+    };
 
-  useEffect(() => {
-    fetchServers();
-  }, []);
+    loadInitialData();
+  }, []); // Só executa no mount
 
-  // Recarregar arquivos quando trocar de servidor
+  // Recarregar arquivos quando trocar de servidor (inicial ou manual)
   useEffect(() => {
     if (selectedServer) {
       // Só mostrar feedback se houve MUDANÇA (não no carregamento inicial)
