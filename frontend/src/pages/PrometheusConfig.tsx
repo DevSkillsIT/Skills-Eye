@@ -215,14 +215,21 @@ const PrometheusConfig: React.FC = () => {
 
   // Carregar lista de arquivos
   const fetchFiles = async () => {
+    // CRÍTICO: Garantir que servidor está selecionado antes de buscar arquivos
+    // Isso previne chamadas sem hostname que causariam SSH em TODOS os servidores (5+ segundos)
+    if (!selectedServer) {
+      console.warn('[fetchFiles] Abortado: nenhum servidor selecionado');
+      message.warning('Selecione um servidor primeiro');
+      return;
+    }
+
     setLoadingFiles(true);
     try {
-      // OTIMIZAÇÃO: Se servidor selecionado, busca apenas desse servidor
-      let url = `${API_URL}/prometheus-config/files`;
-      if (selectedServer) {
-        const hostname = selectedServer.split(':')[0]; // Extrai IP de "172.16.1.26:5522"
-        url += `?hostname=${encodeURIComponent(hostname)}`;
-      }
+      // OTIMIZAÇÃO: Sempre passa hostname para buscar apenas do servidor selecionado
+      const hostname = selectedServer.split(':')[0]; // Extrai IP de "172.16.1.26:5522"
+      const url = `${API_URL}/prometheus-config/files?hostname=${encodeURIComponent(hostname)}`;
+
+      console.log(`[fetchFiles] Carregando arquivos do servidor: ${hostname}`);
 
       const response = await axios.get<FilesResponse>(url, {
         timeout: 30000, // 30 segundos (SSH pode ser lento)
@@ -230,10 +237,9 @@ const PrometheusConfig: React.FC = () => {
       if (response.data.success) {
         setAllFiles(response.data.files);
         // Auto-selecionar prometheus.yml do servidor master se existir
-        if (selectedServer && !selectedFile) {
-          const serverHostname = selectedServer.split(':')[0];
+        if (!selectedFile) {
           const prometheusFile = response.data.files.find(
-            f => f.filename === 'prometheus.yml' && f.host.includes(serverHostname)
+            f => f.filename === 'prometheus.yml' && f.host.includes(hostname)
           );
           if (prometheusFile) {
             setSelectedFile(prometheusFile.path);
@@ -405,13 +411,19 @@ const PrometheusConfig: React.FC = () => {
   }, [allFiles]); // Apenas quando allFiles mudar, não quando selectedServer mudar
 
   const handleReload = async () => {
+    // CRÍTICO: Garantir que servidor está selecionado antes de recarregar
+    if (!selectedServer) {
+      message.warning('Selecione um servidor primeiro');
+      return;
+    }
+
     try {
       // CRÍTICO: Limpar cache do backend primeiro
       const hideLoading = message.loading('Limpando cache e recarregando...', 0);
 
       await axios.post(`${API_URL}/prometheus-config/clear-cache`);
 
-      // Recarregar dados
+      // Recarregar dados (fetchFiles já valida selectedServer internamente)
       await fetchFiles();
       reloadFields();
       if (selectedFile) {
