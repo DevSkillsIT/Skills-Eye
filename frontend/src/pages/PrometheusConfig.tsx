@@ -2274,23 +2274,174 @@ const PrometheusConfig: React.FC = () => {
             ),
             children: (
               <Card style={{ minHeight: 600 }}>
-                <Alert
-                  message="📋 Visualização dos Jobs - Somente Leitura"
-                  description={
-                    <div>
-                      <p style={{ marginBottom: 8 }}>
-                        <strong>Esta tabela é somente para consulta.</strong> Para editar o arquivo YAML completo com preservação de comentários, clique no botão <strong>"Editar Arquivo"</strong> acima.
-                      </p>
-                      <p style={{ marginBottom: 0 }}>
-                        Use o botão <strong>"Visualizar"</strong> na coluna de ações para ver os detalhes completos de cada job em formato JSON.
-                      </p>
-                    </div>
-                  }
-                  type="info"
-                  showIcon
-                  closable
-                  style={{ marginBottom: 16 }}
-                />
+                {/* Explicações dinâmicas baseadas no tipo de arquivo */}
+                {fileType === 'alertmanager' ? (
+                  // Explicações específicas para Alertmanager
+                  <>
+                    {alertmanagerViewMode === 'routes' && (
+                      <Alert
+                        message="🔀 ROTAS - Hierarquia de Roteamento de Alertas"
+                        description={
+                          <div>
+                            <p style={{ marginBottom: 12 }}>
+                              <strong>Define COMO os alertas são direcionados para os receptores.</strong> As rotas funcionam em cascata: quando um alerta chega, o AlertManager percorre as rotas em ordem até encontrar um match.
+                            </p>
+
+                            <div style={{ background: '#f0f5ff', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>📊 Campos Explicados:</strong>
+                              <ul style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>Match Pattern:</strong> Condição para rotear o alerta (ex: severity: critical). Badge REGEX indica uso de expressões regulares.</li>
+                                <li><strong>Receiver:</strong> Nome do receptor que receberá os alertas que derem match nesta rota.</li>
+                                <li><strong>Group By:</strong> Labels usadas para agrupar alertas similares e evitar spam (ex: alertname, instance).</li>
+                                <li><strong>Group Wait:</strong> Tempo de espera antes de enviar o PRIMEIRO alerta de um novo grupo (permite agrupar alertas que chegam juntos).</li>
+                                <li><strong>Repeat Interval:</strong> Intervalo para reenviar alertas não resolvidos (evita notificações excessivas).</li>
+                                <li><strong>Continue:</strong> Se ✅, continua avaliando outras rotas mesmo após dar match (permite enviar para múltiplos destinos).</li>
+                              </ul>
+                            </div>
+
+                            <div style={{ background: '#fff7e6', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>⚡ Hierarquia de Prioridade:</strong>
+                              <ol style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>CRÍTICOS:</strong> Resposta imediata (Group Wait: 10s, Repeat: 2h)</li>
+                                <li><strong>VIP:</strong> Clientes prioritários (Group Wait: 10s, Repeat: 1h)</li>
+                                <li><strong>ESPECÍFICOS:</strong> Windows, Linux, Rede, SSL (Group Wait: 1-5m, Repeat: 4-24h)</li>
+                                <li><strong>WARNINGS:</strong> Menor prioridade (Group Wait: 5m, Repeat: 24h)</li>
+                              </ol>
+                            </div>
+
+                            <p style={{ marginBottom: 0 }}>
+                              💡 <strong>Dica:</strong> Rotas no topo têm prioridade. Alertas críticos devem vir antes de warnings para garantir resposta rápida. Use <code>continue: true</code> quando quiser enviar o mesmo alerta para múltiplos receptores.
+                            </p>
+                          </div>
+                        }
+                        type="info"
+                        showIcon
+                        closable
+                        style={{ marginBottom: 16 }}
+                      />
+                    )}
+
+                    {alertmanagerViewMode === 'receivers' && (
+                      <Alert
+                        message="📡 RECEPTORES - Destinos dos Alertas"
+                        description={
+                          <div>
+                            <p style={{ marginBottom: 12 }}>
+                              <strong>Define PARA ONDE os alertas são enviados.</strong> Cada receptor pode ter múltiplas configurações (webhooks, emails, Telegram, Slack) e será ativado quando uma rota direcioná-lo.
+                            </p>
+
+                            <div style={{ background: '#f0f5ff', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>📊 Campos Explicados:</strong>
+                              <ul style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>Nome:</strong> Identificador único do receptor, referenciado pelas rotas.</li>
+                                <li><strong>Tipos:</strong> Métodos de notificação configurados:
+                                  <ul style={{ marginTop: 4 }}>
+                                    <li><Tag color="purple">webhook</Tag> - Envia HTTP POST para uma URL (ex: outro AlertManager, sistemas de tickets)</li>
+                                    <li><Tag color="green">email</Tag> - Envia e-mail via SMTP</li>
+                                    <li><Tag color="cyan">telegram</Tag> - Envia mensagem para bot do Telegram</li>
+                                    <li><Tag color="orange">slack</Tag> - Envia para canal do Slack</li>
+                                  </ul>
+                                </li>
+                                <li><strong>Destinos:</strong> URLs, e-mails ou IDs dos canais/chats configurados.</li>
+                              </ul>
+                            </div>
+
+                            <div style={{ background: '#f6ffed', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>✅ Receptores Configurados:</strong>
+                              <ul style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>alertmanager-palmas:</strong> Receptor padrão (webhook para AlertManager central)</li>
+                                <li><strong>critical-alerts:</strong> Alertas críticos (webhook + possibilidade de Telegram/Slack)</li>
+                                <li><strong>vip-alerts:</strong> Clientes VIP (webhook + email para gestão)</li>
+                                <li><strong>*-team:</strong> Equipes específicas (Windows, Linux, Rede, SSL, SLA)</li>
+                                <li><strong>warning-alerts:</strong> Warnings menos urgentes (webhook sem send_resolved)</li>
+                              </ul>
+                            </div>
+
+                            <p style={{ marginBottom: 0 }}>
+                              💡 <strong>Dica:</strong> Configure webhooks para integração com sistemas de tickets, Telegram/Slack para notificações em tempo real da equipe, e e-mail para relatórios e gestão. Use <code>send_resolved: false</code> em warnings para reduzir ruído.
+                            </p>
+                          </div>
+                        }
+                        type="success"
+                        showIcon
+                        closable
+                        style={{ marginBottom: 16 }}
+                      />
+                    )}
+
+                    {alertmanagerViewMode === 'inhibit-rules' && (
+                      <Alert
+                        message="🚫 REGRAS DE INIBIÇÃO - Prevenção de Duplicatas e Spam"
+                        description={
+                          <div>
+                            <p style={{ marginBottom: 12 }}>
+                              <strong>Define O QUE deve ser suprimido para evitar spam.</strong> Quando um alerta "source" está ativo, os alertas "target" com labels iguais são automaticamente silenciados.
+                            </p>
+
+                            <div style={{ background: '#f0f5ff', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>📊 Campos Explicados:</strong>
+                              <ul style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>Source Alert:</strong> Alerta que SUPRIME outros (em vermelho). Quando ativo, impede envio dos targets. Badge REGEX indica pattern com expressões regulares.</li>
+                                <li><strong>Target Alert:</strong> Alerta SUPRIMIDO. Não será enviado enquanto source estiver ativo e labels forem iguais.</li>
+                                <li><strong>Equal Labels:</strong> Labels que devem ter VALORES IGUAIS entre source e target para a inibição funcionar (geralmente <Tag color="geekblue">instance</Tag> ou <Tag color="geekblue">company</Tag>).</li>
+                              </ul>
+                            </div>
+
+                            <div style={{ background: '#fff1f0', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>🔥 Hierarquia de Supressão (em ordem de prioridade):</strong>
+                              <ol style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li><strong>Host Offline → Tudo:</strong> Se host está completamente indisponível, não alertar CPU/RAM/Disco/Disponibilidade</li>
+                                <li><strong>VIP → Genérico:</strong> Alerta VIP suprime host indisponível genérico (evita duplicata com mais urgência)</li>
+                                <li><strong>SLA Mensal → Períodos Menores:</strong> SLA mensal violado suprime alertas de disponibilidade de 24h/1h</li>
+                                <li><strong>Critical → Warning:</strong> Severidade crítica suprime warnings do mesmo tipo</li>
+                                <li><strong>Exporter Down → InstanceDown:</strong> Alerta específico suprime genérico</li>
+                                <li><strong>Disponibilidade 24h → 1h:</strong> Período maior suprime menor</li>
+                              </ol>
+                            </div>
+
+                            <div style={{ background: '#fff7e6', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+                              <strong>💡 Benefícios da Configuração Atual:</strong>
+                              <ul style={{ marginBottom: 0, marginTop: 8 }}>
+                                <li>✅ Zero duplicatas de "Host Indisponível" vs "Disponibilidade Baixa"</li>
+                                <li>✅ Host offline não gera spam de CPU/RAM/Disco</li>
+                                <li>✅ SLA mensal suprime alertas menores de disponibilidade</li>
+                                <li>✅ Alertas de rede agrupados (RX/TX não duplicam)</li>
+                                <li>✅ Hierarquia clara: Critical → Warning → Info</li>
+                              </ul>
+                            </div>
+
+                            <p style={{ marginBottom: 0 }}>
+                              💡 <strong>Dica:</strong> Regras de inibição evitam que você receba 10 alertas dizendo a mesma coisa. Se um host está offline, não faz sentido alertar sobre CPU alta naquele host. A ordem importa: regras mais específicas devem vir primeiro!
+                            </p>
+                          </div>
+                        }
+                        type="warning"
+                        showIcon
+                        closable
+                        style={{ marginBottom: 16 }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  // Alert genérico para outros tipos
+                  <Alert
+                    message="📋 Visualização dos Jobs - Somente Leitura"
+                    description={
+                      <div>
+                        <p style={{ marginBottom: 8 }}>
+                          <strong>Esta tabela é somente para consulta.</strong> Para editar o arquivo YAML completo com preservação de comentários, clique no botão <strong>"Editar Arquivo"</strong> acima.
+                        </p>
+                        <p style={{ marginBottom: 0 }}>
+                          Use o botão <strong>"Visualizar"</strong> na coluna de ações para ver os detalhes completos de cada job em formato JSON.
+                        </p>
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    closable
+                    style={{ marginBottom: 16 }}
+                  />
+                )}
                 <div style={{ minHeight: 500 }}>
                   <ProTable
                   columns={visibleColumns}
