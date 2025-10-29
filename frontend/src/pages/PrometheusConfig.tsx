@@ -1840,17 +1840,42 @@ const PrometheusConfig: React.FC = () => {
                 disabled={!selectedServer}
                 notFoundContent={<Empty description="Nenhum arquivo encontrado" />}
               >
-                {files.map(file => (
-                  <Select.Option key={file.path} value={file.path}>
-                    <Space size="small">
-                      <FileTextOutlined />
-                      <span>{file.filename}</span>
-                      <Tag color={file.service === 'prometheus' ? 'blue' : 'orange'} style={{ margin: 0, fontSize: 11 }}>
-                        {file.service}
-                      </Tag>
-                    </Space>
-                  </Select.Option>
-                ))}
+                {files.map(file => {
+                  // Determinar tags baseado no serviço e nome do arquivo
+                  const isAlertFile = file.filename.toLowerCase().includes('alert');
+
+                  return (
+                    <Select.Option key={file.path} value={file.path}>
+                      <Space size="small">
+                        <FileTextOutlined />
+                        <span>{file.filename}</span>
+
+                        {/* Lógica de múltiplas tags */}
+                        {file.service === 'alertmanager' ? (
+                          // Arquivos de /etc/alertmanager → apenas tag [Alertmanager]
+                          <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>
+                            alertmanager
+                          </Tag>
+                        ) : file.service === 'prometheus' && isAlertFile ? (
+                          // Arquivos do prometheus com "alert" no nome → tags [prometheus] [alert]
+                          <>
+                            <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>
+                              prometheus
+                            </Tag>
+                            <Tag color="red" style={{ margin: 0, fontSize: 11 }}>
+                              alert
+                            </Tag>
+                          </>
+                        ) : (
+                          // Outros arquivos → tag padrão do serviço
+                          <Tag color={file.service === 'prometheus' ? 'blue' : 'orange'} style={{ margin: 0, fontSize: 11 }}>
+                            {file.service}
+                          </Tag>
+                        )}
+                      </Space>
+                    </Select.Option>
+                  );
+                })}
               </Select>
             </Space>
           </Col>

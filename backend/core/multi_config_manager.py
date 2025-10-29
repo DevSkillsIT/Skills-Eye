@@ -79,12 +79,10 @@ class MultiConfigManager:
     """Gerencia múltiplos arquivos de configuração YAML"""
 
     # Pastas padrão para cada serviço
-    # NOTA: Blackbox e Alertmanager foram removidos pois as configurações
-    # ficam dentro da pasta do Prometheus (/etc/prometheus)
     DEFAULT_PATHS = {
         'prometheus': '/etc/prometheus',
+        'alertmanager': '/etc/alertmanager',
         # 'blackbox': '/etc/blackbox_exporter',  # DESABILITADO - não existe
-        # 'alertmanager': '/etc/alertmanager'    # DESABILITADO - não existe
     }
 
     def __init__(self):
