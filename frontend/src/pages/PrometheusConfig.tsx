@@ -145,6 +145,15 @@ const PrometheusConfig: React.FC = () => {
 
   const [form] = Form.useForm();
 
+  // Handler para redimensionamento de colunas (padrão Blackbox)
+  const handleResize = useCallback(
+    (columnKey: string) =>
+      (_: React.SyntheticEvent, { size }: { size: { width: number } }) => {
+        setColumnWidths((prev) => ({ ...prev, [columnKey]: size.width }));
+      },
+    [],
+  );
+
   // Filtrar arquivos pelo servidor selecionado
   const files = React.useMemo(() => {
     if (!selectedServer) return allFiles;
@@ -381,7 +390,7 @@ const PrometheusConfig: React.FC = () => {
     }
   };
 
-  const handleEditJob = (job: any) => {
+  const handleEditJob = useCallback((job: any) => {
     setEditingJob(job);
     setEditingJobData(job);
     setJsonError(null); // Reset JSON error
@@ -406,7 +415,7 @@ const PrometheusConfig: React.FC = () => {
     }
 
     setDrawerVisible(true);
-  };
+  }, [fileType, itemKey, form]);
 
   // ============================================================================
   // FUNÇÕES PARA EDIÇÃO DIRETA COM MONACO EDITOR
@@ -908,9 +917,57 @@ const PrometheusConfig: React.FC = () => {
     setDrawerVisible(true);
   };
 
+  // Presets de colunas dinâmicos baseados no tipo de arquivo (padrão Blackbox)
+  const getColumnPresets = useCallback((): ColumnConfig[] => {
+    if (fileType === 'prometheus') {
+      return [
+        { key: 'job_name', title: 'Job Name', visible: true, locked: true },
+        { key: 'scrape_interval', title: 'Intervalo Scrape', visible: true },
+        { key: 'metrics_path', title: 'Path', visible: true },
+        { key: 'consul_server', title: 'Consul Server', visible: true },
+        { key: 'consul_services', title: 'Services Consul', visible: true },
+        { key: 'consul_token', title: 'Token Consul', visible: false },
+        { key: 'target_mapping', title: 'Target Mapping', visible: true },
+        { key: 'actions', title: 'Ações', visible: true, locked: true },
+      ];
+    } else if (fileType === 'rules') {
+      return [
+        { key: 'name', title: 'Name', visible: true, locked: true },
+        { key: 'interval', title: 'Intervalo', visible: true },
+        { key: 'rules_count', title: 'Total Regras', visible: true },
+        { key: 'alerts_detail', title: 'Alertas Configurados', visible: true },
+        { key: 'actions', title: 'Ações', visible: true, locked: true },
+      ];
+    } else if (fileType === 'blackbox') {
+      return [
+        { key: 'module_name', title: 'Module Name', visible: true, locked: true },
+        { key: 'prober', title: 'Prober', visible: true },
+        { key: 'timeout', title: 'Timeout', visible: true },
+        { key: 'config', title: 'Configuração', visible: true },
+        { key: 'actions', title: 'Ações', visible: true, locked: true },
+      ];
+    } else if (fileType === 'alertmanager') {
+      return [
+        { key: 'name', title: 'Name', visible: true, locked: true },
+        { key: 'webhook', title: 'Webhook Configs', visible: true },
+        { key: 'email', title: 'Email Configs', visible: true },
+        { key: 'actions', title: 'Ações', visible: true, locked: true },
+      ];
+    }
+    return [
+      { key: 'name', title: 'Name', visible: true, locked: true },
+      { key: 'actions', title: 'Ações', visible: true, locked: true },
+    ];
+  }, [fileType]);
+
+  // Atualizar columnConfig quando o tipo de arquivo mudar
+  useEffect(() => {
+    setColumnConfig(getColumnPresets());
+  }, [fileType, getColumnPresets]);
+
   // NOVO: Colunas dinâmicas baseadas no tipo de arquivo
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const getColumnsForType = (): ProColumns<any>[] => {
+  const getColumnsForType = useCallback((): ProColumns<any>[] => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const baseColumns: ProColumns<any>[] = [];
 
@@ -1293,7 +1350,36 @@ const PrometheusConfig: React.FC = () => {
     });
 
     return baseColumns;
-  };
+  }, [itemKey, fileType, handleEditJob]);
+
+  // Colunas visíveis com configuração e redimensionamento (padrão Blackbox)
+  const visibleColumns = useMemo(() => {
+    const allColumns = getColumnsForType();
+
+    // Se columnConfig ainda está vazio, retornar todas as colunas
+    if (columnConfig.length === 0) return allColumns;
+
+    // Filtrar apenas colunas visíveis baseado em columnConfig
+    return columnConfig
+      .filter(config => config.visible)
+      .map(config => {
+        const column = allColumns.find(col => col.key === config.key);
+        if (!column) return null;
+
+        // Aplicar largura redimensionada se existir
+        const width = columnWidths[config.key] || column.width;
+
+        return {
+          ...column,
+          width,
+          onHeaderCell: () => ({
+            width,
+            onResize: handleResize(config.key),
+          }),
+        };
+      })
+      .filter(Boolean) as ProColumns<any>[];
+  }, [columnConfig, columnWidths, handleResize, getColumnsForType]);
 
   // Colunas da tabela de campos
   const fieldsColumns = [
@@ -1504,6 +1590,15 @@ const PrometheusConfig: React.FC = () => {
             ),
             children: (
               <Card style={{ minHeight: 400 }}>
+                {/* Toolbar com ColumnSelector */}
+                <Space style={{ marginBottom: 16 }} wrap>
+                  <ColumnSelector
+                    columns={columnConfig}
+                    onChange={setColumnConfig}
+                    storageKey={`prometheus-columns-${fileType}`}
+                  />
+                </Space>
+
                 <Alert
                   message="📋 Visualização dos Jobs - Somente Leitura"
                   description={
@@ -1522,7 +1617,7 @@ const PrometheusConfig: React.FC = () => {
                   style={{ marginBottom: 16 }}
                 />
                 <ProTable
-                  columns={getColumnsForType()}
+                  columns={visibleColumns}
                   dataSource={jobs}
                   rowKey={itemKey}
                   loading={loadingJobs}
@@ -1537,6 +1632,11 @@ const PrometheusConfig: React.FC = () => {
                     showTotal: (total) => `Total: ${total} jobs`,
                   }}
                   scroll={{ x: 1200 }}
+                  components={{
+                    header: {
+                      cell: ResizableTitle,
+                    },
+                  }}
                   locale={{
                     emptyText: selectedFile ? (
                       <Empty description="Nenhum job encontrado neste arquivo" />
