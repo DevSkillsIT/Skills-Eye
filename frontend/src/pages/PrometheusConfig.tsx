@@ -215,6 +215,8 @@ const PrometheusConfig: React.FC = () => {
 
   // Carregar lista de arquivos
   // OTIMIZAÇÃO: useCallback previne recriação da função a cada render
+  // IMPORTANTE: NÃO incluir selectedFile nas dependências pois a função o MODIFICA (setSelectedFile)
+  // Isso causaria loop infinito: fetchFiles → setSelectedFile → selectedFile muda → fetchFiles recriado → loop
   const fetchFiles = useCallback(async () => {
     // CRÍTICO: Garantir que servidor está selecionado antes de buscar arquivos
     // Isso previne chamadas sem hostname que causariam SSH em TODOS os servidores (5+ segundos)
@@ -238,14 +240,16 @@ const PrometheusConfig: React.FC = () => {
       if (response.data.success) {
         setAllFiles(response.data.files);
         // Auto-selecionar prometheus.yml do servidor master se existir
-        if (!selectedFile) {
-          const prometheusFile = response.data.files.find(
-            f => f.filename === 'prometheus.yml' && f.host.includes(hostname)
-          );
-          if (prometheusFile) {
-            setSelectedFile(prometheusFile.path);
+        // Usa setSelectedFile callback para ler valor atual sem dependência
+        setSelectedFile((currentFile) => {
+          if (!currentFile) {
+            const prometheusFile = response.data.files.find(
+              f => f.filename === 'prometheus.yml' && f.host.includes(hostname)
+            );
+            return prometheusFile ? prometheusFile.path : currentFile;
           }
-        }
+          return currentFile;
+        });
       } else {
         message.error('Falha ao carregar arquivos');
       }
@@ -258,7 +262,7 @@ const PrometheusConfig: React.FC = () => {
     } finally {
       setLoadingFiles(false);
     }
-  }, [selectedServer, selectedFile]); // Dependências: re-criar apenas quando selectedServer ou selectedFile mudar
+  }, [selectedServer]); // APENAS selectedServer - não incluir selectedFile!
 
   // Carregar estrutura de um arquivo (NOVO - usa /file/structure)
   // OTIMIZAÇÃO: useCallback previne recriação da função a cada render
@@ -282,7 +286,7 @@ const PrometheusConfig: React.FC = () => {
     } finally {
       setLoadingJobs(false);
     }
-  }, []); // Sem dependências: função estável que não depende de props/state (recebe tudo via parâmetro)
+  }, []); // Sem dependências: função estável que recebe tudo via parâmetro
 
   // Processar dados para visão de alertas (grupo vs individual)
   const processedJobs = useMemo(() => {
@@ -393,7 +397,7 @@ const PrometheusConfig: React.FC = () => {
     if (selectedFile) {
       fetchJobs(selectedFile);
     }
-  }, [selectedFile, fetchJobs]); // Adicionar fetchJobs nas dependências pois é useCallback
+  }, [selectedFile, fetchJobs]); // Adicionar fetchJobs pois é useCallback
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
