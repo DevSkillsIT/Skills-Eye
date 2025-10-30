@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import yaml
 
 from core.multi_config_manager import MultiConfigManager
+from core.server_utils import get_server_detector, ServerInfo
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +319,46 @@ async def get_sync_status(
         hostname = server_id.split(':')[0] if ':' in server_id else server_id
         logger.info(f"[SYNC-STATUS] Hostname extraído: {hostname}")
 
+        # NOVO: Usar ServerDetector para detectar capacidades do servidor
+        detector = get_server_detector()
+        server_info = detector.detect_server_capabilities(hostname, use_cache=False)
+
+        # VERIFICAÇÃO CRÍTICA: Servidor tem Prometheus?
+        if not server_info.has_prometheus:
+            logger.info(
+                f"[SYNC-STATUS] Servidor {hostname} não possui Prometheus. "
+                f"Capacidades: {[c.value for c in server_info.capabilities]}"
+            )
+
+            # Retornar todos os campos com status especial para servidor sem Prometheus
+            field_statuses = []
+            for field in fields:
+                field_statuses.append(FieldSyncStatus(
+                    name=field.get('name'),
+                    display_name=field.get('display_name', field.get('name')),
+                    sync_status='error',
+                    metadata_source_label=field.get('source_label'),
+                    prometheus_target_label=None,
+                    message=f'Servidor não possui Prometheus ({server_info.description})'
+                ))
+
+            return SyncStatusResponse(
+                success=True,
+                server_id=server_id,
+                server_hostname=hostname,
+                fields=field_statuses,
+                total_synced=0,
+                total_outdated=0,
+                total_missing=0,
+                total_error=len(fields),
+                prometheus_file_path=None,
+                checked_at=datetime.now().isoformat()
+            )
+
+        # Servidor TEM Prometheus - prosseguir com verificação de sincronização
+        prometheus_file_path = server_info.prometheus_config_path
+        logger.info(f"[SYNC-STATUS] Servidor tem Prometheus: {prometheus_file_path}")
+
         # Inicializar MultiConfigManager
         try:
             multi_config = MultiConfigManager()
@@ -328,10 +369,6 @@ async def get_sync_status(
                 status_code=500,
                 detail=f"Erro ao inicializar gerenciador de configurações: {str(e)}"
             )
-
-        # Ler prometheus.yml do servidor
-        prometheus_file_path = "/etc/prometheus/prometheus.yml"
-        logger.info(f"[SYNC-STATUS] Tentando ler arquivo: {prometheus_file_path} de {hostname}")
 
         try:
             # Ler conteúdo do arquivo via SSH
@@ -347,12 +384,6 @@ async def get_sync_status(
 
             logger.info(f"[SYNC-STATUS] Prometheus.yml carregado com sucesso de {hostname}")
 
-        except FileNotFoundError as e:
-            logger.error(f"[SYNC-STATUS] Arquivo não encontrado: {e}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Arquivo prometheus.yml não encontrado no servidor {hostname}. Verifique se o caminho /etc/prometheus/prometheus.yml está correto."
-            )
         except PermissionError as e:
             logger.error(f"[SYNC-STATUS] Permissão negada: {e}")
             raise HTTPException(

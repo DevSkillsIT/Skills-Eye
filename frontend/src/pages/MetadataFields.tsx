@@ -50,6 +50,7 @@ import {
   CheckCircleOutlined,
   WarningOutlined,
   CloudServerOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -377,6 +378,9 @@ const MetadataFieldsPage: React.FC = () => {
           return <Tag color="default">-</Tag>;
         }
 
+        // Detectar se é erro específico de servidor sem Prometheus
+        const isNoPrometheus = record.sync_message?.includes('não possui Prometheus');
+
         const statusConfig = {
           synced: {
             icon: <CheckCircleOutlined />,
@@ -394,9 +398,9 @@ const MetadataFieldsPage: React.FC = () => {
             text: 'Desatualizado',
           },
           error: {
-            icon: <WarningOutlined />,
-            color: 'default',
-            text: 'Erro',
+            icon: isNoPrometheus ? <InfoCircleOutlined /> : <WarningOutlined />,
+            color: isNoPrometheus ? 'blue' : 'default',
+            text: isNoPrometheus ? 'N/A' : 'Erro',
           },
         };
 
