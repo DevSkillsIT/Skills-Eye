@@ -161,12 +161,34 @@ const MetadataFieldsPage: React.FC = () => {
             sync_message: syncStatusMap.get(field.name)?.sync_message || 'Status desconhecido',
           }))
         );
+
+        message.success(`Status verificado: ${response.data.total_synced} sincronizado(s), ${response.data.total_missing} faltando`);
       }
     } catch (error: any) {
+      console.error('[SYNC-STATUS] Erro ao verificar sincronização:', error);
+
+      // Limpar status de sincronização em caso de erro
+      setFields((prevFields) =>
+        prevFields.map((field) => ({
+          ...field,
+          sync_status: 'error',
+          sync_message: 'Erro ao verificar status',
+        }))
+      );
+
       if (error.code === 'ECONNABORTED') {
-        message.error('Tempo esgotado ao verificar sincronização (servidor lento)');
+        message.error('Tempo esgotado ao verificar sincronização (mais de 30 segundos). Verifique a conexão SSH.');
+      } else if (error.response?.status === 404) {
+        message.error(
+          error.response?.data?.detail ||
+          'Servidor não encontrado ou arquivo prometheus.yml não existe.'
+        );
+      } else if (error.response?.status === 403) {
+        message.error('Permissão negada. Verifique as credenciais SSH no arquivo .env');
+      } else if (error.response?.data?.detail) {
+        message.error('Erro: ' + error.response.data.detail, 5); // 5 segundos
       } else {
-        message.error('Erro ao verificar sincronização: ' + (error.response?.data?.detail || error.message));
+        message.error('Erro ao verificar sincronização: ' + error.message);
       }
     } finally {
       setLoadingSyncStatus(false);

@@ -300,33 +300,76 @@ async def get_sync_status(
     - error: Erro ao verificar status
     """
     try:
-        logger.info(f"Verificando sync status para servidor: {server_id}")
+        logger.info(f"[SYNC-STATUS] Verificando sync status para servidor: {server_id}")
 
         # Carregar configuração de campos
-        config = load_fields_config()
-        fields = config.get('fields', [])
+        try:
+            config = load_fields_config()
+            fields = config.get('fields', [])
+            logger.info(f"[SYNC-STATUS] Carregados {len(fields)} campos do metadata_fields.json")
+        except Exception as e:
+            logger.error(f"[SYNC-STATUS] Erro ao carregar metadata_fields.json: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao carregar configuração de campos: {str(e)}"
+            )
 
-        # Extrair hostname do server_id (formato: "172.16.1.26:5522")
+        # Extrair hostname do server_id (formato: "172.16.1.26:5522" ou "11.144.0.21:22")
         hostname = server_id.split(':')[0] if ':' in server_id else server_id
+        logger.info(f"[SYNC-STATUS] Hostname extraído: {hostname}")
 
         # Inicializar MultiConfigManager
-        multi_config = MultiConfigManager()
+        try:
+            multi_config = MultiConfigManager()
+            logger.info(f"[SYNC-STATUS] MultiConfigManager inicializado com sucesso")
+        except Exception as e:
+            logger.error(f"[SYNC-STATUS] Erro ao inicializar MultiConfigManager: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao inicializar gerenciador de configurações: {str(e)}"
+            )
 
         # Ler prometheus.yml do servidor
         prometheus_file_path = "/etc/prometheus/prometheus.yml"
+        logger.info(f"[SYNC-STATUS] Tentando ler arquivo: {prometheus_file_path} de {hostname}")
 
         try:
             # Ler conteúdo do arquivo via SSH
             yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
+
+            if not yaml_content:
+                raise ValueError("Arquivo prometheus.yml vazio ou não encontrado")
+
             prometheus_config = yaml.safe_load(yaml_content)
 
-            logger.info(f"Prometheus.yml carregado com sucesso de {hostname}")
+            if not prometheus_config:
+                raise ValueError("Conteúdo YAML inválido ou vazio")
 
-        except Exception as e:
-            logger.error(f"Erro ao ler prometheus.yml: {e}")
+            logger.info(f"[SYNC-STATUS] Prometheus.yml carregado com sucesso de {hostname}")
+
+        except FileNotFoundError as e:
+            logger.error(f"[SYNC-STATUS] Arquivo não encontrado: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Arquivo prometheus.yml não encontrado no servidor {hostname}. Verifique se o caminho /etc/prometheus/prometheus.yml está correto."
+            )
+        except PermissionError as e:
+            logger.error(f"[SYNC-STATUS] Permissão negada: {e}")
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permissão negada ao tentar ler prometheus.yml do servidor {hostname}. Verifique as credenciais SSH."
+            )
+        except yaml.YAMLError as e:
+            logger.error(f"[SYNC-STATUS] Erro ao parsear YAML: {e}")
             raise HTTPException(
                 status_code=500,
-                detail=f"Erro ao ler prometheus.yml do servidor {hostname}: {str(e)}"
+                detail=f"Erro ao parsear prometheus.yml do servidor {hostname}: Arquivo YAML inválido"
+            )
+        except Exception as e:
+            logger.error(f"[SYNC-STATUS] Erro ao ler prometheus.yml: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao conectar ou ler arquivo do servidor {hostname}: {str(e)}"
             )
 
         # Extrair relabel_configs do Prometheus
