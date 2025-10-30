@@ -312,17 +312,9 @@ const PrometheusConfig: React.FC = () => {
       });
       if (response.data.success) {
         setAllFiles(response.data.files);
-        // Auto-selecionar prometheus.yml do servidor master se existir
-        // Usa setSelectedFile callback para ler valor atual sem dependência
-        setSelectedFile((currentFile) => {
-          if (!currentFile) {
-            const prometheusFile = response.data.files.find(
-              f => f.filename === 'prometheus.yml' && f.host.includes(hostname)
-            );
-            return prometheusFile ? prometheusFile.path : currentFile;
-          }
-          return currentFile;
-        });
+        // CORREÇÃO: Remover auto-seleção daqui para evitar duplicação
+        // A auto-seleção é feita no useEffect (linhas 581-607) que monitora allFiles
+        // Isso previne tentativas de carregar arquivos que não existem
       } else {
         message.error('Falha ao carregar arquivos');
       }
