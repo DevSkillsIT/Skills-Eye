@@ -19,6 +19,7 @@ from core.yaml_config_service import YamlConfigService
 from core.fields_extraction_service import FieldsExtractionService, MetadataField
 from core.consul_manager import ConsulManager
 from core.multi_config_manager import MultiConfigManager
+from core.server_utils import get_server_detector, ServerInfo
 
 logger = logging.getLogger(__name__)
 
@@ -697,6 +698,36 @@ async def get_file_structure(
         Estrutura detectada com type, items, editable_sections
     """
     try:
+        # NOVO: Detectar capacidades do servidor antes de tentar ler arquivo
+        if hostname:
+            detector = get_server_detector()
+            server_info = detector.detect_server_capabilities(hostname, use_cache=True)
+
+            # Verificar se servidor tem o serviço correspondente ao arquivo
+            if 'prometheus.yml' in file_path and not server_info.has_prometheus:
+                logger.warning(
+                    f"[FILE-STRUCTURE] Servidor {hostname} não possui Prometheus. "
+                    f"Capacidades: {[c.value for c in server_info.capabilities]}"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Prometheus. Capacidades: {server_info.description}"
+                )
+
+            if 'alertmanager.yml' in file_path and not server_info.has_alertmanager:
+                logger.warning(f"[FILE-STRUCTURE] Servidor {hostname} não possui Alertmanager")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Alertmanager. Capacidades: {server_info.description}"
+                )
+
+            if 'blackbox' in file_path and not server_info.has_blackbox_exporter:
+                logger.warning(f"[FILE-STRUCTURE] Servidor {hostname} não possui Blackbox Exporter")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Blackbox Exporter. Capacidades: {server_info.description}"
+                )
+
         structure = multi_config.get_config_structure(file_path, hostname=hostname)
 
         # Não retornar raw_config completo (pode ser muito grande)
@@ -812,6 +843,36 @@ async def get_raw_file_content(
     """
     try:
         logger.info(f"[RAW CONTENT] Lendo arquivo: {file_path} (hostname: {hostname})")
+
+        # NOVO: Detectar capacidades do servidor antes de tentar ler arquivo
+        if hostname:
+            detector = get_server_detector()
+            server_info = detector.detect_server_capabilities(hostname, use_cache=True)
+
+            # Verificar se servidor tem o serviço correspondente ao arquivo
+            if 'prometheus.yml' in file_path and not server_info.has_prometheus:
+                logger.warning(
+                    f"[RAW CONTENT] Servidor {hostname} não possui Prometheus. "
+                    f"Capacidades: {[c.value for c in server_info.capabilities]}"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Prometheus. Capacidades: {server_info.description}"
+                )
+
+            if 'alertmanager.yml' in file_path and not server_info.has_alertmanager:
+                logger.warning(f"[RAW CONTENT] Servidor {hostname} não possui Alertmanager")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Alertmanager. Capacidades: {server_info.description}"
+                )
+
+            if 'blackbox' in file_path and not server_info.has_blackbox_exporter:
+                logger.warning(f"[RAW CONTENT] Servidor {hostname} não possui Blackbox Exporter")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Blackbox Exporter. Capacidades: {server_info.description}"
+                )
 
         # PASSO 1: Obter informações do arquivo via MultiConfigManager
         config_file = multi_config.get_file_by_path(file_path, hostname=hostname)
@@ -1733,6 +1794,21 @@ async def get_alertmanager_routes(
         Lista de rotas processadas
     """
     try:
+        # NOVO: Verificar se servidor tem Alertmanager antes de tentar ler
+        if hostname:
+            detector = get_server_detector()
+            server_info = detector.detect_server_capabilities(hostname, use_cache=True)
+
+            if not server_info.has_alertmanager:
+                logger.warning(
+                    f"[ALERTMANAGER-ROUTES] Servidor {hostname} não possui Alertmanager. "
+                    f"Capacidades: {[c.value for c in server_info.capabilities]}"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Alertmanager. Capacidades: {server_info.description}"
+                )
+
         # Ler arquivo usando método correto COM hostname para ler do servidor correto
         content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
@@ -1773,6 +1849,21 @@ async def get_alertmanager_receivers(
         Lista de receptores processados
     """
     try:
+        # NOVO: Verificar se servidor tem Alertmanager antes de tentar ler
+        if hostname:
+            detector = get_server_detector()
+            server_info = detector.detect_server_capabilities(hostname, use_cache=True)
+
+            if not server_info.has_alertmanager:
+                logger.warning(
+                    f"[ALERTMANAGER-RECEIVERS] Servidor {hostname} não possui Alertmanager. "
+                    f"Capacidades: {[c.value for c in server_info.capabilities]}"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Alertmanager. Capacidades: {server_info.description}"
+                )
+
         # Ler arquivo usando método correto COM hostname para ler do servidor correto
         content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
@@ -1813,6 +1904,21 @@ async def get_alertmanager_inhibit_rules(
         Lista de regras processadas
     """
     try:
+        # NOVO: Verificar se servidor tem Alertmanager antes de tentar ler
+        if hostname:
+            detector = get_server_detector()
+            server_info = detector.detect_server_capabilities(hostname, use_cache=True)
+
+            if not server_info.has_alertmanager:
+                logger.warning(
+                    f"[ALERTMANAGER-INHIBIT] Servidor {hostname} não possui Alertmanager. "
+                    f"Capacidades: {[c.value for c in server_info.capabilities]}"
+                )
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não possui Alertmanager. Capacidades: {server_info.description}"
+                )
+
         # Ler arquivo usando método correto COM hostname para ler do servidor correto
         content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
