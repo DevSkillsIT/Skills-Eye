@@ -2251,73 +2251,102 @@ const PrometheusConfig: React.FC = () => {
         }}
         tabBarExtraContent={
           <Space size="middle" align="center" style={{ marginBottom: 8, marginRight: 8 }}>
-            <ColumnSelector
-              columns={columnConfig}
-              onChange={setColumnConfig}
-              storageKey={`prometheus-columns-${fileType}`}
-              buttonSize="large"
-            />
-
+            {/* BOTÕES DE VISUALIZAÇÃO - Destaque Principal */}
             {fileType === 'rules' && (
-              <Space.Compact size="large">
-                <Button
-                  type={alertViewMode === 'group' ? 'primary' : 'default'}
-                  size="large"
-                  onClick={() => setAlertViewMode('group')}
-                >
-                  Visão Grupo
-                </Button>
-                <Button
-                  type={alertViewMode === 'individual' ? 'primary' : 'default'}
-                  size="large"
-                  onClick={() => setAlertViewMode('individual')}
-                >
-                  Visão Alerta
-                </Button>
-              </Space.Compact>
+              <>
+                <Space.Compact size="large">
+                  <Button
+                    type={alertViewMode === 'group' ? 'primary' : 'default'}
+                    size="large"
+                    onClick={() => setAlertViewMode('group')}
+                    style={{
+                      fontWeight: 600,
+                      boxShadow: alertViewMode === 'group' ? '0 2px 8px rgba(24, 144, 255, 0.3)' : undefined,
+                    }}
+                  >
+                    Visão Grupo
+                  </Button>
+                  <Button
+                    type={alertViewMode === 'individual' ? 'primary' : 'default'}
+                    size="large"
+                    onClick={() => setAlertViewMode('individual')}
+                    style={{
+                      fontWeight: 600,
+                      boxShadow: alertViewMode === 'individual' ? '0 2px 8px rgba(24, 144, 255, 0.3)' : undefined,
+                    }}
+                  >
+                    Visão Alerta
+                  </Button>
+                </Space.Compact>
+                <div style={{ width: 1, height: 32, background: '#d9d9d9', margin: '0 4px' }} />
+              </>
             )}
 
             {fileType === 'alertmanager' && (
-              <Space.Compact size="large">
-                <Button
-                  type={alertmanagerViewMode === 'routes' ? 'primary' : 'default'}
-                  size="large"
-                  onClick={() => setAlertmanagerViewMode('routes')}
-                >
-                  Rotas
-                </Button>
-                <Button
-                  type={alertmanagerViewMode === 'receivers' ? 'primary' : 'default'}
-                  size="large"
-                  onClick={() => setAlertmanagerViewMode('receivers')}
-                >
-                  Receptores
-                </Button>
-                <Button
-                  type={alertmanagerViewMode === 'inhibit-rules' ? 'primary' : 'default'}
-                  size="large"
-                  onClick={() => setAlertmanagerViewMode('inhibit-rules')}
-                >
-                  Regras de Inibição
-                </Button>
-              </Space.Compact>
+              <>
+                <Space.Compact size="large">
+                  <Button
+                    type={alertmanagerViewMode === 'routes' ? 'primary' : 'default'}
+                    size="large"
+                    onClick={() => setAlertmanagerViewMode('routes')}
+                    style={{
+                      fontWeight: 600,
+                      boxShadow: alertmanagerViewMode === 'routes' ? '0 2px 8px rgba(24, 144, 255, 0.3)' : undefined,
+                    }}
+                  >
+                    Rotas
+                  </Button>
+                  <Button
+                    type={alertmanagerViewMode === 'receivers' ? 'primary' : 'default'}
+                    size="large"
+                    onClick={() => setAlertmanagerViewMode('receivers')}
+                    style={{
+                      fontWeight: 600,
+                      boxShadow: alertmanagerViewMode === 'receivers' ? '0 2px 8px rgba(24, 144, 255, 0.3)' : undefined,
+                    }}
+                  >
+                    Receptores
+                  </Button>
+                  <Button
+                    type={alertmanagerViewMode === 'inhibit-rules' ? 'primary' : 'default'}
+                    size="large"
+                    onClick={() => setAlertmanagerViewMode('inhibit-rules')}
+                    style={{
+                      fontWeight: 600,
+                      boxShadow: alertmanagerViewMode === 'inhibit-rules' ? '0 2px 8px rgba(24, 144, 255, 0.3)' : undefined,
+                    }}
+                  >
+                    Regras de Inibição
+                  </Button>
+                </Space.Compact>
+                <div style={{ width: 1, height: 32, background: '#d9d9d9', margin: '0 4px' }} />
+              </>
             )}
 
-            <Dropdown
-              menu={{
-                items: [
-                  { key: 'small', label: 'Compacto' },
-                  { key: 'middle', label: 'Médio' },
-                  { key: 'large', label: 'Grande' },
-                ],
-                onClick: ({ key }: { key: string }) => setTableSize(key as 'small' | 'middle' | 'large'),
-                selectedKeys: [tableSize],
-              }}
-            >
-              <Button icon={<ColumnHeightOutlined />} size="large">
-                Densidade
-              </Button>
-            </Dropdown>
+            {/* BOTÕES DE CONFIGURAÇÃO - Secundários */}
+            <Space.Compact size="large">
+              <Dropdown
+                menu={{
+                  items: [
+                    { key: 'small', label: 'Compacto' },
+                    { key: 'middle', label: 'Médio' },
+                    { key: 'large', label: 'Grande' },
+                  ],
+                  onClick: ({ key }: { key: string }) => setTableSize(key as 'small' | 'middle' | 'large'),
+                  selectedKeys: [tableSize],
+                }}
+              >
+                <Button icon={<ColumnHeightOutlined />} size="large">
+                  Densidade
+                </Button>
+              </Dropdown>
+              <ColumnSelector
+                columns={columnConfig}
+                onChange={setColumnConfig}
+                storageKey={`prometheus-columns-${fileType}`}
+                buttonSize="large"
+              />
+            </Space.Compact>
           </Space>
         }
         items={[
