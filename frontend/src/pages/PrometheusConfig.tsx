@@ -3001,7 +3001,7 @@ const PrometheusConfig: React.FC = () => {
                     description={
                       <ul style={{ margin: 0, paddingLeft: 20 }}>
                         <li>Backup automático criado antes de salvar</li>
-                        <li>Comentários YAML preservados 100%</li>
+                        <li>Reload automático dos serviços após validação bem-sucedida</li>
                         <li>Permissões restauradas automaticamente (prometheus:prometheus)</li>
                         <li>Validação com promtool antes de aplicar</li>
                       </ul>
