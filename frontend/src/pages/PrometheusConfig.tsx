@@ -302,6 +302,10 @@ const PrometheusConfig: React.FC = () => {
     }
 
     setLoadingFiles(true);
+    // CORREÇÃO: Limpar arquivos antigos DEPOIS de setar loading
+    // Isso previne flash de lista vazia com loading=false
+    setAllFiles([]);
+
     try {
       // OTIMIZAÇÃO: Sempre passa hostname para buscar apenas do servidor selecionado
       const hostname = selectedServer.split(':')[0]; // Extrai IP de "172.16.1.26:5522"
@@ -312,17 +316,9 @@ const PrometheusConfig: React.FC = () => {
       });
       if (response.data.success) {
         setAllFiles(response.data.files);
-        // Auto-selecionar prometheus.yml do servidor master se existir
-        // Usa setSelectedFile callback para ler valor atual sem dependência
-        setSelectedFile((currentFile) => {
-          if (!currentFile) {
-            const prometheusFile = response.data.files.find(
-              f => f.filename === 'prometheus.yml' && f.host.includes(hostname)
-            );
-            return prometheusFile ? prometheusFile.path : currentFile;
-          }
-          return currentFile;
-        });
+        // CORREÇÃO: Remover auto-seleção daqui para evitar duplicação
+        // A auto-seleção é feita no useEffect (linhas 581-607) que monitora allFiles
+        // Isso previne tentativas de carregar arquivos que não existem
       } else {
         message.error('Falha ao carregar arquivos');
       }
@@ -544,7 +540,7 @@ const PrometheusConfig: React.FC = () => {
       // Atualizar previousServer
       setPreviousServer(selectedServer);
 
-      // Limpar seleção anterior e recarregar
+      // CRÍTICO: Limpar TODOS os dados do servidor anterior IMEDIATAMENTE
       setSelectedFile(null);
       setJobs([]);
 
@@ -556,6 +552,7 @@ const PrometheusConfig: React.FC = () => {
       // CRÍTICO: Resetar fileType para forçar re-renderização da tabela
       setFileType('prometheus');
 
+      // CORREÇÃO: fetchFiles() agora limpa allFiles internamente (evita flash de lista vazia)
       fetchFiles();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
