@@ -380,6 +380,11 @@ const MetadataFieldsPage: React.FC = () => {
 
         const config = statusConfig[status as keyof typeof statusConfig];
 
+        // Validação: se config não existe, retorna tag padrão
+        if (!config) {
+          return <Tag color="default">-</Tag>;
+        }
+
         return (
           <Tooltip title={record.sync_message || 'Status de sincronização'}>
             <Tag icon={config.icon} color={config.color}>
