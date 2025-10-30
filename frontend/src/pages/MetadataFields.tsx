@@ -25,7 +25,6 @@ import type { ProColumns } from '@ant-design/pro-components';
 import {
   Button,
   Space,
-  message,
   Tag,
   Badge,
   Popconfirm,
@@ -37,9 +36,15 @@ import {
   Col,
   Card,
   Typography,
+  Drawer,
+  Descriptions,
+  Divider,
+  App,
+  Steps,
+  List,
 } from 'antd';
 
-const { Text } = Typography;
+const { Text, Paragraph } = Typography;
 import {
   PlusOutlined,
   EditOutlined,
@@ -51,8 +56,14 @@ import {
   WarningOutlined,
   CloudServerOutlined,
   InfoCircleOutlined,
+  EyeOutlined,
+  ThunderboltOutlined,
+  FileTextOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
+import { metadataFieldsAPI, consulAPI } from '../services/api';
+import type { PreviewFieldChangeResponse } from '../services/api';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
@@ -71,8 +82,10 @@ interface MetadataField {
   category: string;
   editable: boolean;
   validation_regex?: string;
-  sync_status?: 'synced' | 'outdated' | 'missing' | 'error';  // ← NOVO: Status de sincronização
-  sync_message?: string;  // ← NOVO: Mensagem do status
+  sync_status?: 'synced' | 'outdated' | 'missing' | 'error';  // ← FASE 1: Status de sincronização
+  sync_message?: string;  // ← FASE 1: Mensagem do status
+  prometheus_target_label?: string;  // ← FASE 1: Label usado no Prometheus
+  metadata_source_label?: string;  // ← FASE 1: Label metadata do Consul
 }
 
 interface Server {
@@ -85,15 +98,43 @@ interface Server {
 }
 
 const MetadataFieldsPage: React.FC = () => {
+  const { modal, message } = App.useApp();  // Hook para usar modal e message com contexto
   const [fields, setFields] = useState<MetadataField[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
   const [selectedServer, setSelectedServer] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);  // ← NOVO
-  const [serverJustChanged, setServerJustChanged] = useState(false);  // ← NOVO: Animação de troca
+  const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);
+  const [serverJustChanged, setServerJustChanged] = useState(false);
+  const [serverHasNoPrometheus, setServerHasNoPrometheus] = useState(false);  // ← NOVO: Detecta servidor sem Prometheus
+  const [serverPrometheusMessage, setServerPrometheusMessage] = useState('');  // ← NOVO: Mensagem do servidor
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingField, setEditingField] = useState<MetadataField | null>(null);
+
+  // FASE 2: Preview de Mudanças
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [previewData, setPreviewData] = useState<PreviewFieldChangeResponse | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+
+  // FASE 3: Sincronização em Lote - MODAL COM ETAPAS
+  const [batchSyncModalVisible, setBatchSyncModalVisible] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [stepStatus, setStepStatus] = useState<Record<number, 'wait' | 'process' | 'finish' | 'error'>>({
+    0: 'wait', // Preparação
+    1: 'wait', // Sincronização (backend com ruamel.yaml)
+    2: 'wait', // Reload Prometheus
+    3: 'wait', // Verificação final
+  });
+  const [stepMessages, setStepMessages] = useState<Record<number, string>>({
+    0: '',
+    1: '',
+    2: '',
+    3: '',
+  });
+
+  // FASE 4: Drawer de Visualização
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [drawerField, setDrawerField] = useState<MetadataField | null>(null);
 
   const fetchFields = async () => {
     setLoading(true);
@@ -147,23 +188,35 @@ const MetadataFieldsPage: React.FC = () => {
       });
 
       if (response.data.success) {
+        // Detectar se servidor tem Prometheus
+        const hasNoPrometheus = response.data.message &&
+          response.data.message.toLowerCase().includes('não possui prometheus');
+
+        setServerHasNoPrometheus(hasNoPrometheus);
+        setServerPrometheusMessage(hasNoPrometheus ? response.data.message : '');
+
         // Atualizar campos com status de sincronização
-        const syncStatusMap = new Map(
+        const syncStatusMap = new Map<string, {
+          sync_status: 'synced' | 'outdated' | 'missing' | 'error';
+          sync_message: string;
+        }>(
           response.data.fields.map((f: any) => [f.name, {
-            sync_status: f.sync_status,
-            sync_message: f.message
+            sync_status: f.sync_status as 'synced' | 'outdated' | 'missing' | 'error',
+            sync_message: f.message as string
           }])
         );
 
         setFields((prevFields) =>
-          prevFields.map((field) => ({
+          prevFields.map((field): MetadataField => ({
             ...field,
             sync_status: syncStatusMap.get(field.name)?.sync_status || 'error',
             sync_message: syncStatusMap.get(field.name)?.sync_message || 'Status desconhecido',
           }))
         );
 
-        message.success(`Status verificado: ${response.data.total_synced} sincronizado(s), ${response.data.total_missing} faltando`);
+        if (!hasNoPrometheus) {
+          message.success(`Status verificado: ${response.data.total_synced} sincronizado(s), ${response.data.total_missing} faltando`);
+        }
       }
     } catch (error: any) {
       console.error('[SYNC-STATUS] Erro ao verificar sincronização:', error);
@@ -209,6 +262,8 @@ const MetadataFieldsPage: React.FC = () => {
 
       // Limpar dados antigos IMEDIATAMENTE
       setFields([]);
+      setServerHasNoPrometheus(false);
+      setServerPrometheusMessage('');
 
       // Carregar novos dados
       fetchFields();
@@ -232,7 +287,7 @@ const MetadataFieldsPage: React.FC = () => {
         setCreateModalVisible(false);
 
         // Perguntar se quer replicar
-        Modal.confirm({
+        modal.confirm({
           title: 'Replicar para servidores slaves?',
           content: 'Deseja replicar este campo para todos os servidores slaves?',
           okText: 'Sim, replicar',
@@ -283,7 +338,6 @@ const MetadataFieldsPage: React.FC = () => {
       hide();
 
       if (response.data.success) {
-        const successCount = response.data.results.filter((r: any) => r.success).length;
         Modal.success({
           title: 'Replicação Concluída',
           content: (
@@ -304,6 +358,211 @@ const MetadataFieldsPage: React.FC = () => {
       hide();
       message.error('Erro ao replicar: ' + (error.response?.data?.detail || error.message));
     }
+  };
+
+  // ============================================================================
+  // FASE 2: PREVIEW DE MUDANÇAS
+  // ============================================================================
+  const handlePreviewChanges = async (fieldName: string) => {
+    if (!selectedServer) {
+      message.warning('Selecione um servidor primeiro');
+      return;
+    }
+
+    setLoadingPreview(true);
+    setPreviewModalVisible(true);
+    setPreviewData(null);
+
+    try {
+      const response = await metadataFieldsAPI.previewChanges(fieldName, selectedServer);
+      setPreviewData(response.data);
+    } catch (error: any) {
+      message.error('Erro ao gerar preview: ' + (error.response?.data?.detail || error.message));
+      setPreviewModalVisible(false);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  // ============================================================================
+  // FASE 3: SINCRONIZAÇÃO EM LOTE
+  // ============================================================================
+  const handleBatchSync = async () => {
+    if (!selectedServer) {
+      message.warning('Selecione um servidor primeiro');
+      return;
+    }
+
+    // Detectar campos desatualizados ou não aplicados
+    const fieldsToSync = fields.filter(
+      (f) => f.sync_status === 'outdated' || f.sync_status === 'missing'
+    );
+
+    if (fieldsToSync.length === 0) {
+      message.info('Todos os campos já estão sincronizados');
+      return;
+    }
+
+    // Modal de confirmação
+    modal.confirm({
+      title: 'Sincronizar Campos',
+      content: (
+        <div>
+          <p>Deseja sincronizar os seguintes {fieldsToSync.length} campo(s)?</p>
+          <List
+            size="small"
+            dataSource={fieldsToSync}
+            renderItem={(field) => (
+              <List.Item>
+                <Tag color="orange">{field.sync_status === 'missing' ? 'Não Aplicado' : 'Desatualizado'}</Tag>
+                <strong>{field.display_name}</strong> <code>({field.name})</code>
+              </List.Item>
+            )}
+          />
+          <Alert
+            message="Processo de Sincronização"
+            description="Os campos serão adicionados/atualizados no arquivo prometheus.yml do servidor selecionado. O Prometheus será recarregado automaticamente."
+            type="info"
+            showIcon
+            style={{ marginTop: 16 }}
+          />
+        </div>
+      ),
+      okText: 'Sim, sincronizar',
+      cancelText: 'Cancelar',
+      width: 700,
+      onOk: () => {
+        // CRÍTICO: Capturar fieldsToSync ANTES de setTimeout para evitar escopo perdido
+        const fieldsToCopy = fieldsToSync;
+        // Fechar modal.confirm e abrir modal de progresso após delay
+        setTimeout(() => {
+          executeBatchSync(fieldsToCopy);
+        }, 300); // 300ms para garantir que modal.confirm fechou
+      },
+    });
+  };
+
+  // Função separada para executar sincronização COM DELAYS VISUAIS entre steps
+  const executeBatchSync = async (fieldsToSync: MetadataField[]) => {
+    try {
+      // RESETAR Estados e abrir modal de progresso
+      setCurrentStep(0);
+      setStepStatus({ 0: 'wait', 1: 'wait', 2: 'wait', 3: 'wait' });
+      setStepMessages({ 0: '', 1: '', 2: '', 3: '' });
+      setBatchSyncModalVisible(true);
+
+      const fieldNames = fieldsToSync.map((f) => f.name);
+
+      // STEP 0: Preparação (com delay visual)
+      setCurrentStep(0);
+      setStepStatus(prev => ({ ...prev, 0: 'process' }));
+      setStepMessages(prev => ({ ...prev, 0: `Preparando sincronização de ${fieldNames.length} campo(s)...` }));
+
+      await new Promise(resolve => setTimeout(resolve, 500)); // Delay visual
+
+      setStepStatus(prev => ({ ...prev, 0: 'finish' }));
+      setStepMessages(prev => ({ ...prev, 0: `Campos preparados: ${fieldNames.join(', ')} ✓` }));
+
+      await new Promise(resolve => setTimeout(resolve, 300)); // Delay entre steps
+
+      // STEP 1: Backend faz TUDO (ler, alterar com ruamel.yaml, salvar)
+      setCurrentStep(1);
+      setStepStatus(prev => ({ ...prev, 1: 'process' }));
+      setStepMessages(prev => ({ ...prev, 1: `Conectando ao servidor e aplicando mudanças...` }));
+
+      const batchSyncResponse = await metadataFieldsAPI.batchSync({
+        field_names: fieldNames,
+        server_id: selectedServer,
+        dry_run: false
+      });
+
+      const { success: backendSuccess, results } = batchSyncResponse.data;
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+
+      if (failCount > 0) {
+        setStepStatus(prev => ({ ...prev, 1: 'error' }));
+        const errors = results.filter(r => !r.success).map(r => r.message).join('; ');
+        setStepMessages(prev => ({ ...prev, 1: `Erros: ${errors}` }));
+        if (successCount === 0) {
+          message.error('Nenhum campo foi sincronizado. Verifique os erros e tente novamente.');
+          return;
+        }
+      } else {
+        setStepStatus(prev => ({ ...prev, 1: 'finish' }));
+        const totalChanges = results.reduce((sum, r) => sum + r.changes_applied, 0);
+        setStepMessages(prev => ({ ...prev, 1: `${successCount} campo(s) sincronizado(s), ${totalChanges} mudança(s) aplicada(s) ✓` }));
+      }
+
+      if (!backendSuccess) {
+        console.warn('[BATCH-SYNC] Backend retornou sucesso parcial', batchSyncResponse.data);
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 400)); // Delay entre steps
+
+      // STEP 2: Reload Prometheus
+      setCurrentStep(2);
+      setStepStatus(prev => ({ ...prev, 2: 'process' }));
+      setStepMessages(prev => ({ ...prev, 2: 'Recarregando Prometheus...' }));
+
+      const hostname = selectedServer.split(':')[0];
+      const reloadResponse = await consulAPI.reloadService(hostname, '/etc/prometheus/prometheus.yml');
+
+      const failedServices = reloadResponse.data.services.filter(s => !s.success && s.method !== 'skipped');
+      const processedServices = reloadResponse.data.services.filter(s => s.success && s.method !== 'skipped');
+
+      if (failedServices.length > 0) {
+        setStepStatus(prev => ({ ...prev, 2: 'error' }));
+        const errorMsg = failedServices.map(s => `${s.service}: ${s.error || 'falhou'}`).join(', ');
+        setStepMessages(prev => ({ ...prev, 2: `Falha ao recarregar: ${errorMsg}` }));
+      } else {
+        setStepStatus(prev => ({ ...prev, 2: 'finish' }));
+        const processedNames = processedServices.map(s => s.service).join(', ');
+        setStepMessages(prev => ({ ...prev, 2: `Serviços recarregados: ${processedNames} ✓` }));
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 400)); // Delay entre steps
+
+      // STEP 3: Verificar status final
+      setCurrentStep(3);
+      setStepStatus(prev => ({ ...prev, 3: 'process' }));
+      setStepMessages(prev => ({ ...prev, 3: 'Verificando status de sincronização...' }));
+
+      await fetchSyncStatus(selectedServer);
+
+      setStepStatus(prev => ({ ...prev, 3: 'finish' }));
+      setStepMessages(prev => ({ ...prev, 3: `Sincronização concluída! ${fieldNames.length} campo(s) aplicado(s) ✓` }));
+
+    } catch (error: any) {
+      console.error('[BATCH-SYNC] Erro:', error);
+
+      // Marcar steps restantes como erro
+      const currentStepValue = currentStep;
+      for (let i = currentStepValue; i <= 3; i++) {
+        setStepStatus(prev => {
+          if (prev[i] === 'wait' || prev[i] === 'process') {
+            return { ...prev, [i]: 'error' };
+          }
+          return prev;
+        });
+        setStepMessages(prev => {
+          if (!prev[i] || prev[i].includes('...')) {
+            return { ...prev, [i]: 'Não executado devido a erro anterior' };
+          }
+          return prev;
+        });
+      }
+
+      message.error('Erro ao sincronizar: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  // ============================================================================
+  // FASE 4: DRAWER DE VISUALIZAÇÃO
+  // ============================================================================
+  const handleViewField = (field: MetadataField) => {
+    setDrawerField(field);
+    setDrawerVisible(true);
   };
 
 
@@ -330,7 +589,7 @@ const MetadataFieldsPage: React.FC = () => {
       title: 'Tipo',
       dataIndex: 'field_type',
       width: 100,
-      render: (type) => {
+      render: (_: unknown, record: MetadataField) => {
         const colors: Record<string, string> = {
           string: 'default',
           number: 'blue',
@@ -338,7 +597,7 @@ const MetadataFieldsPage: React.FC = () => {
           text: 'green',
           url: 'orange',
         };
-        return <Tag color={colors[type] || 'default'}>{type}</Tag>;
+        return <Tag color={colors[record.field_type] || 'default'}>{record.field_type}</Tag>;
       },
     },
     {
@@ -422,13 +681,31 @@ const MetadataFieldsPage: React.FC = () => {
     },
     {
       title: 'Ações',
-      width: 150,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
-        <Space>
+        <Space size="small">
+          <Tooltip title="Visualizar Detalhes (FASE 4)">
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleViewField(record)}
+            />
+          </Tooltip>
+          <Tooltip title="Preview de Mudanças (FASE 2)">
+            <Button
+              type="link"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => handlePreviewChanges(record.name)}
+              disabled={!selectedServer || record.sync_status === 'error'}
+            />
+          </Tooltip>
           <Tooltip title="Editar">
             <Button
               type="link"
+              size="small"
               icon={<EditOutlined />}
               onClick={() => {
                 setEditingField(record);
@@ -444,7 +721,7 @@ const MetadataFieldsPage: React.FC = () => {
               cancelText="Não"
             >
               <Tooltip title="Deletar">
-                <Button type="link" danger icon={<DeleteOutlined />} />
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
               </Tooltip>
             </Popconfirm>
           )}
@@ -460,7 +737,7 @@ const MetadataFieldsPage: React.FC = () => {
       return;
     }
 
-    Modal.confirm({
+    modal.confirm({
       title: 'Confirmar Reinicialização',
       content: `Deseja reiniciar o Prometheus no servidor ${selectedServerObj.hostname}?`,
       okText: 'Sim, reiniciar',
@@ -486,7 +763,7 @@ const MetadataFieldsPage: React.FC = () => {
   };
 
   const handleRestartAll = async () => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Confirmar Reinicialização em Todos os Servidores',
       content: `Deseja reiniciar o Prometheus em TODOS os ${servers.length} servidores (Master + Slaves)?`,
       okText: 'Sim, reiniciar todos',
@@ -566,6 +843,40 @@ const MetadataFieldsPage: React.FC = () => {
           }}
         />
       </div>
+
+      {/* Alert de Aviso: Servidor SEM Prometheus */}
+      {serverHasNoPrometheus && (
+        <Alert
+          message="Servidor sem Prometheus"
+          description={
+            <div>
+              <p style={{ marginBottom: 8 }}>
+                <strong>⚠️ Este servidor NÃO possui Prometheus instalado</strong>
+              </p>
+              <p style={{ marginBottom: 8 }}>
+                {serverPrometheusMessage || 'O servidor selecionado não possui o arquivo prometheus.yml e não pode ser usado para sincronização de campos metadata.'}
+              </p>
+              <p style={{ marginBottom: 0, fontSize: 12, color: '#8c8c8c' }}>
+                <strong>O que você PODE fazer neste servidor:</strong>
+                <br />
+                • Visualizar campos metadata configurados (FASE 4 - Drawer)
+                <br />
+                <strong>O que você NÃO PODE fazer:</strong>
+                <br />
+                • Preview de mudanças (FASE 2) - desabilitado
+                <br />
+                • Sincronização de campos (FASE 3) - desabilitado
+                <br />
+                • Status de sincronização aparecerá como "N/A" (azul)
+              </p>
+            </div>
+          }
+          type="warning"
+          showIcon
+          closable
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       {/* Card de Seleção de Servidor e Ações - ALTURA FIXA */}
       <Card style={{ marginBottom: 16, height: 140, overflow: 'hidden' }}>
@@ -679,23 +990,39 @@ const MetadataFieldsPage: React.FC = () => {
             },
           }}
           pagination={{
-            defaultPageSize: 20,
+            defaultPageSize: 30,
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '30', '50', '100'],
             showTotal: (total) => `Total: ${total} campos`,
           }}
           scroll={{ x: 1600 }}
-          toolBarRender={() => [
-            <Tooltip key="sync" title="Atualizar status de sincronização">
-              <Button
-                icon={<SyncOutlined spin={loadingSyncStatus} />}
-                onClick={() => selectedServer && fetchSyncStatus(selectedServer)}
-                disabled={!selectedServer || loadingSyncStatus}
-              >
-                {loadingSyncStatus ? 'Verificando...' : 'Verificar Sincronização'}
-              </Button>
-            </Tooltip>,
-          ]}
+          toolBarRender={() => {
+            const outdatedCount = fields.filter(
+              (f) => f.sync_status === 'outdated' || f.sync_status === 'missing'
+            ).length;
+
+            return [
+              <Tooltip key="batch-sync" title="Sincronizar campos desatualizados em lote (FASE 3)">
+                <Button
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  onClick={handleBatchSync}
+                  disabled={!selectedServer || outdatedCount === 0}
+                >
+                  Sincronizar Campos {outdatedCount > 0 && `(${outdatedCount})`}
+                </Button>
+              </Tooltip>,
+              <Tooltip key="sync" title="Atualizar status de sincronização">
+                <Button
+                  icon={<SyncOutlined spin={loadingSyncStatus} />}
+                  onClick={() => selectedServer && fetchSyncStatus(selectedServer)}
+                  disabled={!selectedServer || loadingSyncStatus}
+                >
+                  {loadingSyncStatus ? 'Verificando...' : 'Verificar Sincronização'}
+                </Button>
+              </Tooltip>,
+            ];
+          }}
         />
       </ProCard>
 
@@ -826,6 +1153,275 @@ const MetadataFieldsPage: React.FC = () => {
         <ProFormSwitch name="editable" label="Editável" />
         <ProFormText name="source_label" label="Source Label" disabled />
       </ModalForm>
+
+      {/* FASE 2: Modal de Preview de Mudanças */}
+      <Modal
+        title="Preview de Mudanças"
+        open={previewModalVisible}
+        onCancel={() => setPreviewModalVisible(false)}
+        width={800}
+        footer={[
+          <Button key="cancel" onClick={() => setPreviewModalVisible(false)}>
+            Fechar
+          </Button>,
+        ]}
+      >
+        {loadingPreview ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <SyncOutlined spin style={{ fontSize: 32, color: '#1890ff' }} />
+            <p style={{ marginTop: 16 }}>Gerando preview...</p>
+          </div>
+        ) : previewData ? (
+          <div>
+            <Alert
+              message={previewData.will_create ? '🆕 Campo será CRIADO no prometheus.yml' : '✏️ Campo será ATUALIZADO no prometheus.yml'}
+              description={
+                previewData.will_create
+                  ? 'O campo não existe no arquivo prometheus.yml deste servidor. Ao sincronizar, uma nova entrada relabel_config será adicionada.'
+                  : 'O campo já existe no prometheus.yml deste servidor, mas pode estar desatualizado. O preview abaixo mostra as diferenças entre a configuração atual e a configuração esperada do metadata_fields.json. Sincronizar irá aplicar essas mudanças.'
+              }
+              type={previewData.will_create ? 'info' : 'warning'}
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            <Descriptions title="Informações" bordered size="small" column={2}>
+              <Descriptions.Item label="Campo">{previewData.field_name}</Descriptions.Item>
+              <Descriptions.Item label="Ação">
+                {previewData.will_create ? 'Criar' : 'Atualizar'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Jobs Afetados" span={2}>
+                <Space wrap>
+                  {previewData.affected_jobs.map((job: string) => (
+                    <Tag key={job}>{job}</Tag>
+                  ))}
+                </Space>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider>Diferenças (Diff)</Divider>
+            <Card size="small">
+              <pre
+                style={{
+                  backgroundColor: '#f5f5f5',
+                  padding: 12,
+                  borderRadius: 4,
+                  overflow: 'auto',
+                  maxHeight: 400,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {previewData.diff_text}
+              </pre>
+            </Card>
+
+            <Alert
+              message="ℹ️ Sobre a Comparação"
+              description={
+                <div>
+                  <p style={{ marginBottom: 4 }}>
+                    <strong>Fonte de Verdade Única:</strong> O arquivo <code>metadata_fields.json</code> é a configuração mestre.
+                  </p>
+                  <p style={{ marginBottom: 4 }}>
+                    <strong>Comparação:</strong> O preview compara o prometheus.yml do <strong>servidor atual selecionado</strong> com a configuração esperada no metadata_fields.json.
+                  </p>
+                  <p style={{ marginBottom: 0 }}>
+                    <strong>Jobs Afetados:</strong> A lista mostra TODOS os jobs (scrape_configs) encontrados neste servidor. Cada servidor pode ter jobs diferentes. A sincronização irá aplicar o campo em todos os jobs deste servidor.
+                  </p>
+                </div>
+              }
+              type="info"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
+          </div>
+        ) : null}
+      </Modal>
+
+      {/* FASE 3: Modal de Sincronização em Lote - COM ETAPAS */}
+      <Modal
+        open={batchSyncModalVisible}
+        title="Sincronizando Campos no Prometheus"
+        footer={null}
+        closable={false}
+        maskClosable={false}
+        width={700}
+      >
+        <Steps
+          current={currentStep}
+          direction="vertical"
+          items={[
+            {
+              title: 'Preparação',
+              status: stepStatus[0],
+              description: stepMessages[0],
+              icon: stepStatus[0] === 'process' ? <LoadingOutlined /> : undefined,
+            },
+            {
+              title: 'Sincronização no Prometheus',
+              status: stepStatus[1],
+              description: stepMessages[1],
+              icon: stepStatus[1] === 'process' ? <LoadingOutlined /> : undefined,
+            },
+            {
+              title: 'Reload do Prometheus',
+              status: stepStatus[2],
+              description: stepMessages[2],
+              icon: stepStatus[2] === 'process' ? <SyncOutlined spin /> : undefined,
+            },
+            {
+              title: 'Verificação Final',
+              status: stepStatus[3],
+              description: stepMessages[3],
+              icon: stepStatus[3] === 'process' ? <LoadingOutlined /> : undefined,
+            },
+          ]}
+        />
+
+        <div style={{ marginTop: 24, textAlign: 'right' }}>
+          {/* Mostrar botão apenas quando terminou (sucesso ou erro) */}
+          {(Object.values(stepStatus).every(s => s === 'finish' || s === 'error' || s === 'wait')) &&
+           (stepStatus[0] === 'finish' || stepStatus[0] === 'error') && (
+            <Button
+              type={stepStatus[2] === 'finish' && stepStatus[3] === 'finish' ? 'primary' : 'default'}
+              danger={stepStatus[2] === 'error' || stepStatus[3] === 'error'}
+              onClick={() => {
+                setBatchSyncModalVisible(false);
+                // Refresh da tabela após sincronização
+                fetchSyncStatus(selectedServer);
+              }}
+            >
+              {stepStatus[2] === 'finish' && stepStatus[3] === 'finish' ? 'Concluído' : 'Fechar'}
+            </Button>
+          )}
+        </div>
+      </Modal>
+
+      {/* FASE 4: Drawer de Visualização de Campo */}
+      <Drawer
+        title={`Detalhes do Campo: ${drawerField?.display_name || ''}`}
+        placement="right"
+        width={600}
+        onClose={() => setDrawerVisible(false)}
+        open={drawerVisible}
+      >
+        {drawerField && (
+          <div>
+            <Descriptions title="Informações Gerais" bordered column={1} size="small">
+              <Descriptions.Item label="Nome Técnico">
+                <code>{drawerField.name}</code>
+              </Descriptions.Item>
+              <Descriptions.Item label="Nome de Exibição">
+                {drawerField.display_name}
+              </Descriptions.Item>
+              <Descriptions.Item label="Descrição">
+                {drawerField.description || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Categoria">
+                <Tag>{drawerField.category}</Tag>
+              </Descriptions.Item>
+              <Descriptions.Item label="Tipo">{drawerField.field_type}</Descriptions.Item>
+              <Descriptions.Item label="Ordem">
+                <Badge count={drawerField.order} style={{ backgroundColor: '#1890ff' }} />
+              </Descriptions.Item>
+              <Descriptions.Item label="Source Label">
+                <code style={{ fontSize: 11 }}>{drawerField.source_label}</code>
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider />
+
+            <Descriptions title="Configurações" bordered column={2} size="small">
+              <Descriptions.Item label="Obrigatório">
+                {drawerField.required ? <Tag color="red">Sim</Tag> : <Tag>Não</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="Editável">
+                {drawerField.editable ? <Tag color="green">Sim</Tag> : <Tag>Não</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="Em Tabelas">
+                {drawerField.show_in_table ? <Tag color="blue">Sim</Tag> : <Tag>Não</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="Em Dashboard">
+                {drawerField.show_in_dashboard ? <Tag color="blue">Sim</Tag> : <Tag>Não</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="Em Formulários" span={2}>
+                {drawerField.show_in_form ? <Tag color="blue">Sim</Tag> : <Tag>Não</Tag>}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <Divider />
+
+            <Descriptions title="Status de Sincronização" bordered column={1} size="small">
+              <Descriptions.Item label="Status">
+                {drawerField.sync_status === 'synced' && (
+                  <Tag color="success" icon={<CheckCircleOutlined />}>
+                    Sincronizado
+                  </Tag>
+                )}
+                {drawerField.sync_status === 'outdated' && (
+                  <Tag color="warning" icon={<WarningOutlined />}>
+                    Desatualizado
+                  </Tag>
+                )}
+                {drawerField.sync_status === 'missing' && (
+                  <Tag color="error" icon={<WarningOutlined />}>
+                    Não Aplicado
+                  </Tag>
+                )}
+                {drawerField.sync_status === 'error' && (
+                  <Tag color="default" icon={<WarningOutlined />}>
+                    Erro
+                  </Tag>
+                )}
+                {!drawerField.sync_status && <Tag>-</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="Mensagem">
+                <Paragraph
+                  style={{ marginBottom: 0, fontSize: 12 }}
+                  type={drawerField.sync_status === 'synced' ? 'success' : 'warning'}
+                >
+                  {drawerField.sync_message || '-'}
+                </Paragraph>
+              </Descriptions.Item>
+              <Descriptions.Item label="Target Label (Prometheus)">
+                <code>{drawerField.prometheus_target_label || '-'}</code>
+              </Descriptions.Item>
+              <Descriptions.Item label="Source Label (Metadata)">
+                <code style={{ fontSize: 11 }}>
+                  {drawerField.metadata_source_label || drawerField.source_label}
+                </code>
+              </Descriptions.Item>
+            </Descriptions>
+
+            {drawerField.validation_regex && (
+              <>
+                <Divider />
+                <Descriptions title="Validação" bordered column={1} size="small">
+                  <Descriptions.Item label="Regex">
+                    <code style={{ fontSize: 11 }}>{drawerField.validation_regex}</code>
+                  </Descriptions.Item>
+                </Descriptions>
+              </>
+            )}
+
+            {drawerField.options && drawerField.options.length > 0 && (
+              <>
+                <Divider />
+                <Descriptions title="Opções" bordered column={1} size="small">
+                  <Descriptions.Item label="Valores">
+                    <Space wrap>
+                      {drawerField.options.map((opt, idx) => (
+                        <Tag key={idx}>{opt}</Tag>
+                      ))}
+                    </Space>
+                  </Descriptions.Item>
+                </Descriptions>
+              </>
+            )}
+          </div>
+        )}
+      </Drawer>
     </PageContainer>
   );
 };

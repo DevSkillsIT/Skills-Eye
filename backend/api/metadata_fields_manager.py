@@ -10,7 +10,7 @@ Este módulo fornece endpoints para:
 
 from fastapi import APIRouter, HTTPException, Body, Query
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 from pathlib import Path
 import json
 import logging
@@ -102,6 +102,48 @@ class SyncStatusResponse(BaseModel):
     total_error: int
     prometheus_file_path: Optional[str] = None
     checked_at: str
+    message: Optional[str] = Field(None, description="Mensagem geral (ex: servidor sem Prometheus)")
+
+
+# ============================================================================
+# MODELOS PARA FASE 2 E 3
+# ============================================================================
+
+class PreviewFieldChangeResponse(BaseModel):
+    """Preview de mudanças antes de aplicar (FASE 2)"""
+    success: bool
+    field_name: str
+    current_config: Optional[Dict[str, Any]] = Field(None, description="Configuração atual no prometheus.yml")
+    new_config: Dict[str, Any] = Field(..., description="Nova configuração que será aplicada")
+    diff_text: str = Field(..., description="Diff em formato texto")
+    affected_jobs: List[str] = Field(..., description="Jobs que serão afetados")
+    will_create: bool = Field(..., description="True se vai criar novo, False se vai atualizar")
+
+
+class BatchSyncRequest(BaseModel):
+    """Request para sincronização em lote (FASE 3)"""
+    field_names: List[str] = Field(..., description="Lista de campos para sincronizar")
+    server_id: str = Field(..., description="Servidor alvo")
+    dry_run: bool = Field(False, description="Se True, apenas simula sem aplicar")
+
+
+class FieldSyncResult(BaseModel):
+    """Resultado da sincronização de um campo"""
+    field_name: str
+    success: bool
+    message: str
+    changes_applied: int = Field(0, description="Número de alterações aplicadas")
+
+
+class BatchSyncResponse(BaseModel):
+    """Resposta da sincronização em lote (FASE 3)"""
+    success: bool
+    server_id: str
+    results: List[FieldSyncResult]
+    total_processed: int
+    total_success: int
+    total_failed: int
+    duration_seconds: float
 
 
 # ============================================================================
@@ -352,7 +394,8 @@ async def get_sync_status(
                 total_missing=0,
                 total_error=len(fields),
                 prometheus_file_path=None,
-                checked_at=datetime.now().isoformat()
+                checked_at=datetime.now().isoformat(),
+                message=f'Servidor não possui Prometheus ({server_info.description})'
             )
 
         # Servidor TEM Prometheus - prosseguir com verificação de sincronização
@@ -503,6 +546,528 @@ async def get_sync_status(
         raise
     except Exception as e:
         logger.error(f"Erro ao verificar sync status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# FASE 2: PREVIEW DE MUDANÇAS
+# ============================================================================
+
+@router.get("/preview-changes/{field_name}", response_model=PreviewFieldChangeResponse)
+async def preview_field_changes(
+    field_name: str,
+    server_id: str = Query(..., description="ID do servidor")
+):
+    """
+    Preview das mudanças que serão aplicadas ao sincronizar um campo (FASE 2)
+
+    Mostra:
+    - Configuração atual no prometheus.yml
+    - Nova configuração que será aplicada
+    - Diff em texto
+    - Jobs afetados
+    """
+    try:
+        logger.info(f"[PREVIEW-CHANGES] Campo: {field_name}, Servidor: {server_id}")
+
+        # Carregar campo do JSON
+        config = load_fields_config()
+        field = get_field_by_name(config, field_name)
+        if not field:
+            raise HTTPException(status_code=404, detail=f"Campo '{field_name}' não encontrado")
+
+        # Extrair hostname
+        hostname = server_id.split(':')[0] if ':' in server_id else server_id
+
+        # Verificar capacidades do servidor
+        detector = get_server_detector()
+        server_info = detector.detect_server_capabilities(hostname, use_cache=False)
+
+        if not server_info.has_prometheus:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Servidor não possui Prometheus. {server_info.description}"
+            )
+
+        # Conectar ao servidor e ler prometheus.yml
+        multi_config = MultiConfigManager()
+        prometheus_file_path = "/etc/prometheus/prometheus.yml"
+
+        try:
+            yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
+            import yaml as pyyaml
+            prometheus_config = pyyaml.safe_load(yaml_content)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Prometheus.yml não encontrado no servidor {hostname}")
+
+        # Verificar se campo já existe nos relabel_configs
+        scrape_configs = prometheus_config.get('scrape_configs', [])
+        if not scrape_configs:
+            raise HTTPException(status_code=400, detail="Nenhum scrape_config encontrado")
+
+        # Buscar relabel_config atual
+        current_relabel = None
+        affected_jobs = []
+        for job in scrape_configs:
+            job_name = job.get('job_name', 'unknown')
+            affected_jobs.append(job_name)
+            relabel_configs = job.get('relabel_configs', [])
+            for relabel in relabel_configs:
+                source_labels = relabel.get('source_labels', [])
+                target_label = relabel.get('target_label')
+                if field['source_label'] in source_labels:
+                    current_relabel = relabel
+                    break
+
+        # Construir nova configuração
+        new_config = {
+            'source_labels': [field['source_label']],
+            'target_label': field['name'],
+            'action': 'replace'
+        }
+
+        # Gerar diff
+        import difflib
+        if current_relabel:
+            current_text = f"# Configuração atual:\n{pyyaml.dump(current_relabel, default_flow_style=False)}"
+            new_text = f"# Nova configuração:\n{pyyaml.dump(new_config, default_flow_style=False)}"
+            will_create = False
+        else:
+            current_text = "# Campo não existe no prometheus.yml"
+            new_text = f"# Configuração a ser criada:\n{pyyaml.dump(new_config, default_flow_style=False)}"
+            will_create = True
+
+        diff = difflib.unified_diff(
+            current_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile='atual',
+            tofile='novo',
+            lineterm=''
+        )
+        diff_text = ''.join(diff)
+
+        return PreviewFieldChangeResponse(
+            success=True,
+            field_name=field_name,
+            current_config=current_relabel,
+            new_config=new_config,
+            diff_text=diff_text or "Nenhuma alteração detectada",
+            affected_jobs=affected_jobs,
+            will_create=will_create
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[PREVIEW-CHANGES] Erro: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# FASE 3: SINCRONIZAÇÃO EM LOTE
+# ============================================================================
+
+@router.post("/batch-sync", response_model=BatchSyncResponse)
+async def batch_sync_fields(request: BatchSyncRequest):
+    """
+    Sincroniza múltiplos campos de uma vez (FASE 3)
+
+    Percorre todos os campos fornecidos e aplica as mudanças no prometheus.yml.
+    Suporta modo dry_run para simular sem aplicar.
+    """
+    import time
+    start_time = time.time()
+
+    try:
+        logger.info(f"[BATCH-SYNC] Sincronizando {len(request.field_names)} campos no servidor {request.server_id}")
+        logger.info(f"[BATCH-SYNC] Dry run: {request.dry_run}")
+
+        results = []
+        total_success = 0
+        total_failed = 0
+
+        # Carregar configuração de campos
+        config = load_fields_config()
+
+        # Conectar ao servidor
+        hostname = request.server_id.split(':')[0] if ':' in request.server_id else request.server_id
+
+        # Verificar capacidades do servidor
+        detector = get_server_detector()
+        server_info = detector.detect_server_capabilities(hostname, use_cache=False)
+
+        if not server_info.has_prometheus:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Servidor não possui Prometheus. {server_info.description}"
+            )
+
+        multi_config = MultiConfigManager()
+        detected_path = server_info.prometheus_config_path
+
+        if not detected_path:
+            logger.error(
+                "[BATCH-SYNC] Caminho do prometheus.yml não detectado para %s",
+                hostname,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Não foi possível identificar o caminho do prometheus.yml para este servidor"
+            )
+
+        prometheus_file_path = cast(str, detected_path)
+
+        logger.info(
+            "[BATCH-SYNC] Usando caminho detectado do prometheus.yml: %s (host=%s)",
+            prometheus_file_path,
+            hostname,
+        )
+
+        # Processar cada campo
+        for field_name in request.field_names:
+            try:
+                field = get_field_by_name(config, field_name)
+                if not field:
+                    results.append(FieldSyncResult(
+                        field_name=field_name,
+                        success=False,
+                        message=f"Campo '{field_name}' não encontrado",
+                        changes_applied=0
+                    ))
+                    total_failed += 1
+                    continue
+
+                if request.dry_run:
+                    # Modo simulação - apenas validar
+                    results.append(FieldSyncResult(
+                        field_name=field_name,
+                        success=True,
+                        message=f"[DRY RUN] Campo '{field_name}' seria sincronizado",
+                        changes_applied=0
+                    ))
+                    total_success += 1
+                else:
+                    # Aplicar mudanças de verdade
+                    try:
+                        # Ler prometheus.yml do servidor
+                        yaml_content = multi_config.get_file_content_raw(
+                            prometheus_file_path,
+                            hostname=hostname,
+                        )
+
+                        if not yaml_content:
+                            raise ValueError(f"Arquivo prometheus.yml vazio ou não encontrado no servidor {hostname}")
+
+                        # MANIPULAÇÃO TEXTUAL (não YAML parsing!) para preservar formatação 100%
+                        import re
+                        changes_count = 0
+                        modified_content = yaml_content
+
+                        try:
+                            parsed_config = yaml.safe_load(yaml_content) or {}
+                        except yaml.YAMLError as parse_error:
+                            raise ValueError(f"Erro ao parsear prometheus.yml: {parse_error}") from parse_error
+
+                        scrape_configs = parsed_config.get('scrape_configs', []) or []
+                        jobs_with_field = set()
+                        eligible_jobs = set()
+
+                        for job_data in scrape_configs:
+                            job_name_value = job_data.get('job_name')
+                            if not job_name_value:
+                                continue
+
+                            normalized_job_name = str(job_name_value).strip('"\'')
+
+                            if job_data.get('consul_sd_configs'):
+                                eligible_jobs.add(normalized_job_name)
+
+                            for relabel in job_data.get('relabel_configs', []) or []:
+                                source_labels = relabel.get('source_labels') or []
+                                if isinstance(source_labels, str):
+                                    source_labels = [source_labels]
+                                if field['source_label'] in source_labels or relabel.get('target_label') == field['name']:
+                                    jobs_with_field.add(normalized_job_name)
+                                    break
+
+                        job_pattern = re.compile(
+                            r'^(\s*- job_name:\s+.*?)(?=^\s*- job_name:|\Z)',
+                            re.MULTILINE | re.DOTALL
+                        )
+
+                        logger.info(f"[BATCH-SYNC] Campo a adicionar: {field_name}, source_label: {field['source_label']}")
+
+                        search_pos = 0
+                        job_index = 0
+                        while True:
+                            job_match = job_pattern.search(modified_content, search_pos)
+                            if not job_match:
+                                break
+
+                            job_text = job_match.group(0)
+                            job_start = job_match.start()
+                            job_end = job_match.end()
+
+                            job_name_match = re.search(r'job_name:\s+([^\n]+)', job_text)
+                            if not job_name_match:
+                                logger.warning(f"[BATCH-SYNC] Job #{job_index} sem nome válido, pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            job_name_raw = job_name_match.group(1).strip()
+                            job_name_value = job_name_raw.split('#', 1)[0].strip()
+                            job_name = job_name_value.strip('"\'')
+
+                            logger.info(f"[BATCH-SYNC] Processando job '{job_name}'...")
+
+                            if job_name not in eligible_jobs:
+                                logger.info(f"[BATCH-SYNC]   └─ Job '{job_name}' sem consul_sd_configs, pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            if job_name in jobs_with_field:
+                                logger.info(f"[BATCH-SYNC]   └─ Campo '{field_name}' já existe no job '{job_name}' (via YAML parsing), pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            relabel_match = re.search(r'^(\s*)relabel_configs:\s*\n', job_text, re.MULTILINE)
+                            if not relabel_match:
+                                logger.info(f"[BATCH-SYNC]   └─ Job '{job_name}' não tem relabel_configs, pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            relabel_indent = len(relabel_match.group(1))
+                            section_start = relabel_match.end()
+                            section_lines = []
+
+                            tail = job_text[section_start:]
+                            for line in tail.splitlines(keepends=True):
+                                current_indent = len(line) - len(line.lstrip(' '))
+                                if line.strip() and current_indent <= relabel_indent:
+                                    break
+
+                                section_lines.append(line)
+
+                            section_text = ''.join(section_lines)
+
+                            if not section_text.strip():
+                                logger.warning(f"[BATCH-SYNC]   └─ Não foi possível identificar blocos de relabel em '{job_name}', pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            item_pattern = re.compile(r'(\s*-\s.*?(?=\n\s*-\s|\Z))', re.MULTILINE | re.DOTALL)
+                            relabel_items = [m for m in item_pattern.finditer(section_text) if 'target_label' in m.group(0)]
+
+                            if not relabel_items:
+                                logger.warning(f"[BATCH-SYNC]   └─ Nenhum item válido encontrado em '{job_name}', pulando")
+                                search_pos = job_end
+                                job_index += 1
+                                continue
+
+                            insertion_item = None
+                            for relabel_item in relabel_items:
+                                block_text = relabel_item.group(0)
+                                if '__param_target' in block_text or 'target_label: __address__' in block_text:
+                                    insertion_item = relabel_item
+                                    break
+
+                            if insertion_item is None:
+                                insertion_item = relabel_items[-1]
+                                local_insert_pos = section_start + insertion_item.end()
+                            else:
+                                local_insert_pos = section_start + insertion_item.start()
+                                while (
+                                    local_insert_pos < len(job_text)
+                                    and job_text[local_insert_pos] in ('\r', '\n')
+                                ):
+                                    local_insert_pos += 1
+
+                            indent_match = re.match(r'^(\s*)-\s', insertion_item.group(0))
+                            item_indent = indent_match.group(1) if indent_match else ' ' * (relabel_indent + 2)
+                            item_indent = item_indent.replace('\r', '').replace('\n', '')
+
+                            source_value = field['source_label']
+                            # Usar o mesmo estilo inline para listas (ex: ["__meta..."])
+                            before_segment = job_text[:local_insert_pos]
+                            needs_leading_newline = not before_segment.endswith(('\n', '\r'))
+
+                            insertion_text = (
+                                f"{'\n' if needs_leading_newline else ''}{item_indent}- source_labels: [\"{source_value}\"]\n"
+                                f"{item_indent}  target_label: {field['name']}\n"
+                            )
+
+                            updated_job_text = job_text[:local_insert_pos] + insertion_text + job_text[local_insert_pos:]
+                            modified_content = (
+                                modified_content[:job_start]
+                                + updated_job_text
+                                + modified_content[job_end:]
+                            )
+                            changes_count += 1
+                            jobs_with_field.add(job_name)
+                            logger.info(f"[BATCH-SYNC]   └─ ✓ Adicionado campo '{field_name}' no job '{job_name}' via edição textual")
+                            logger.debug("[BATCH-SYNC]   └─ Bloco de referência:\n%s", insertion_item.group(0))
+                            logger.debug("[BATCH-SYNC]   └─ Bloco inserido:\n%s", insertion_text.rstrip())
+
+                            search_pos = job_start + len(updated_job_text)
+                            job_index += 1
+
+                        new_yaml_content = modified_content
+
+                        if changes_count == 0:
+                            logger.warning(f"[BATCH-SYNC] ⚠️ Nenhuma mudança aplicada para o campo '{field_name}' - campo já existe ou não foi possível encontrar local de inserção")
+                            results.append(FieldSyncResult(
+                                field_name=field_name,
+                                success=False,
+                                message=f"Campo '{field_name}' já existe em todos os jobs ou não foi possível adicionar",
+                                changes_applied=0
+                            ))
+                            total_failed += 1
+                            continue
+
+                        # USAR O MESMO FLUXO DO PROMETHEUS CONFIG: backup + promtool + salvamento
+                        try:
+                            # Encontrar config_file (IGUAL prometheus_config.py faz)
+                            config_file = multi_config.get_file_by_path(
+                                prometheus_file_path,
+                                hostname=hostname,
+                            )
+                            if not config_file:
+                                raise ValueError(f"Arquivo não encontrado: {prometheus_file_path} no servidor {hostname}")
+
+                            # Conectar via SSH
+                            client = multi_config._get_ssh_client(config_file.host)
+
+                            # PASSO 1: Criar backup com timestamp (IGUAL prometheus_config.py linha 972)
+                            from datetime import datetime
+                            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+                            backup_path = f"{config_file.path}.backup-{timestamp}"
+
+                            backup_cmd = f"cp {config_file.path} {backup_path}"
+                            logger.info(f"[BATCH-SYNC] Criando backup: {backup_path}")
+
+                            stdin, stdout, stderr = client.exec_command(backup_cmd)
+                            exit_code = stdout.channel.recv_exit_status()
+
+                            if exit_code != 0:
+                                error = stderr.read().decode('utf-8')
+                                raise Exception(f"Erro ao criar backup: {error}")
+
+                            logger.info(f"[BATCH-SYNC] ✓ Backup criado")
+
+                            # PASSO 2: Escrever em arquivo temporário
+                            import os
+                            file_dir = os.path.dirname(config_file.path)
+                            file_base = os.path.basename(config_file.path)
+                            temp_file = f"{file_dir}/{file_base}.tmp-{timestamp}"
+
+                            write_cmd = f"cat > {temp_file} << 'EOFILE'\n{new_yaml_content}\nEOFILE"
+                            stdin, stdout, stderr = client.exec_command(write_cmd)
+                            exit_code = stdout.channel.recv_exit_status()
+
+                            if exit_code != 0:
+                                error = stderr.read().decode('utf-8')
+                                raise Exception(f"Erro ao escrever arquivo temp: {error}")
+
+                            logger.info(f"[BATCH-SYNC] ✓ Arquivo temporário criado")
+
+                            # PASSO 3: Validar com promtool (IGUAL prometheus_config.py linha 1018)
+                            logger.info(f"[BATCH-SYNC] Validando com promtool...")
+
+                            promtool_cmd = f"promtool check config {temp_file}"
+                            stdin, stdout, stderr = client.exec_command(promtool_cmd)
+                            exit_code = stdout.channel.recv_exit_status()
+
+                            output = stdout.read().decode('utf-8')
+                            errors = stderr.read().decode('utf-8')
+
+                            if exit_code != 0:
+                                logger.error(f"[BATCH-SYNC] ✗ Validação promtool falhou")
+                                logger.error(f"[BATCH-SYNC] Output: {output}")
+                                logger.error(f"[BATCH-SYNC] Errors: {errors}")
+
+                                # Remover arquivo temporário
+                                client.exec_command(f"rm {temp_file}")
+
+                                raise Exception(f"Validação promtool falhou: {errors or output}")
+
+                            logger.info(f"[BATCH-SYNC] ✓ Validação promtool passou")
+
+                            # PASSO 4: Mover arquivo temporário para destino final
+                            move_cmd = f"mv {temp_file} {config_file.path}"
+                            stdin, stdout, stderr = client.exec_command(move_cmd)
+                            exit_code = stdout.channel.recv_exit_status()
+
+                            if exit_code != 0:
+                                error = stderr.read().decode('utf-8')
+                                # Restaurar backup
+                                client.exec_command(f"cp {backup_path} {config_file.path}")
+                                raise Exception(f"Erro ao mover arquivo: {error}")
+
+                            # PASSO 5: Restaurar permissões prometheus:prometheus
+                            chown_cmd = f"chown prometheus:prometheus {config_file.path}"
+                            client.exec_command(chown_cmd)
+
+                            logger.info(f"[BATCH-SYNC] ✅ Campo '{field_name}' salvo com sucesso no servidor {hostname}")
+                            logger.info(f"[BATCH-SYNC] Backup: {backup_path}")
+                            logger.info(f"[BATCH-SYNC] {changes_count} mudança(s) aplicadas")
+
+                            results.append(FieldSyncResult(
+                                field_name=field_name,
+                                success=True,
+                                message=f"Campo '{field_name}' sincronizado com sucesso ({changes_count} job(s) afetado(s)). Backup: {os.path.basename(backup_path)}",
+                                changes_applied=changes_count
+                            ))
+                            total_success += 1
+
+                        except Exception as save_error:
+                            logger.error(f"[BATCH-SYNC] ❌ Erro ao salvar arquivo: {save_error}", exc_info=True)
+                            results.append(FieldSyncResult(
+                                field_name=field_name,
+                                success=False,
+                                message=f"Erro ao salvar arquivo: {str(save_error)}",
+                                changes_applied=0
+                            ))
+                            total_failed += 1
+
+                    except Exception as sync_error:
+                        logger.error(f"[BATCH-SYNC] Erro ao sincronizar campo '{field_name}': {sync_error}", exc_info=True)
+                        results.append(FieldSyncResult(
+                            field_name=field_name,
+                            success=False,
+                            message=f"Erro: {str(sync_error)}",
+                            changes_applied=0
+                        ))
+                        total_failed += 1
+
+            except Exception as e:
+                logger.error(f"[BATCH-SYNC] Erro ao sincronizar {field_name}: {e}")
+                results.append(FieldSyncResult(
+                    field_name=field_name,
+                    success=False,
+                    message=str(e),
+                    changes_applied=0
+                ))
+                total_failed += 1
+
+        duration = time.time() - start_time
+
+        return BatchSyncResponse(
+            success=total_failed == 0,
+            server_id=request.server_id,
+            results=results,
+            total_processed=len(request.field_names),
+            total_success=total_success,
+            total_failed=total_failed,
+            duration_seconds=round(duration, 2)
+        )
+
+    except Exception as e:
+        logger.error(f"[BATCH-SYNC] Erro geral: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

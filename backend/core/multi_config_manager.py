@@ -684,20 +684,24 @@ class MultiConfigManager:
         structure = self.get_config_structure(file_path)
         return structure.get('items', [])
 
-    def save_file_content(self, file_path: str, content: str) -> bool:
+    def save_file_content(self, file_path: str, content: str, hostname: Optional[str] = None) -> bool:
         """
         Salva conteúdo em um arquivo remoto
 
         Args:
             file_path: Path do arquivo
             content: Conteúdo a salvar
+            hostname: Hostname do servidor (opcional, para salvar em servidor específico)
 
         Returns:
             True se sucesso
         """
-        config_file = self.get_file_by_path(file_path)
+        config_file = self.get_file_by_path(file_path, hostname=hostname)
         if not config_file:
-            raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
+            detail = f"Arquivo não encontrado: {file_path}"
+            if hostname:
+                detail += f" no servidor {hostname}"
+            raise FileNotFoundError(detail)
 
         try:
             client = self._get_ssh_client(config_file.host)

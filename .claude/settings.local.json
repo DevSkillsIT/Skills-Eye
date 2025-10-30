@@ -59,7 +59,12 @@
       "Bash(cmd /c \"netstat -ano | findstr :5000 | findstr LISTENING\")",
       "Bash(git log:*)",
       "Bash(cmd /c \"copy frontend\\src\\pages\\MetadataFields.tsx frontend\\src\\pages\\MetadataFields.tsx.backup\")",
-      "Bash(cmd /c \"findstr /n \"^@router\" backend\\api\\metadata_fields_manager.py | findstr /v \"pyc\"\")"
+      "Bash(cmd /c \"findstr /n \"^@router\" backend\\api\\metadata_fields_manager.py | findstr /v \"pyc\"\")",
+      "Bash(cmd /c \"taskkill /F /IM python.exe 2>nul\")",
+      "Bash(start cmd /c \"python app.py\")",
+      "Bash(Select-Object -First 15)",
+      "Bash(npm install:*)",
+      "Bash(start cmd /c \"python app.py > backend.log 2>&1\")"
     ],
     "deny": [],
     "ask": []

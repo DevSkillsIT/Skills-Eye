@@ -1009,6 +1009,135 @@ export const consulAPI = {
     ),
 };
 
+// ============================================================================
+// METADATA FIELDS API
+// ============================================================================
+
+export interface MetadataField {
+  name: string;
+  display_name: string;
+  category: string;
+  data_type: string;
+  required: boolean;
+  show_in_table: boolean;
+  show_in_filters: boolean;
+  editable: boolean;
+  source_label: string;
+  description?: string;
+  default_value?: string;
+  validation_regex?: string;
+  options?: string[];
+  // Campos de sincronização (FASE 1)
+  sync_status?: 'synced' | 'outdated' | 'missing' | 'error';
+  sync_message?: string;
+  prometheus_target_label?: string;
+  metadata_source_label?: string;
+}
+
+export interface FieldsConfigResponse {
+  success: boolean;
+  fields: MetadataField[];
+  total: number;
+  categories: string[];
+}
+
+export interface SyncStatusResponse {
+  success: boolean;
+  server_id: string;
+  server_hostname: string;
+  fields: MetadataField[];
+  total_synced: number;
+  total_outdated: number;
+  total_missing: number;
+  total_error: number;
+  message?: string;
+}
+
+// FASE 2: Preview de Mudanças
+export interface PrometheusRelabelConfig {
+  source_labels?: string[];
+  target_label?: string;
+  action?: string;
+  regex?: string;
+  replacement?: string;
+  separator?: string;
+  [key: string]: string | string[] | undefined;
+}
+
+export interface PreviewFieldChangeResponse {
+  success: boolean;
+  field_name: string;
+  current_config: PrometheusRelabelConfig | null;
+  new_config: PrometheusRelabelConfig;
+  diff_text: string;
+  affected_jobs: string[];
+  will_create: boolean;
+}
+
+// FASE 3: Sincronização em Lote
+export interface FieldSyncResult {
+  field_name: string;
+  success: boolean;
+  message: string;
+  changes_applied: number;
+}
+
+export interface BatchSyncRequest {
+  field_names: string[];
+  server_id: string;
+  dry_run?: boolean;
+}
+
+export interface BatchSyncResponse {
+  success: boolean;
+  server_id: string;
+  results: FieldSyncResult[];
+  total_processed: number;
+  total_success: number;
+  total_failed: number;
+  duration_seconds: number;
+}
+
+export const metadataFieldsAPI = {
+  /**
+   * Lista todos os campos metadata configurados
+   */
+  listFields: (params?: {
+    category?: string;
+    required_only?: boolean;
+    show_in_table_only?: boolean;
+  }) => api.get<FieldsConfigResponse>('/metadata-fields/', { params }),
+
+  /**
+   * FASE 1: Verifica status de sincronização de campos com prometheus.yml
+   */
+  getSyncStatus: (serverId: string) =>
+    api.get<SyncStatusResponse>('/metadata-fields/sync-status', {
+      params: { server_id: serverId },
+      timeout: 15000,
+    }),
+
+  /**
+   * FASE 2: Preview das mudanças antes de sincronizar
+   */
+  previewChanges: (fieldName: string, serverId: string) =>
+    api.get<PreviewFieldChangeResponse>(
+      `/metadata-fields/preview-changes/${fieldName}`,
+      {
+        params: { server_id: serverId },
+        timeout: 15000,
+      }
+    ),
+
+  /**
+   * FASE 3: Sincroniza múltiplos campos de uma vez
+   */
+  batchSync: (request: BatchSyncRequest) =>
+    api.post<BatchSyncResponse>('/metadata-fields/batch-sync', request, {
+      timeout: 60000,
+    }),
+};
+
 export default api;
 
 
