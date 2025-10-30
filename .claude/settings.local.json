@@ -53,7 +53,11 @@
       "Bash(cmd /c \"copy c:\\temp\\PrometheusConfig_backup.tsx c:\\consul-manager-web\\frontend\\src\\pages\\PrometheusConfig.tsx\")",
       "Bash(cmd /c \"dir /s /o-d c:\\Users\\adriano.fante\\AppData\\Local\\Temp\\*.tsx 2>nul | findstr /i prometheus\")",
       "Bash(cmd /c \"cd frontend && npm run build 2>&1 | findstr /i /c:error /c:Error /c:ERROR\")",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(cmd /c \"taskkill /F /PID 20896\")",
+      "Bash(cmd /c \"taskkill /F /PID 64708\")",
+      "Bash(cmd /c \"netstat -ano | findstr :5000 | findstr LISTENING\")",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []

@@ -181,16 +181,21 @@ const PrometheusConfig: React.FC = () => {
 
   // Filtrar arquivos pelo servidor selecionado
   const files = React.useMemo(() => {
-    if (!selectedServer) return allFiles;
+    // Ordenar alfabeticamente se não há servidor selecionado
+    if (!selectedServer) {
+      return [...allFiles].sort((a, b) => a.filename.localeCompare(b.filename));
+    }
 
     // Extrair hostname do selectedServer (formato: "172.16.1.26:5522")
     const serverHostname = selectedServer.split(':')[0];
 
-    // Filtrar arquivos que pertencem ao servidor selecionado
-    return allFiles.filter(file => {
-      // file.host tem formato "root@172.16.1.26:5522"
-      return file.host.includes(serverHostname);
-    });
+    // Filtrar arquivos que pertencem ao servidor selecionado e ordenar alfabeticamente
+    return allFiles
+      .filter(file => {
+        // file.host tem formato "root@172.16.1.26:5522"
+        return file.host.includes(serverHostname);
+      })
+      .sort((a, b) => a.filename.localeCompare(b.filename));
   }, [allFiles, selectedServer]);
 
   // OTIMIZAÇÃO: Carregar fields apenas quando a aba for visualizada
@@ -364,9 +369,17 @@ const PrometheusConfig: React.FC = () => {
 
   // Carregar dados do Alertmanager (routes, receivers, inhibit_rules)
   const fetchAlertmanagerData = useCallback(async (filePath: string, serverIdWithPort?: string) => {
+    // DEBUG: Para debugar, descomente: console.log('fetchAlertmanagerData:', { filePath, serverIdWithPort });
     setLoadingAlertmanager(true);
+
+    // CRÍTICO: Limpar dados antigos IMEDIATAMENTE antes de carregar novos
+    // Isso previne mostrar dados do servidor anterior enquanto carrega do novo servidor
+    setAlertmanagerRoutes([]);
+    setAlertmanagerReceivers([]);
+    setAlertmanagerInhibitRules([]);
+
     try {
-      // Extrair hostname
+      // Extrair hostname para passar ao backend
       let hostnameParam = '';
       if (serverIdWithPort) {
         const hostname = serverIdWithPort.split(':')[0];
@@ -534,15 +547,23 @@ const PrometheusConfig: React.FC = () => {
       // Limpar seleção anterior e recarregar
       setSelectedFile(null);
       setJobs([]);
+
+      // CORREÇÃO: Limpar também dados do Alertmanager quando muda servidor
+      setAlertmanagerRoutes([]);
+      setAlertmanagerReceivers([]);
+      setAlertmanagerInhibitRules([]);
+
+      // CRÍTICO: Resetar fileType para forçar re-renderização da tabela
+      setFileType('prometheus');
+
       fetchFiles();
     }
-    // CORREÇÃO: Adicionar fetchFiles nas dependências agora que é useCallback
-    // Mantém eslint-disable para servers (usado apenas para feedback visual)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedServer, fetchFiles]);
 
+  // Carregar dados quando arquivo OU servidor mudar
   useEffect(() => {
-    if (selectedFile) {
+    if (selectedFile && selectedServer) {
       // Detectar se é arquivo alertmanager
       const isAlertmanagerFile = selectedFile.toLowerCase().includes('alertmanager');
 
@@ -554,8 +575,7 @@ const PrometheusConfig: React.FC = () => {
         fetchJobs(selectedFile, selectedServer);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFile, fetchJobs, fetchAlertmanagerData]); // Não adicionar selectedServer para evitar loop (já está sincronizado)
+  }, [selectedFile, selectedServer, fetchJobs, fetchAlertmanagerData]);
 
   // Quando arquivos mudarem E servidor estiver selecionado, auto-selecionar prometheus.yml
   useEffect(() => {
@@ -1205,6 +1225,8 @@ const PrometheusConfig: React.FC = () => {
             { key: 'name', title: 'Nome', visible: true, locked: true },
             { key: 'types', title: 'Tipos', visible: true },
             { key: 'targets', title: 'Destinos', visible: true },
+            { key: 'send_resolved', title: 'Send Resolved', visible: true },
+            { key: 'max_alerts', title: 'Max Alerts', visible: true },
             { key: 'actions', title: 'Ações', visible: true, locked: true },
           ];
         case 'inhibit-rules':
@@ -1239,18 +1261,22 @@ const PrometheusConfig: React.FC = () => {
     const baseColumns: ProColumns<any>[] = [];
 
     // Primeira coluna: Nome do item (job_name, module_name, name)
-    baseColumns.push({
-      title: itemKey === 'job_name' ? 'Job Name' : itemKey === 'module_name' ? 'Module Name' : 'Name',
-      dataIndex: itemKey,
-      key: itemKey,
-      width: 200,
-      fixed: 'left',
-      render: (text: string) => (
-        <Text strong style={{ fontSize: 13 }}>
-          {text}
-        </Text>
-      ),
-    });
+    // CORREÇÃO: Não adicionar coluna genérica para Alertmanager (já tem colunas específicas)
+    if (fileType !== 'alertmanager') {
+      baseColumns.push({
+        title: itemKey === 'job_name' ? 'Job Name' : itemKey === 'module_name' ? 'Module Name' : 'Name',
+        dataIndex: itemKey,
+        key: itemKey,
+        width: 200,
+        fixed: 'left',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        render: (_: any, record: any) => (
+          <Text strong style={{ fontSize: 13 }}>
+            {record[itemKey]}
+          </Text>
+        ),
+      });
+    }
 
     // Colunas específicas por tipo
     if (fileType === 'prometheus') {
@@ -1620,6 +1646,38 @@ const PrometheusConfig: React.FC = () => {
                   )}
                 </Space>
               ) : <Tag>Nenhum destino</Tag>
+            ),
+          },
+          {
+            title: 'Send Resolved',
+            dataIndex: 'send_resolved',
+            key: 'send_resolved',
+            width: 130,
+            align: 'center' as const,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              record.send_resolved === true ? (
+                <CheckCircleOutlined style={{ color: '#52c41a', fontSize: 16 }} />
+              ) : record.send_resolved === false ? (
+                <CloseCircleOutlined style={{ color: '#ff4d4f', fontSize: 16 }} />
+              ) : (
+                <Tag>N/A</Tag>
+              )
+            ),
+          },
+          {
+            title: 'Max Alerts',
+            dataIndex: 'max_alerts',
+            key: 'max_alerts',
+            width: 110,
+            align: 'center' as const,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            render: (_: any, record: any) => (
+              record.max_alerts ? (
+                <Tag color="blue">{record.max_alerts}</Tag>
+              ) : (
+                <Tag>Ilimitado</Tag>
+              )
             ),
           }
         );
@@ -2274,7 +2332,43 @@ const PrometheusConfig: React.FC = () => {
             ),
             children: (
               <Card style={{ minHeight: 600 }}>
-                {/* Explicações dinâmicas baseadas no tipo de arquivo */}
+                <div style={{ minHeight: 500 }}>
+                  <ProTable
+                  columns={visibleColumns}
+                  dataSource={fileType === 'alertmanager' ? processedAlertmanagerData : processedJobs}
+                  rowKey={
+                    fileType === 'alertmanager' ?
+                      (alertmanagerViewMode === 'routes' ? 'index' :
+                       alertmanagerViewMode === 'receivers' ? 'index' : 'index') :
+                    fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey
+                  }
+                  loading={fileType === 'alertmanager' ? loadingAlertmanager : loadingJobs}
+                  search={false}
+                  size={tableSize}
+                  options={false}
+                  pagination={{
+                    defaultPageSize: 20,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '30', '50', '100'],
+                    showTotal: (total) => `Total: ${total} jobs`,
+                  }}
+                  scroll={{ x: 1200 }}
+                  components={{
+                    header: {
+                      cell: ResizableTitle,
+                    },
+                  }}
+                  locale={{
+                    emptyText: selectedFile ? (
+                      <Empty description="Nenhum job encontrado neste arquivo" />
+                    ) : (
+                      <Empty description="Selecione um arquivo para visualizar os jobs" />
+                    ),
+                  }}
+                />
+                </div>
+
+                {/* Explicações dinâmicas baseadas no tipo de arquivo - APÓS A TABELA */}
                 {fileType === 'alertmanager' ? (
                   // Explicações específicas para Alertmanager
                   <>
@@ -2317,7 +2411,7 @@ const PrometheusConfig: React.FC = () => {
                         type="info"
                         showIcon
                         closable
-                        style={{ marginBottom: 16 }}
+                        style={{ marginTop: 16 }}
                       />
                     )}
 
@@ -2365,7 +2459,7 @@ const PrometheusConfig: React.FC = () => {
                         type="success"
                         showIcon
                         closable
-                        style={{ marginBottom: 16 }}
+                        style={{ marginTop: 16 }}
                       />
                     )}
 
@@ -2418,12 +2512,12 @@ const PrometheusConfig: React.FC = () => {
                         type="warning"
                         showIcon
                         closable
-                        style={{ marginBottom: 16 }}
+                        style={{ marginTop: 16 }}
                       />
                     )}
                   </>
-                ) : (
-                  // Alert genérico para outros tipos
+                ) : fileType !== 'rules' && (
+                  // Alert genérico para outros tipos (não mostrar para rules pois já tem explicação)
                   <Alert
                     message="📋 Visualização dos Jobs - Somente Leitura"
                     description={
@@ -2439,44 +2533,9 @@ const PrometheusConfig: React.FC = () => {
                     type="info"
                     showIcon
                     closable
-                    style={{ marginBottom: 16 }}
+                    style={{ marginTop: 16 }}
                   />
                 )}
-                <div style={{ minHeight: 500 }}>
-                  <ProTable
-                  columns={visibleColumns}
-                  dataSource={fileType === 'alertmanager' ? processedAlertmanagerData : processedJobs}
-                  rowKey={
-                    fileType === 'alertmanager' ?
-                      (alertmanagerViewMode === 'routes' ? 'index' :
-                       alertmanagerViewMode === 'receivers' ? 'index' : 'index') :
-                    fileType === 'rules' && alertViewMode === 'individual' ? 'name' : itemKey
-                  }
-                  loading={fileType === 'alertmanager' ? loadingAlertmanager : loadingJobs}
-                  search={false}
-                  size={tableSize}
-                  options={false}
-                  pagination={{
-                    defaultPageSize: 20,
-                    showSizeChanger: true,
-                    pageSizeOptions: ['10', '20', '30', '50', '100'],
-                    showTotal: (total) => `Total: ${total} jobs`,
-                  }}
-                  scroll={{ x: 1200 }}
-                  components={{
-                    header: {
-                      cell: ResizableTitle,
-                    },
-                  }}
-                  locale={{
-                    emptyText: selectedFile ? (
-                      <Empty description="Nenhum job encontrado neste arquivo" />
-                    ) : (
-                      <Empty description="Selecione um arquivo para visualizar os jobs" />
-                    ),
-                  }}
-                />
-                </div>
               </Card>
             ),
           },

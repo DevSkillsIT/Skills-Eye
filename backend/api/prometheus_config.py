@@ -1649,11 +1649,22 @@ def _parse_alertmanager_receivers(config: Dict[str, Any]) -> List[Dict[str, Any]
         for em in receiver.get('email_configs', []):
             targets.append(em.get('to', 'N/A'))
 
+        # Extrair send_resolved e max_alerts (do primeiro webhook_config se existir)
+        send_resolved = None
+        max_alerts = None
+        webhook_configs = receiver.get('webhook_configs', [])
+        if webhook_configs and len(webhook_configs) > 0:
+            first_webhook = webhook_configs[0]
+            send_resolved = first_webhook.get('send_resolved', None)
+            max_alerts = first_webhook.get('max_alerts', None)
+
         receivers.append({
             'index': idx,
             'name': name,
             'types': ', '.join(types) if types else 'none',
             'targets': targets,
+            'send_resolved': send_resolved,
+            'max_alerts': max_alerts,
             'webhook_configs': receiver.get('webhook_configs', []),
             'email_configs': receiver.get('email_configs', []),
             'telegram_configs': receiver.get('telegram_configs', []),
@@ -1722,8 +1733,8 @@ async def get_alertmanager_routes(
         Lista de rotas processadas
     """
     try:
-        # Ler arquivo usando método correto
-        content = multi_config.get_file_content_raw(file_path)
+        # Ler arquivo usando método correto COM hostname para ler do servidor correto
+        content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
         # Parsear YAML
         import yaml as pyyaml
@@ -1762,8 +1773,8 @@ async def get_alertmanager_receivers(
         Lista de receptores processados
     """
     try:
-        # Ler arquivo usando método correto
-        content = multi_config.get_file_content_raw(file_path)
+        # Ler arquivo usando método correto COM hostname para ler do servidor correto
+        content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
         # Parsear YAML
         import yaml as pyyaml
@@ -1802,8 +1813,8 @@ async def get_alertmanager_inhibit_rules(
         Lista de regras processadas
     """
     try:
-        # Ler arquivo usando método correto
-        content = multi_config.get_file_content_raw(file_path)
+        # Ler arquivo usando método correto COM hostname para ler do servidor correto
+        content = multi_config.get_file_content_raw(file_path, hostname=hostname)
 
         # Parsear YAML
         import yaml as pyyaml

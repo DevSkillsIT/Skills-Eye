@@ -212,6 +212,9 @@ class MultiConfigManager:
 
         services_to_check = [service] if service else self.DEFAULT_PATHS.keys()
 
+        print(f"[DEBUG] DEFAULT_PATHS: {self.DEFAULT_PATHS}")
+        print(f"[DEBUG] services_to_check: {services_to_check}")
+
         # OTIMIZAÇÃO: Se hostname especificado, conectar apenas naquele servidor
         hosts_to_check = self.hosts
         if hostname:
@@ -223,6 +226,7 @@ class MultiConfigManager:
 
         for host in hosts_to_check:
             for svc in services_to_check:
+                print(f"[DEBUG] Listando serviço '{svc}' no host {host.hostname}")
                 path = self.DEFAULT_PATHS.get(svc)
                 if not path:
                     continue
@@ -513,17 +517,18 @@ class MultiConfigManager:
                 return f
         return None
 
-    def get_file_content_raw(self, file_path: str) -> str:
+    def get_file_content_raw(self, file_path: str, hostname: Optional[str] = None) -> str:
         """
         Retorna conteúdo bruto (string) de um arquivo
 
         Args:
             file_path: Path do arquivo
+            hostname: Hostname do servidor (opcional, para especificar qual servidor ler)
 
         Returns:
             Conteúdo do arquivo como string
         """
-        config_file = self.get_file_by_path(file_path)
+        config_file = self.get_file_by_path(file_path, hostname=hostname)
         if not config_file:
             raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
 

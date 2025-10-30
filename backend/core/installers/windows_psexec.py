@@ -724,10 +724,20 @@ basic_auth_users:
         if error:
             print(f"[DEBUG 4] Processando error output")
             await self.log(f"🔍 [DEBUG 4] Processando error output", "info")
-            error_lines = [l for l in error.splitlines() if l.strip() and not l.strip().startswith("#< CLIXML")]
-            if error_lines:
-                for line in error_lines:
-                    await self.log(f"  [stderr] {line}", "warning")
+            try:
+                error_lines = [l for l in error.splitlines() if l.strip() and not l.strip().startswith("#< CLIXML")]
+                print(f"[DEBUG 4.5] Encontradas {len(error_lines)} linhas de erro")
+                await self.log(f"🔍 [DEBUG 4.5] Encontradas {len(error_lines)} linhas de erro", "info")
+                print(f"[DEBUG 4.6] Antes do loop de error_lines")
+                if error_lines:
+                    print(f"[DEBUG 4.7] Dentro do if error_lines (vai fazer loop)")
+                    for idx, line in enumerate(error_lines):
+                        print(f"[DEBUG 4.8.{idx}] Logando linha de erro")
+                        await self.log(f"  [stderr] {line}", "warning")
+                print(f"[DEBUG 4.9] Após processar error_lines")
+            except Exception as e:
+                print(f"[DEBUG 4.99] EXCEÇÃO ao processar stderr: {e}")
+                await self.log(f"🔍 [DEBUG 4.99] EXCEÇÃO: {e}", "error")
         
         print(f"[DEBUG 5] Verificando exit_code: {exit_code}")
         await self.log(f"🔍 [DEBUG 5] Verificando exit_code: {exit_code}", "info")
@@ -836,177 +846,9 @@ basic_auth_users:
                 else:
                     await self.log(f"⚠️ Validação parcial: {output[:100]}", "warning")
 
-        await self.progress(75, 100, "Validando serviço windows_exporter...")
+        await self.progress(80, 100, "Validando serviço windows_exporter...")
 
         # Etapa 4 - Validar serviço e limpar instalador temporário
-        check_cmd = (
-                    Write-Host "CONFIG_FILE_CREATED: $configPath"
-                    $fileSize = (Get-Item $configPath).Length
-                    Write-Host "CONFIG_FILE_SIZE: $fileSize bytes"
-                    
-                    # Verificar conteúdo (mostrar apenas estrutura, não a senha)
-                    $lines = Get-Content $configPath
-                    Write-Host "CONFIG_LINES: $($lines.Count)"
-                    foreach ($i in 0..($lines.Count-1)) {{
-                        $line = $lines[$i]
-                        if ($line -like '*basic_auth_users*') {{
-                            Write-Host "CONFIG_LINE$i`: $line"
-                        }} elseif ($line.Trim().StartsWith('{basic_auth_user}:')) {{
-                            # Mostrar só usuário e início do hash
-                            $preview = $line.Substring(0, [Math]::Min(40, $line.Length))
-                            Write-Host "CONFIG_LINE$i`: $preview..."
-                        }} else {{
-                            Write-Host "CONFIG_LINE$i`: $line"
-                        }}
-                    }}
-                }} else {{
-                    Write-Host "ERROR: Failed to create config file"
-                    exit 1
-                }}
-                
-                # Parar serviço
-                Write-Host 'Stopping windows_exporter service...'
-                Stop-Service -Name 'windows_exporter' -Force -ErrorAction SilentlyContinue
-                Start-Sleep -Seconds 2
-                
-                # Modificar parâmetros do serviço para incluir --config.file
-                Write-Host 'Updating service parameters...'
-                $service = Get-WmiObject Win32_Service -Filter "Name='windows_exporter'"
-                if ($service) {{
-                    $currentPath = $service.PathName
-                    Write-Host "Current PathName: $currentPath"
-                    
-                    # Extrair apenas o executável (antes dos argumentos)
-                    if ($currentPath -match '^"([^"]+)"(.*)$') {{
-                        $exePath = $matches[1]
-                        $existingArgs = $matches[2].Trim()
-                    }} elseif ($currentPath -match '^([^\s]+)(.*)$') {{
-                        $exePath = $matches[1]
-                        $existingArgs = $matches[2].Trim()
-                    }} else {{
-                        $exePath = $currentPath
-                        $existingArgs = ""
-                    }}
-                    
-                    Write-Host "Extracted EXE: $exePath"
-                    Write-Host "Existing args: $existingArgs"
-                    
-                    # Remover --web.config.file ou --config.file existentes dos argumentos
-                    $cleanArgs = $existingArgs -replace '--web\.config\.file="[^"]*"', '' -replace '--config\.file="[^"]*"', ''
-                    $cleanArgs = $cleanArgs.Trim()
-                    
-                    # Construir novo PathName com config.file como PRIMEIRO argumento
-                    $newPath = "`"$exePath`" --config.file=`"$configPath`""
-                    if ($cleanArgs) {{
-                        $newPath += " $cleanArgs"
-                    }}
-                    
-                    Write-Host "New PathName: $newPath"
-                    
-                    $result = $service.Change($null, $newPath)
-                    if ($result.ReturnValue -eq 0) {{
-                        Write-Host 'SERVICE_PARAMS_UPDATED: OK'
-                        
-                        # Verificar o resultado final
-                        $updatedService = Get-WmiObject Win32_Service -Filter "Name='windows_exporter'"
-                        Write-Host "FINAL_SERVICE_PATH: $($updatedService.PathName)"
-                    }} else {{
-                        Write-Host "SERVICE_PARAMS_UPDATE_FAILED: ReturnValue=$($result.ReturnValue)"
-                        exit 1
-                    }}
-                }} else {{
-                    Write-Host 'ERROR: Service not found'
-                    exit 1
-                }}
-                
-                # Reiniciar serviço
-                Write-Host 'Starting windows_exporter service...'
-                Start-Service -Name 'windows_exporter' -ErrorAction Stop
-                Start-Sleep -Seconds 3
-                
-                $serviceStatus = (Get-Service -Name 'windows_exporter').Status
-                Write-Host "Service Status: $serviceStatus"
-                
-                if ($serviceStatus -eq 'Running') {{
-                    Write-Host 'SERVICE_RESTARTED: OK'
-                    
-                    # Validar que Basic Auth está funcionando
-                    Write-Host 'Validating Basic Auth...'
-                    Start-Sleep -Seconds 2
-                    
-                    # Testar sem autenticação (deve falhar com 401)
-                    try {{
-                        $response = Invoke-WebRequest -Uri 'http://localhost:9182/metrics' -UseBasicParsing -ErrorAction Stop
-                        Write-Host 'WARNING: Metrics accessible WITHOUT auth (expected 401)'
-                    }} catch {{
-                        if ($_.Exception.Response.StatusCode -eq 401) {{
-                            Write-Host 'BASIC_AUTH_VALIDATION: 401 Unauthorized (correct)'
-                        }} else {{
-                            Write-Host "WARNING: Unexpected error: $($_.Exception.Message)"
-                        }}
-                    }}
-                    
-                    # Testar com autenticação (deve funcionar com 200)
-                    $pair = "{basic_auth_user}:{basic_auth_password}"
-                    $bytes = [System.Text.Encoding]::ASCII.GetBytes($pair)
-                    $base64 = [System.Convert]::ToBase64String($bytes)
-                    $headers = @{{ Authorization = "Basic $base64" }}
-                    
-                    try {{
-                        $response = Invoke-WebRequest -Uri 'http://localhost:9182/metrics' -Headers $headers -UseBasicParsing -ErrorAction Stop
-                        if ($response.StatusCode -eq 200) {{
-                            Write-Host 'BASIC_AUTH_VALIDATION: 200 OK (authentication working)'
-                            Write-Host 'BASIC_AUTH_CONFIGURED: OK'
-                        }} else {{
-                            Write-Host "WARNING: Unexpected status code: $($response.StatusCode)"
-                        }}
-                    }} catch {{
-                        Write-Host "ERROR: Failed to access metrics with auth: $($_.Exception.Message)"
-                        exit 1
-                    }}
-                }} else {{
-                    Write-Host 'SERVICE_START_FAILED'
-                    exit 1
-                }}
-                
-                Write-Host '=== BASIC_AUTH_CONFIG_END ==='
-            """).strip()
-            
-            exit_code, output, error = await self.execute_command(config_cmd, powershell=True)
-            
-            if output:
-                for line in output.splitlines():
-                    if line.strip():
-                        if "CONFIGURED: OK" in line or "CREATED" in line:
-                            await self.log(f"  {line}", "success")
-                        elif "FAILED" in line or "ERROR" in line:
-                            await self.log(f"  {line}", "error")
-                        else:
-                            await self.log(f"  {line}", "info")
-            
-            if exit_code != 0:
-                await self.log("❌ Falha ao configurar Basic Auth", "error")
-                self._raise_install_error(
-                    "BASIC_AUTH_CONFIG_FAILED",
-                    "Não foi possível configurar Basic Auth no windows_exporter",
-                    "configuration",
-                    output if output else "",
-                    error if error else ""
-                )
-            else:
-                await self.log(f"✅ Basic Auth configurado para usuário: {basic_auth_user}", "success")
-        else:
-            await self.log("⚠️ PULANDO configuração de Basic Auth (condição não satisfeita)", "warning")
-            if not basic_auth_user:
-                await self.log("  Motivo: basic_auth_user está vazio/None", "warning")
-            if not basic_auth_password:
-                await self.log("  Motivo: basic_auth_password está vazio/None", "warning")
-            if not bcrypt_hash:
-                await self.log("  Motivo: bcrypt_hash está vazio/None", "warning")
-
-        await self.progress(70, 100, "Validando serviço windows_exporter...")
-
-        # Etapa 3 - Validar serviço e limpar instalador temporário
         check_cmd = dedent(r"""
             Write-Host '=== PSEXEC_VALIDATION_BEGIN ==='
             
