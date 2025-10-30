@@ -745,6 +745,8 @@ async def get_file_structure(
 
         return structure_response
 
+    except HTTPException:
+        raise  # Re-lançar HTTPException sem modificar
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -1826,6 +1828,8 @@ async def get_alertmanager_routes(
             "file_path": file_path
         }
 
+    except HTTPException:
+        raise  # Re-lançar HTTPException sem modificar
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -1881,6 +1885,8 @@ async def get_alertmanager_receivers(
             "file_path": file_path
         }
 
+    except HTTPException:
+        raise  # Re-lançar HTTPException sem modificar
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -1936,6 +1942,8 @@ async def get_alertmanager_inhibit_rules(
             "file_path": file_path
         }
 
+    except HTTPException:
+        raise  # Re-lançar HTTPException sem modificar
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
