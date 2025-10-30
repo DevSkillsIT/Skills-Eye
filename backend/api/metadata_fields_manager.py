@@ -15,6 +15,7 @@ from pathlib import Path
 import json
 import logging
 from datetime import datetime, timedelta
+import yaml
 
 from core.multi_config_manager import MultiConfigManager
 
@@ -76,6 +77,30 @@ class AddFieldRequest(BaseModel):
     field: MetadataFieldModel
     sync_prometheus: bool = Field(True, description="Sincronizar com prometheus.yml")
     apply_to_jobs: Optional[List[str]] = Field(None, description="Jobs específicos (None = todos)")
+
+
+class FieldSyncStatus(BaseModel):
+    """Status de sincronização de um campo"""
+    name: str
+    display_name: str
+    sync_status: str = Field(..., description="synced | outdated | missing | error")
+    prometheus_target_label: Optional[str] = Field(None, description="Target label no Prometheus")
+    metadata_source_label: Optional[str] = Field(None, description="Source label no metadata_fields.json")
+    message: Optional[str] = Field(None, description="Mensagem descritiva do status")
+
+
+class SyncStatusResponse(BaseModel):
+    """Resposta com status de sincronização"""
+    success: bool
+    server_id: str
+    server_hostname: str
+    fields: List[FieldSyncStatus]
+    total_synced: int
+    total_outdated: int
+    total_missing: int
+    total_error: int
+    prometheus_file_path: Optional[str] = None
+    checked_at: str
 
 
 # ============================================================================
@@ -255,6 +280,155 @@ async def list_servers():
     except Exception as e:
         logger.error(f"Erro ao listar servidores: {e}", exc_info=True)
         print(f"[ERROR] Failed to list servers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sync-status", response_model=SyncStatusResponse)
+async def get_sync_status(
+    server_id: str = Query(..., description="ID do servidor (hostname:port)")
+):
+    """
+    Verifica status de sincronização dos campos metadata com prometheus.yml
+
+    Para cada campo em metadata_fields.json, verifica se existe relabel_config
+    correspondente no prometheus.yml do servidor selecionado.
+
+    Status possíveis:
+    - synced: Campo existe e está correto no Prometheus
+    - missing: Campo existe no JSON mas não no Prometheus
+    - outdated: Campo existe mas target_label está diferente
+    - error: Erro ao verificar status
+    """
+    try:
+        logger.info(f"Verificando sync status para servidor: {server_id}")
+
+        # Carregar configuração de campos
+        config = load_fields_config()
+        fields = config.get('fields', [])
+
+        # Extrair hostname do server_id (formato: "172.16.1.26:5522")
+        hostname = server_id.split(':')[0] if ':' in server_id else server_id
+
+        # Inicializar MultiConfigManager
+        multi_config = MultiConfigManager()
+
+        # Ler prometheus.yml do servidor
+        prometheus_file_path = "/etc/prometheus/prometheus.yml"
+
+        try:
+            # Ler conteúdo do arquivo via SSH
+            yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
+            prometheus_config = yaml.safe_load(yaml_content)
+
+            logger.info(f"Prometheus.yml carregado com sucesso de {hostname}")
+
+        except Exception as e:
+            logger.error(f"Erro ao ler prometheus.yml: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao ler prometheus.yml do servidor {hostname}: {str(e)}"
+            )
+
+        # Extrair relabel_configs do Prometheus
+        # Assumindo estrutura: scrape_configs[0].relabel_configs
+        relabel_configs = []
+        if 'scrape_configs' in prometheus_config and len(prometheus_config['scrape_configs']) > 0:
+            first_job = prometheus_config['scrape_configs'][0]
+            relabel_configs = first_job.get('relabel_configs', [])
+
+        logger.info(f"Encontrados {len(relabel_configs)} relabel_configs no Prometheus")
+
+        # Criar mapa de source_label → target_label do Prometheus
+        prometheus_labels_map = {}
+        for relabel_config in relabel_configs:
+            source_labels = relabel_config.get('source_labels', [])
+            target_label = relabel_config.get('target_label', None)
+
+            # source_labels é uma lista, pegamos o primeiro
+            if source_labels and target_label:
+                prometheus_labels_map[source_labels[0]] = target_label
+
+        # Verificar status de cada campo
+        field_statuses = []
+        total_synced = 0
+        total_outdated = 0
+        total_missing = 0
+        total_error = 0
+
+        for field in fields:
+            field_name = field.get('name')
+            field_display_name = field.get('display_name', field_name)
+            field_source_label = field.get('source_label')
+
+            if not field_source_label:
+                # Campo sem source_label definido
+                field_statuses.append(FieldSyncStatus(
+                    name=field_name,
+                    display_name=field_display_name,
+                    sync_status='error',
+                    metadata_source_label=None,
+                    prometheus_target_label=None,
+                    message='Campo sem source_label definido'
+                ))
+                total_error += 1
+                continue
+
+            # Verificar se existe no Prometheus
+            prometheus_target = prometheus_labels_map.get(field_source_label)
+
+            if prometheus_target is None:
+                # Campo não existe no Prometheus
+                field_statuses.append(FieldSyncStatus(
+                    name=field_name,
+                    display_name=field_display_name,
+                    sync_status='missing',
+                    metadata_source_label=field_source_label,
+                    prometheus_target_label=None,
+                    message=f'Campo não encontrado no prometheus.yml'
+                ))
+                total_missing += 1
+
+            elif prometheus_target != field_name:
+                # Campo existe mas target_label está diferente
+                field_statuses.append(FieldSyncStatus(
+                    name=field_name,
+                    display_name=field_display_name,
+                    sync_status='outdated',
+                    metadata_source_label=field_source_label,
+                    prometheus_target_label=prometheus_target,
+                    message=f'Target label no Prometheus ({prometheus_target}) difere do esperado ({field_name})'
+                ))
+                total_outdated += 1
+
+            else:
+                # Campo sincronizado
+                field_statuses.append(FieldSyncStatus(
+                    name=field_name,
+                    display_name=field_display_name,
+                    sync_status='synced',
+                    metadata_source_label=field_source_label,
+                    prometheus_target_label=prometheus_target,
+                    message='Campo sincronizado corretamente'
+                ))
+                total_synced += 1
+
+        return SyncStatusResponse(
+            success=True,
+            server_id=server_id,
+            server_hostname=hostname,
+            fields=field_statuses,
+            total_synced=total_synced,
+            total_outdated=total_outdated,
+            total_missing=total_missing,
+            total_error=total_error,
+            prometheus_file_path=prometheus_file_path,
+            checked_at=datetime.now().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao verificar sync status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
