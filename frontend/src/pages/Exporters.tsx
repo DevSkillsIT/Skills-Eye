@@ -147,11 +147,18 @@ const Exporters: React.FC = () => {
   const [generatedId, setGeneratedId] = useState<string>('');
   const [serviceNames, setServiceNames] = useState<string[]>([]);
   const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
+  const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
 
   useEffect(() => {
     fetchNodes();
-    fetchServiceNames();
   }, []);
+
+  // Buscar serviços do nó selecionado quando mudar
+  useEffect(() => {
+    if (selectedNodeForModal) {
+      fetchServiceNamesForNode(selectedNodeForModal);
+    }
+  }, [selectedNodeForModal]);
 
   useEffect(() => {
     const fetchMetadata = async () => {
@@ -224,15 +231,15 @@ const Exporters: React.FC = () => {
     }
   };
 
-  const fetchServiceNames = async () => {
+  const fetchServiceNamesForNode = async (nodeAddr: string) => {
     try {
       setServiceNamesLoading(true);
-      const response = await consulAPI.getServiceCatalogNames();
+      const response = await consulAPI.getNodeServiceNames(nodeAddr);
       const names = response.data?.data || [];
       setServiceNames(names);
     } catch (error) {
-      console.error('Error fetching service names:', error);
-      message.error('Erro ao carregar tipos de serviços');
+      console.error('Error fetching service names for node:', error);
+      message.error('Erro ao carregar tipos de serviços do nó selecionado');
     } finally {
       setServiceNamesLoading(false);
     }
@@ -1189,7 +1196,12 @@ const Exporters: React.FC = () => {
           },
         }}
         onFinish={handleCreateSubmit}
-        onValuesChange={(_, allValues) => {
+        onValuesChange={(changedValues, allValues) => {
+          // Quando o nó muda, buscar serviços daquele nó
+          if (changedValues.node_addr) {
+            setSelectedNodeForModal(changedValues.node_addr);
+          }
+
           // Atualizar ID gerado conforme usuário preenche os campos
           if (allValues.vendor && allValues.account && allValues.region && allValues.group && allValues.name) {
             const id = `${allValues.vendor}/${allValues.account}/${allValues.region}/${allValues.group}@${allValues.name}`;
@@ -1374,6 +1386,12 @@ const Exporters: React.FC = () => {
           },
         }}
         onFinish={handleEditSubmit}
+        onValuesChange={(changedValues) => {
+          // Quando o nó muda no EDIT, buscar serviços daquele nó
+          if (changedValues.node_addr) {
+            setSelectedNodeForModal(changedValues.node_addr);
+          }
+        }}
       >
         {editingExporter && (
           <>

@@ -541,6 +541,8 @@ export const consulAPI = {
   // Nodes
   getNodes: () => api.get('/nodes'),
   getNodeServices: (nodeAddr: string) => api.get(`/nodes/${nodeAddr}/services`),
+  getNodeServiceNames: (nodeAddr: string) =>
+    api.get<{ success: boolean; node: string; data: string[]; total: number }>(`/nodes/${nodeAddr}/service-names`),
 
   // Services
   listServices: (params?: ServiceQuery) =>

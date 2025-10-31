@@ -51,3 +51,23 @@ async def get_node_services(node_addr: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{node_addr}/service-names")
+async def get_node_service_names(node_addr: str):
+    """Retorna apenas os nomes únicos de serviços de um nó específico
+
+    Útil para popular dropdown de tipos de serviços baseado no nó selecionado.
+    Retorna apenas nomes de serviços únicos (ex: selfnode_exporter, windows_exporter, etc)
+    """
+    try:
+        consul = ConsulManager(host=node_addr)
+        service_names = await consul.get_service_names()
+
+        return {
+            "success": True,
+            "node": node_addr,
+            "data": service_names,
+            "total": len(service_names)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
