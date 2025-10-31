@@ -1163,6 +1163,97 @@ export const metadataFieldsAPI = {
     }),
 };
 
+// ============================================================================
+// METADATA DYNAMIC API - Sistema Totalmente Dinâmico
+// ============================================================================
+
+export interface MetadataFieldDynamic {
+  name: string;
+  display_name: string;
+  description: string;
+  source_label: string;
+  field_type: 'string' | 'select' | 'number' | 'boolean';
+  required: boolean;
+  enabled: boolean;
+  show_in_table: boolean;
+  show_in_dashboard: boolean;
+  show_in_form: boolean;
+  show_in_filter: boolean;
+  show_in_blackbox: boolean;
+  show_in_exporters: boolean;
+  show_in_services: boolean;
+  editable: boolean;
+  available_for_registration: boolean;
+  options: string[];
+  default_value: unknown;
+  placeholder: string;
+  order: number;
+  category: string;
+  validation: Record<string, unknown>;
+}
+
+export interface MetadataFieldsResponse {
+  success: boolean;
+  fields: MetadataFieldDynamic[];
+  total: number;
+  context?: string;
+  filters_applied: Record<string, unknown>;
+}
+
+export interface FieldNamesResponse {
+  success: boolean;
+  field_names: string[];
+  total: number;
+  context?: string;
+}
+
+export interface RequiredFieldsResponse {
+  success: boolean;
+  required_fields: string[];
+  total: number;
+}
+
+export const metadataDynamicAPI = {
+  /**
+   * Busca campos dinâmicos com filtros
+   */
+  getFields: (params?: {
+    context?: 'blackbox' | 'exporters' | 'services' | 'general';
+    enabled?: boolean;
+    required?: boolean;
+    show_in_table?: boolean;
+    show_in_form?: boolean;
+    show_in_filter?: boolean;
+    category?: string;
+  }) => api.get<MetadataFieldsResponse>('/metadata-dynamic/fields', { params }),
+
+  /**
+   * Busca apenas nomes dos campos (mais leve)
+   */
+  getFieldNames: (params?: {
+    context?: string;
+    enabled?: boolean;
+    required?: boolean;
+  }) => api.get<FieldNamesResponse>('/metadata-dynamic/fields/names', { params }),
+
+  /**
+   * Busca campos obrigatórios
+   */
+  getRequiredFields: () =>
+    api.get<RequiredFieldsResponse>('/metadata-dynamic/fields/required'),
+
+  /**
+   * Recarrega cache do metadata_fields.json
+   */
+  reloadCache: () => api.post('/metadata-dynamic/reload'),
+
+  /**
+   * Valida metadata
+   */
+  validateMetadata: (metadata: Record<string, unknown>, context: string = 'general') =>
+    api.post('/metadata-dynamic/validate', metadata, { params: { context } }),
+};
+
 export default api;
 
 

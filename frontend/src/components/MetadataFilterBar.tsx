@@ -1,28 +1,41 @@
+/**
+ * SISTEMA DINÂMICO: MetadataFilterBar gera filtros baseado em filterFields do backend
+ *
+ * Antes: Campos hardcoded (module, company, grupo_monitoramento, etc)
+ * Depois: Campos carregados de metadata_fields.json via API
+ *
+ * Props:
+ * - fields: Array de MetadataFieldDynamic com show_in_filter=true
+ * - value: Estado atual dos filtros (Record<string, string>)
+ * - options: Valores disponíveis para cada campo (Record<string, string[]>)
+ * - loading: Estado de carregamento
+ * - onChange: Callback para mudança de filtro
+ * - onReset: Callback para limpar filtros
+ * - extra: Componentes extras (ex: seletor de nó)
+ */
+
 import React from 'react';
 import { Button, Select, Space, Tooltip } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import type { MetadataFilters } from '../services/api';
+import type { MetadataFieldDynamic } from '../services/api';
 
 const { Option } = Select;
 
-export interface MetadataFilterOptions {
-  modules?: string[];
-  companies?: string[];
-  projects?: string[];
-  envs?: string[];
-  groups?: string[];
-}
-
-interface MetadataFilterBarProps {
-  value: MetadataFilters;
-  options: MetadataFilterOptions;
+export interface MetadataFilterBarProps {
+  // Campos dinâmicos do backend (com show_in_filter=true)
+  fields?: MetadataFieldDynamic[];
+  // Estado atual dos filtros (chave=nome_campo, valor=valor_selecionado)
+  value: Record<string, string | undefined>;
+  // Opções disponíveis para cada campo (chave=nome_campo, valor=array de valores)
+  options: Record<string, string[]>;
   loading?: boolean;
-  onChange: (value: MetadataFilters) => void;
+  onChange: (value: Record<string, string | undefined>) => void;
   onReset?: () => void;
   extra?: React.ReactNode;
 }
 
 const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
+  fields = [],
   value,
   options,
   loading = false,
@@ -30,94 +43,39 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
   onReset,
   extra,
 }) => {
-  const handleChange = (key: keyof MetadataFilters, next?: string) => {
+  const handleChange = (fieldName: string, nextValue?: string) => {
     onChange({
       ...value,
-      [key]: next || undefined,
+      [fieldName]: nextValue || undefined,
     });
   };
 
   return (
     <Space wrap align="center">
-      <Select
-        allowClear
-        showSearch
-        placeholder="Modulo"
-        style={{ minWidth: 150 }}
-        loading={loading}
-        value={value.module}
-        onChange={(val) => handleChange('module', val)}
-      >
-        {(options.modules || []).map((item) => (
-          <Option value={item} key={item}>
-            {item}
-          </Option>
-        ))}
-      </Select>
+      {/* GERAÇÃO DINÂMICA: Um Select para cada campo com show_in_filter=true */}
+      {fields.map((field) => {
+        const fieldOptions = options[field.name] || [];
+        const minWidth = field.display_name.length > 15 ? 200 : 150;
 
-      <Select
-        allowClear
-        showSearch
-        placeholder="Empresa"
-        style={{ minWidth: 150 }}
-        loading={loading}
-        value={value.company}
-        onChange={(val) => handleChange('company', val)}
-      >
-        {(options.companies || []).map((item) => (
-          <Option value={item} key={item}>
-            {item}
-          </Option>
-        ))}
-      </Select>
-
-      <Select
-        allowClear
-        showSearch
-        placeholder="Projeto"
-        style={{ minWidth: 170 }}
-        loading={loading}
-        value={value.project}
-        onChange={(val) => handleChange('project', val)}
-      >
-        {(options.projects || []).map((item) => (
-          <Option value={item} key={item}>
-            {item}
-          </Option>
-        ))}
-      </Select>
-
-      <Select
-        allowClear
-        showSearch
-        placeholder="Ambiente"
-        style={{ minWidth: 140 }}
-        loading={loading}
-        value={value.env}
-        onChange={(val) => handleChange('env', val)}
-      >
-        {(options.envs || []).map((item) => (
-          <Option value={item} key={item}>
-            {item}
-          </Option>
-        ))}
-      </Select>
-
-      <Select
-        allowClear
-        showSearch
-        placeholder="Grupo"
-        style={{ minWidth: 150 }}
-        loading={loading}
-        value={value.group}
-        onChange={(val) => handleChange('group', val)}
-      >
-        {(options.groups || []).map((item) => (
-          <Option value={item} key={item}>
-            {item}
-          </Option>
-        ))}
-      </Select>
+        return (
+          <Select
+            key={field.name}
+            allowClear
+            showSearch
+            placeholder={field.placeholder || field.display_name}
+            style={{ minWidth }}
+            loading={loading}
+            value={value[field.name]}
+            onChange={(val) => handleChange(field.name, val)}
+          >
+            {fieldOptions.map((item) => (
+              <Option value={item} key={`${field.name}-${item}`}>
+                {item}
+              </Option>
+            ))}
+          </Select>
+        );
+      })}
 
       {onReset && (
         <Tooltip title="Limpar filtros">

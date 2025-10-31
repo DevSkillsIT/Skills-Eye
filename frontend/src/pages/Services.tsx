@@ -50,11 +50,11 @@ import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI } from '../services/api';
 import type {
   ConsulServiceRecord,
-  MetadataFilters,
   ServiceMeta,
   ServiceCreatePayload,
   ServiceQuery,
 } from '../services/api';
+import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -124,20 +124,15 @@ interface ServiceFormValues {
   notas?: string;
 }
 
-const SERVICE_COLUMN_PRESETS: ColumnConfig[] = [
-  { key: 'node', title: 'No', visible: true },
+// COLUNAS FIXAS (não metadata) - sempre presentes
+const FIXED_COLUMN_PRESETS: ColumnConfig[] = [
+  { key: 'node', title: 'Nó', visible: true },
   { key: 'service', title: 'Serviço Consul', visible: true },
   { key: 'id', title: 'ID', visible: true },
-  { key: 'name', title: 'Nome exibido', visible: true },
-  { key: 'module', title: 'Modulo', visible: true },
-  { key: 'company', title: 'Empresa', visible: true },
-  { key: 'project', title: 'Projeto', visible: true },
-  { key: 'env', title: 'Ambiente', visible: true },
-  { key: 'instance', title: 'Instancia', visible: true },
-  { key: 'address', title: 'Endereco', visible: false },
+  { key: 'address', title: 'Endereço', visible: false },
   { key: 'port', title: 'Porta', visible: false },
   { key: 'tags', title: 'Tags', visible: true },
-  { key: 'actions', title: 'Acoes', visible: true, locked: true },
+  { key: 'actions', title: 'Ações', visible: true, locked: true },
 ];
 
 const SERVICE_ID_SANITIZE_REGEX = /[[ \]`~!\\#$^&*=|"{}\':;?\t\n]+/g;
@@ -228,14 +223,16 @@ const mapRecordToFormValues = (record: ServiceTableItem): ServiceFormValues => {
 };
 const Services: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
-  const [filters, setFilters] = useState<MetadataFilters>({});
+
+  // SISTEMA DINÂMICO: Carregar campos metadata do backend
+  const { tableFields, loading: tableFieldsLoading } = useTableFields('services');
+  const { formFields, loading: formFieldsLoading } = useFormFields('services');
+  const { filterFields, loading: filterFieldsLoading } = useFilterFields('services');
+
+  // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
+  const [filters, setFilters] = useState<Record<string, string | undefined>>({});
   const [metadataLoading, setMetadataLoading] = useState(false);
-  const [metadataOptions, setMetadataOptions] = useState({
-    modules: [] as string[],
-    companies: [] as string[],
-    projects: [] as string[],
-    envs: [] as string[],
-  });
+  const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
   const [nodes, setNodes] = useState<ConsulNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
   const [detailRecord, setDetailRecord] = useState<ServiceTableItem | null>(null);
@@ -256,10 +253,37 @@ const Services: React.FC = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
-  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>(() =>
-    SERVICE_COLUMN_PRESETS.map((column) => ({ ...column })),
-  );
+  // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata dinâmicos
+  const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
+    const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
+      key: field.name,
+      title: field.display_name,
+      visible: field.show_in_table ?? true, // Exibir por padrão se show_in_table não definido
+      locked: false,
+    }));
+
+    // ORDEM: node, service, id → campos metadata → address, port, tags, actions
+    return [
+      FIXED_COLUMN_PRESETS[0], // node
+      FIXED_COLUMN_PRESETS[1], // service
+      FIXED_COLUMN_PRESETS[2], // id
+      ...metadataColumns,       // campos dinâmicos
+      FIXED_COLUMN_PRESETS[3], // address
+      FIXED_COLUMN_PRESETS[4], // port
+      FIXED_COLUMN_PRESETS[5], // tags
+      FIXED_COLUMN_PRESETS[6], // actions
+    ];
+  }, [tableFields]);
+
+  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  // Atualizar columnConfig quando defaultColumnConfig mudar
+  useEffect(() => {
+    if (defaultColumnConfig.length > 0 && columnConfig.length === 0) {
+      setColumnConfig(defaultColumnConfig);
+    }
+  }, [defaultColumnConfig, columnConfig.length]);
 
   // Suporte para filtro via URL (ex: /services?service=nome_do_servico)
   const [searchParams, setSearchParams] = useSearchParams();
@@ -280,23 +304,27 @@ const Services: React.FC = () => {
     [],
   );
 
-  const advancedFieldOptions = useMemo(
-    () => [
-      { label: 'Nome exibido', value: 'name', type: 'text' },
-      { label: 'Modulo', value: 'module', type: 'text' },
-      { label: 'Empresa', value: 'company', type: 'text' },
-      { label: 'Projeto', value: 'project', type: 'text' },
-      { label: 'Ambiente', value: 'env', type: 'text' },
-      { label: 'Instancia', value: 'instance', type: 'text' },
-      { label: 'Endereco', value: 'address', type: 'text' },
-      { label: 'Tags', value: 'tags', type: 'text' },
-      { label: 'No', value: 'node', type: 'text' },
+  // SISTEMA DINÂMICO: Gerar campos de busca avançada (campos fixos + metadata)
+  const advancedFieldOptions = useMemo(() => {
+    const fixedFields = [
+      { label: 'Nó', value: 'node', type: 'text' },
       { label: 'Serviço Consul', value: 'service', type: 'text' },
-    ],
-    [],
-  );
+      { label: 'Endereço', value: 'address', type: 'text' },
+      { label: 'Tags', value: 'tags', type: 'text' },
+    ];
 
+    const metadataFields = tableFields.map((field) => ({
+      label: field.display_name,
+      value: field.name,
+      type: 'text',
+    }));
+
+    return [...fixedFields, ...metadataFields];
+  }, [tableFields]);
+
+  // SISTEMA DINÂMICO: Extrair valor de campo (fixo ou metadata)
   const getFieldValue = useCallback((row: ServiceTableItem, field: string): string => {
+    // Campos fixos
     switch (field) {
       case 'node':
         return row.node || '';
@@ -304,18 +332,6 @@ const Services: React.FC = () => {
         return row.service || '';
       case 'id':
         return row.id || '';
-      case 'name':
-        return row.meta?.name || '';
-      case 'module':
-        return row.meta?.module || '';
-      case 'company':
-        return row.meta?.company || '';
-      case 'project':
-        return row.meta?.project || '';
-      case 'env':
-        return row.meta?.env || '';
-      case 'instance':
-        return row.meta?.instance || '';
       case 'address':
         return row.address || '';
       case 'port':
@@ -323,7 +339,8 @@ const Services: React.FC = () => {
       case 'tags':
         return (row.tags || []).join(',');
       default:
-        return '';
+        // CAMPOS METADATA DINÂMICOS: buscar em record.meta
+        return row.meta?.[field] ? String(row.meta[field]) : '';
     }
   }, []);
 
@@ -408,33 +425,45 @@ const Services: React.FC = () => {
     return map;
   }, [nodes]);
 
+  // SISTEMA DINÂMICO: Carregar valores dos campos metadata dinamicamente
   const loadMetadataOptions = useCallback(async () => {
     try {
       setMetadataLoading(true);
-      const [modulesRes, companiesRes, projectsRes, envsRes] = await Promise.all([
-        consulAPI.getServiceMetadataValues('module'),
-        consulAPI.getServiceMetadataValues('company'),
-        consulAPI.getServiceMetadataValues('project'),
-        consulAPI.getServiceMetadataValues('env'),
-      ]);
 
-      setMetadataOptions({
-        modules: Array.from(
-          new Set([
-            ...DEFAULT_MODULES,
-            ...(modulesRes.data.values || []),
-          ]),
-        ),
-        companies: companiesRes.data.values || [],
-        projects: projectsRes.data.values || [],
-        envs: envsRes.data.values || [],
+      // Buscar valores de TODOS os campos com show_in_filter=true
+      if (filterFields.length === 0) {
+        // Ainda carregando campos dinâmicos
+        setMetadataOptions({});
+        return;
+      }
+
+      // Criar promises para cada campo de filtro
+      const promises = filterFields.map((field) =>
+        consulAPI.getServiceMetadataValues(field.name),
+      );
+
+      const responses = await Promise.all(promises);
+
+      // Montar objeto de opções dinamicamente
+      const options: Record<string, string[]> = {};
+      filterFields.forEach((field, index) => {
+        const values = responses[index].data.values || [];
+
+        // CASO ESPECIAL: campo 'module' inclui módulos padrão
+        if (field.name === 'module') {
+          options[field.name] = Array.from(new Set([...DEFAULT_MODULES, ...values]));
+        } else {
+          options[field.name] = values;
+        }
       });
+
+      setMetadataOptions(options);
     } catch (error) {
       message.error('Falha ao carregar metadados do Consul');
     } finally {
       setMetadataLoading(false);
     }
-  }, []);
+  }, [filterFields]);
 
   const loadNodes = useCallback(async () => {
     try {
@@ -446,17 +475,25 @@ const Services: React.FC = () => {
     }
   }, []);
 
+  // Carregar nodes imediatamente
   useEffect(() => {
-    loadMetadataOptions();
     loadNodes();
-  }, [loadMetadataOptions, loadNodes]);
+  }, [loadNodes]);
+
+  // Carregar opções de metadata apenas quando filterFields estiver disponível
+  useEffect(() => {
+    if (!filterFieldsLoading && filterFields.length > 0) {
+      loadMetadataOptions();
+    }
+  }, [filterFields, filterFieldsLoading, loadMetadataOptions]);
 
   useEffect(() => {
     actionRef.current?.reload();
   }, [filters, selectedNode, advancedConditions, advancedOperator]);
 
+  // SISTEMA DINÂMICO: buildQueryParams aceita filtros dinâmicos
   const buildQueryParams = useCallback((): ServiceQuery => {
-    const params: ServiceQuery = { ...filters };
+    const params: ServiceQuery = { ...filters } as ServiceQuery;
     if (selectedNode === ALL_NODES) {
       params.node_addr = 'ALL';
     } else if (selectedNode === DEFAULT_NODE) {
@@ -700,10 +737,12 @@ const Services: React.FC = () => {
     },
     [currentRecord, formMode, loadMetadataOptions],
   );
-  const columnMap = useMemo<Record<string, ServiceColumn<ServiceTableItem>>>(
-    () => ({
+  // SISTEMA DINÂMICO: Gerar columnMap combinando fixas + metadata
+  const columnMap = useMemo<Record<string, ServiceColumn<ServiceTableItem>>>(() => {
+    // COLUNAS FIXAS com lógica específica
+    const fixedColumns: Record<string, ServiceColumn<ServiceTableItem>> = {
       node: {
-        title: 'No',
+        title: 'Nó',
         dataIndex: 'node',
         width: 160,
         ellipsis: true,
@@ -727,42 +766,8 @@ const Services: React.FC = () => {
         ellipsis: true,
         width: 260,
       },
-      name: {
-        title: 'Nome exibido',
-        dataIndex: ['meta', 'name'],
-        width: 220,
-        ellipsis: true,
-      },
-      module: {
-        title: 'Modulo',
-        dataIndex: ['meta', 'module'],
-        width: 150,
-      },
-      company: {
-        title: 'Empresa',
-        dataIndex: ['meta', 'company'],
-        width: 200,
-        ellipsis: true,
-      },
-      project: {
-        title: 'Projeto',
-        dataIndex: ['meta', 'project'],
-        width: 200,
-        ellipsis: true,
-      },
-      env: {
-        title: 'Ambiente',
-        dataIndex: ['meta', 'env'],
-        width: 140,
-      },
-      instance: {
-        title: 'Instancia',
-        dataIndex: ['meta', 'instance'],
-        width: 220,
-        ellipsis: true,
-      },
       address: {
-        title: 'Endereco',
+        title: 'Endereço',
         dataIndex: 'address',
         width: 220,
         ellipsis: true,
@@ -786,7 +791,7 @@ const Services: React.FC = () => {
         ),
       },
       actions: {
-        title: 'Acoes',
+        title: 'Ações',
         valueType: 'option',
         fixed: 'right',
         width: 140,
@@ -799,35 +804,49 @@ const Services: React.FC = () => {
               onClick={() => setDetailRecord(record)}
             />
           </Tooltip>,
-          <Tooltip title="Editar servico" key={`edit-${record.id}`}>
+          <Tooltip title="Editar serviço" key={`edit-${record.id}`}>
             <Button
               type="link"
               icon={<EditOutlined />}
-              aria-label="Editar servico"
+              aria-label="Editar serviço"
               onClick={() => openEditModal(record)}
             />
           </Tooltip>,
           <Popconfirm
             key={`delete-${record.id}`}
-            title="Remover este servico?"
+            title="Remover este serviço?"
             onConfirm={() => handleDelete(record)}
             okText="Remover"
             cancelText="Cancelar"
           >
-            <Tooltip title="Remover servico">
+            <Tooltip title="Remover serviço">
               <Button
                 type="link"
                 danger
                 icon={<DeleteOutlined />}
-                aria-label="Remover servico"
+                aria-label="Remover serviço"
               />
             </Tooltip>
           </Popconfirm>,
         ],
       },
-    }),
-    [handleDelete, openEditModal],
-  );
+    };
+
+    // COLUNAS METADATA DINÂMICAS
+    const metadataColumns: Record<string, ServiceColumn<ServiceTableItem>> = {};
+    tableFields.forEach((field) => {
+      metadataColumns[field.name] = {
+        title: field.display_name,
+        dataIndex: ['meta', field.name],
+        width: field.field_type === 'string' ? 200 : 140,
+        ellipsis: true,
+        tooltip: field.description,
+      };
+    });
+
+    // Combinar fixas + dinâmicas
+    return { ...fixedColumns, ...metadataColumns };
+  }, [tableFields, handleDelete, openEditModal]);
 
   const visibleColumns = useMemo(() => {
     return columnConfig
@@ -864,8 +883,8 @@ const Services: React.FC = () => {
       'name',
       'module',
       'company',
-      'project',
-      'env',
+      'grupo_monitoramento',
+      'tipo_monitoramento',
       'instance',
       'address',
       'port',
@@ -918,19 +937,6 @@ const Services: React.FC = () => {
     </Select>
   );
 
-  const advancedSearchFields = useMemo(
-    () => [
-      { label: 'Servico', value: 'service', type: 'text' },
-      { label: 'No', value: 'node', type: 'text' },
-      { label: 'Modulo', value: 'module', type: 'text' },
-      { label: 'Empresa', value: 'company', type: 'text' },
-      { label: 'Projeto', value: 'project', type: 'text' },
-      { label: 'Ambiente', value: 'env', type: 'text' },
-      { label: 'Instancia', value: 'instance', type: 'text' },
-    ],
-    [],
-  );
-
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
   );
@@ -969,9 +975,10 @@ const Services: React.FC = () => {
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <Space wrap>
               <MetadataFilterBar
+                fields={filterFields}
                 value={filters}
                 options={metadataOptions}
-                loading={metadataLoading}
+                loading={metadataLoading || filterFieldsLoading}
                 onChange={setFilters}
                 onReset={() => setFilters({})}
                 extra={nodeSelector}
@@ -1128,7 +1135,7 @@ const Services: React.FC = () => {
         onClose={() => setAdvancedOpen(false)}
       >
         <AdvancedSearchPanel
-          availableFields={advancedSearchFields}
+          availableFields={advancedFieldOptions}
           onSearch={handleAdvancedSearch}
           onClear={handleAdvancedClear}
           initialConditions={advancedConditions}
@@ -1244,16 +1251,16 @@ const Services: React.FC = () => {
             rules={[{ required: true, message: 'Informe a empresa' }]}
           />
           <ProFormText
-            name="project"
-            label="Projeto"
-            placeholder="Projeto associado"
-            rules={[{ required: true, message: 'Informe o projeto' }]}
+            name="grupo_monitoramento"
+            label="Grupo Monitoramento"
+            placeholder="Grupo de monitoramento (projeto)"
+            rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
           />
           <ProFormText
-            name="env"
-            label="Ambiente"
+            name="tipo_monitoramento"
+            label="Tipo Monitoramento"
             placeholder="Ex: prod, dev, homolog"
-            rules={[{ required: true, message: 'Informe o ambiente' }]}
+            rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
           />
         </div>
 
