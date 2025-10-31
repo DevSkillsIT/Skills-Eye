@@ -3,7 +3,9 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Descriptions,
+  Dropdown,
   Drawer,
   Input,
   message,
@@ -14,6 +16,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   ClearOutlined,
   DeleteOutlined,
@@ -21,6 +24,7 @@ import {
   EditOutlined,
   FilterOutlined,
   InfoCircleOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
   CloudServerOutlined,
@@ -145,14 +149,29 @@ const Exporters: React.FC = () => {
   const [serviceNames, setServiceNames] = useState<string[]>([]);
   const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
   const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
+  const [visibleOptionalFields, setVisibleOptionalFields] = useState<string[]>([]);
 
   // Hook para gerenciar nó selecionado na página principal
   const { selectedNode, isAllNodes, selectNode } = useSelectedNode();
   const [selectedNodeAddr, setSelectedNodeAddr] = useState<string>('all');
+  const [showNodeAlert, setShowNodeAlert] = useState(false);
 
   useEffect(() => {
     fetchNodes();
   }, []);
+
+  // AutoClose do Alert de nó selecionado após 5 segundos
+  useEffect(() => {
+    if (!isAllNodes && selectedNode) {
+      setShowNodeAlert(true);
+      const timer = setTimeout(() => {
+        setShowNodeAlert(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowNodeAlert(false);
+    }
+  }, [isAllNodes, selectedNode]);
 
   // Buscar serviços do nó selecionado quando mudar
   useEffect(() => {
@@ -160,6 +179,16 @@ const Exporters: React.FC = () => {
       fetchServiceNamesForNode(selectedNodeForModal);
     }
   }, [selectedNodeForModal]);
+
+  // Quando modal EDIT abre, buscar serviços do nó atual
+  useEffect(() => {
+    if (editModalOpen && editingExporter) {
+      const nodeAddr = editingExporter.nodeAddr || editingExporter.node;
+      if (nodeAddr) {
+        setSelectedNodeForModal(nodeAddr);
+      }
+    }
+  }, [editModalOpen, editingExporter]);
 
   useEffect(() => {
     const fetchMetadata = async () => {
@@ -829,43 +858,51 @@ const Exporters: React.FC = () => {
         title: 'Acoes',
         key: 'actions',
         fixed: 'right',
-        width: 140,
-        render: (_, record) => (
-          <Space size="small">
-            <Tooltip title="Ver detalhes">
-              <Button
-                type="link"
-                size="small"
-                icon={<InfoCircleOutlined />}
-                onClick={() => handleShowDetails(record)}
-              />
-            </Tooltip>
-            <Tooltip title="Editar exporter">
-              <Button
-                type="link"
-                size="small"
-                icon={<EditOutlined />}
-                onClick={() => handleEditExporter(record)}
-              />
-            </Tooltip>
-            <Popconfirm
-              title="Remover este exporter?"
-              description="Esta acao removera o exporter do Consul. Tem certeza?"
-              onConfirm={() => handleDeleteExporter(record)}
-              okText="Sim"
-              cancelText="Nao"
+        width: 80,
+        render: (_, record) => {
+          const menuItems: MenuProps['items'] = [
+            {
+              key: 'view',
+              icon: <InfoCircleOutlined />,
+              label: 'Ver Detalhes',
+              onClick: () => handleShowDetails(record),
+            },
+            {
+              key: 'edit',
+              icon: <EditOutlined />,
+              label: 'Editar',
+              onClick: () => handleEditExporter(record),
+            },
+            {
+              type: 'divider',
+            },
+            {
+              key: 'delete',
+              icon: <DeleteOutlined />,
+              label: 'Remover',
+              danger: true,
+              onClick: () => {
+                if (window.confirm('Remover este exporter?\n\nEsta ação removerá o exporter do Consul. Tem certeza?')) {
+                  handleDeleteExporter(record);
+                }
+              },
+            },
+          ];
+
+          return (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={['click']}
+              placement="bottomRight"
             >
-              <Tooltip title="Remover exporter">
-                <Button
-                  type="link"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                />
-              </Tooltip>
-            </Popconfirm>
-          </Space>
-        ),
+              <Button
+                type="text"
+                icon={<MoreOutlined />}
+                size="small"
+              />
+            </Dropdown>
+          );
+        },
       },
     ];
 
@@ -963,14 +1000,14 @@ const Exporters: React.FC = () => {
               </div>
             </div>
 
-            {/* Info de nó selecionado */}
-            {!isAllNodes && selectedNode && (
+            {/* Info de nó selecionado - AutoClose após 5s */}
+            {!isAllNodes && selectedNode && showNodeAlert && (
               <Alert
                 message={`Visualizando exporters do nó: ${selectedNode.name || selectedNode.addr}`}
                 type="info"
                 showIcon
                 closable
-                onClose={() => handleNodeChange('all')}
+                onClose={() => setShowNodeAlert(false)}
               />
             )}
           </Space>
@@ -1242,10 +1279,30 @@ const Exporters: React.FC = () => {
           label="Nó do Consul"
           placeholder="Selecione o nó onde o serviço será registrado"
           rules={[{ required: true, message: 'Campo obrigatório' }]}
-          options={nodes.map((node) => ({
-            label: `${node.node} (${node.addr})`,
-            value: node.addr,
-          }))}
+          fieldProps={{
+            size: 'large',
+            suffixIcon: <CloudServerOutlined />,
+            optionLabelProp: 'children',
+            options: nodes.map((node, index) => {
+              const isMaster = index === 0;
+              return {
+                label: `${node.node} (${node.addr})`,
+                value: node.addr,
+                children: (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <CloudServerOutlined />
+                      <strong>{node.node}</strong>
+                      <span style={{ color: '#8c8c8c', fontSize: '12px' }}>({node.addr})</span>
+                    </div>
+                    <Tag color={isMaster ? 'green' : 'blue'}>
+                      {isMaster ? 'Master' : 'Slave'}
+                    </Tag>
+                  </div>
+                ),
+              };
+            }),
+          }}
           tooltip="Escolha em qual nó do cluster Consul este exporter será registrado"
         />
 
@@ -1470,10 +1527,30 @@ const Exporters: React.FC = () => {
           label="Nó do Consul"
           placeholder="Selecione o nó onde o serviço está/será registrado"
           rules={[{ required: true, message: 'Campo obrigatório' }]}
-          options={nodes.map((node) => ({
-            label: `${node.node} (${node.addr})`,
-            value: node.addr,
-          }))}
+          fieldProps={{
+            size: 'large',
+            suffixIcon: <CloudServerOutlined />,
+            optionLabelProp: 'children',
+            options: nodes.map((node, index) => {
+              const isMaster = index === 0;
+              return {
+                label: `${node.node} (${node.addr})`,
+                value: node.addr,
+                children: (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <CloudServerOutlined />
+                      <strong>{node.node}</strong>
+                      <span style={{ color: '#8c8c8c', fontSize: '12px' }}>({node.addr})</span>
+                    </div>
+                    <Tag color={isMaster ? 'green' : 'blue'}>
+                      {isMaster ? 'Master' : 'Slave'}
+                    </Tag>
+                  </div>
+                ),
+              };
+            }),
+          }}
           tooltip="Escolha em qual nó do cluster Consul este exporter ficará registrado. Mudar o nó fará deregister no nó antigo e register no nó novo."
         />
 
@@ -1565,29 +1642,79 @@ const Exporters: React.FC = () => {
         />
 
         {/* Seção: Campos Opcionais de Metadata */}
-        <ProFormText
-          colProps={{ span: 8 }}
-          name="company"
-          label="Empresa"
-          placeholder="Organização"
-          tooltip="Campo adicional de metadata"
-        />
+        <div style={{ gridColumn: '1 / -1', marginTop: 16 }}>
+          <Card size="small" title="Campos Opcionais de Metadata" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <Text type="secondary">
+                Selecione quais campos adicionais deseja preencher:
+              </Text>
+              <Checkbox.Group
+                value={visibleOptionalFields}
+                onChange={(values) => setVisibleOptionalFields(values as string[])}
+                style={{ width: '100%' }}
+              >
+                <Space wrap>
+                  {metadataFields
+                    .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name))
+                    .map(field => (
+                      <Checkbox key={field.name} value={field.name}>
+                        {field.display_name || field.name}
+                      </Checkbox>
+                    ))}
+                </Space>
+              </Checkbox.Group>
+            </Space>
+          </Card>
+        </div>
 
-        <ProFormText
-          colProps={{ span: 8 }}
-          name="project"
-          label="Projeto"
-          placeholder="Projeto"
-          tooltip="Campo adicional de metadata"
-        />
+        {/* Renderizar campos selecionados dinamicamente */}
+        {visibleOptionalFields.includes('company') && (
+          <ProFormText
+            colProps={{ span: 8 }}
+            name="company"
+            label="Empresa"
+            placeholder="Organização"
+            tooltip="Campo adicional de metadata"
+          />
+        )}
 
-        <ProFormText
-          colProps={{ span: 8 }}
-          name="env"
-          label="Ambiente"
-          placeholder="prod, dev, etc"
-          tooltip="Campo adicional de metadata"
-        />
+        {visibleOptionalFields.includes('project') && (
+          <ProFormText
+            colProps={{ span: 8 }}
+            name="project"
+            label="Projeto"
+            placeholder="Projeto"
+            tooltip="Campo adicional de metadata"
+          />
+        )}
+
+        {visibleOptionalFields.includes('env') && (
+          <ProFormText
+            colProps={{ span: 8 }}
+            name="env"
+            label="Ambiente"
+            placeholder="prod, dev, etc"
+            tooltip="Campo adicional de metadata"
+          />
+        )}
+
+        {/* Outros campos opcionais baseados em metadataFields */}
+        {metadataFields
+          .filter(field =>
+            visibleOptionalFields.includes(field.name) &&
+            !['company', 'project', 'env', 'vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name)
+          )
+          .map(field => (
+            <ProFormText
+              key={field.name}
+              colProps={{ span: 8 }}
+              name={field.name}
+              label={field.display_name || field.name}
+              placeholder={field.description || `Digite ${field.display_name || field.name}`}
+              tooltip={field.description}
+            />
+          ))
+        }
 
         {/* Seção: Configurações do Serviço */}
         <ProFormText
