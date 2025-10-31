@@ -40,10 +40,10 @@ import AdvancedSearchPanel, { type SearchCondition } from '../components/Advance
 import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI, metadataFieldsAPI } from '../services/api';
 import type {
-  ConsulServiceRecord,
   MetadataField,
   MetadataFilters,
   ServiceUpdatePayload,
+  ServiceCreatePayload,
   ServiceMeta,
 } from '../services/api';
 
@@ -52,31 +52,6 @@ const { Search } = Input;
 const { Text } = Typography;
 
 const ALL_NODES = 'ALL';
-
-// Modulos conhecidos de exporters
-const EXPORTER_MODULES = [
-  'node_exporter',
-  'windows_exporter',
-  'mysqld_exporter',
-  'redis_exporter',
-  'postgres_exporter',
-  'mongodb_exporter',
-  'blackbox_exporter',
-];
-
-// Modulos blackbox (para excluir)
-const BLACKBOX_MODULES = [
-  'icmp',
-  'http_2xx',
-  'http_4xx',
-  'http_5xx',
-  'http_post_2xx',
-  'https',
-  'tcp_connect',
-  'ssh_banner',
-  'pop3s_banner',
-  'irc_banner',
-];
 
 interface ExporterTableItem {
   key: string;
@@ -92,18 +67,47 @@ interface ExporterTableItem {
 }
 
 interface EditFormValues {
-  address?: string;
-  port?: number;
-  tags?: string[];
+  // Campos do ID (se alterados, requer deregister + register)
+  vendor?: string;
+  account?: string;
+  region?: string;
+  group?: string;
+  name?: string;
+
+  // Outros campos Meta
+  instance?: string;
+  os?: 'linux' | 'windows';
+
+  // Campos adicionais do Meta (dinâmicos)
   company?: string;
   project?: string;
   env?: string;
+
+  // Campos do serviço
+  address?: string;
+  port?: number;
+  tags?: string[];
+}
+
+interface CreateFormValues {
+  service: string;
+  vendor: string;
+  account: string;
+  region: string;
+  group: string;
+  name: string;
+  instance: string;
+  os: 'linux' | 'windows';
+  address: string;
+  port: number;
+  tags?: string[];
 }
 
 type ExporterColumn<T> = import('@ant-design/pro-components').ProColumns<T>;
 
 const BASE_COLUMN_PRESETS: ColumnConfig[] = [
   { key: 'service', title: 'Servico', visible: true },
+  { key: 'id', title: 'ID Consul', visible: true }, // Coluna estática para mostrar ID do Consul
   { key: 'exporterType', title: 'Tipo', visible: true },
   { key: 'node', title: 'No', visible: true },
   { key: 'address', title: 'Endereco', visible: true },
@@ -113,7 +117,7 @@ const BASE_COLUMN_PRESETS: ColumnConfig[] = [
 ];
 
 const Exporters: React.FC = () => {
-  const actionRef = useRef<ActionType>();
+  const actionRef = useRef<ActionType>(null);
   const [nodes, setNodes] = useState<any[]>([]);
   const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
   const [searchValue, setSearchValue] = useState('');
@@ -130,10 +134,11 @@ const Exporters: React.FC = () => {
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
   const [tableSnapshot, setTableSnapshot] = useState<ExporterTableItem[]>([]);
-  const [nodeAddressMap, setNodeAddressMap] = useState<Record<string, string>>({});
   const [selectedRows, setSelectedRows] = useState<ExporterTableItem[]>([]);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingExporter, setEditingExporter] = useState<ExporterTableItem | null>(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [generatedId, setGeneratedId] = useState<string>('');
 
   useEffect(() => {
     fetchNodes();
@@ -205,105 +210,10 @@ const Exporters: React.FC = () => {
       const payload = response.data;
       const nodeList = Array.isArray(payload.data) ? payload.data : [];
       setNodes(nodeList);
-
-      const addressMap: Record<string, string> = {};
-      nodeList.forEach((node: any) => {
-        if (node.node && node.addr) {
-          addressMap[node.node] = node.addr;
-        }
-      });
-      setNodeAddressMap(addressMap);
     } catch (error) {
       console.error('Error fetching nodes:', error);
     }
   };
-
-  const buildQueryParams = useCallback(() => {
-    const query: any = {
-      node_addr: selectedNode === ALL_NODES ? 'ALL' : selectedNode,
-      ...filters,
-    };
-    return query;
-  }, [filters, selectedNode]);
-
-  // Filtra apenas exporters (exclui blackbox targets e consul)
-  const filterOnlyExporters = useCallback((services: any[]): any[] => {
-    const filtered = services.filter((s: any) => {
-      const serviceName = String(s?.service || '').toLowerCase();
-      const moduleName = String(s?.meta?.module || '').toLowerCase();
-
-      // Excluir consul
-      if (serviceName === 'consul') {
-        return false;
-      }
-
-      // Excluir targets blackbox (modulos específicos)
-      const isBlackboxTarget = BLACKBOX_MODULES.some(bm => moduleName.includes(bm));
-      if (isBlackboxTarget) {
-        return false;
-      }
-
-      // Incluir tudo que não seja consul ou blackbox target
-      return true;
-    });
-
-    return filtered;
-  }, []);
-
-  const detectExporterType = (service: any): string => {
-    const serviceName = String(service?.Service || service?.service || '').toLowerCase();
-    const moduleName = String(service?.Meta?.module || '').toLowerCase();
-
-    if (serviceName.includes('node') || moduleName.includes('node')) return 'Node Exporter';
-    if (serviceName.includes('windows') || moduleName.includes('windows')) return 'Windows Exporter';
-    if (serviceName.includes('mysql') || moduleName.includes('mysql')) return 'MySQL Exporter';
-    if (serviceName.includes('redis') || moduleName.includes('redis')) return 'Redis Exporter';
-    if (serviceName.includes('postgres') || moduleName.includes('postgres')) return 'PostgreSQL Exporter';
-    if (serviceName.includes('mongodb') || moduleName.includes('mongodb')) return 'MongoDB Exporter';
-    if (serviceName.includes('blackbox_exporter')) return 'Blackbox Exporter';
-
-    return 'Other Exporter';
-  };
-
-  const flattenServices = useCallback(
-    (data: Record<string, any[]>): ExporterTableItem[] => {
-      const rows: ExporterTableItem[] = [];
-      Object.entries(data).forEach(([nodeName, services]) => {
-        // Se não for array, pode ser um objeto com serviços dentro
-        let servicesList: any[] = [];
-        if (Array.isArray(services)) {
-          servicesList = services;
-        } else if (services && typeof services === 'object') {
-          // Se for objeto, tenta extrair como array de valores
-          servicesList = Object.values(services);
-        } else {
-          return;
-        }
-
-        servicesList.forEach((service: any) => {
-          const svcName = service.Service || service.service;
-          const svcId = service.ID || service.id || `${nodeName}-${svcName}`;
-          const nodeAddr = nodeAddressMap[nodeName] || service.Address || '';
-
-          rows.push({
-            key: svcId,
-            id: svcId,
-            node: nodeName,
-            nodeAddr,
-            service: svcName,
-            tags: service.Tags || service.tags || [],
-            address: service.Address || '',
-            port: service.Port || service.port || 0,
-            meta: (service.Meta || service.meta || {}) as ServiceMeta,
-            exporterType: detectExporterType(service),
-          });
-        });
-      });
-
-      return rows;
-    },
-    [nodeAddressMap],
-  );
 
   const applyAdvancedFilters = useCallback(
     (data: ExporterTableItem[]) => {
@@ -564,27 +474,88 @@ const Exporters: React.FC = () => {
     if (!editingExporter) return false;
 
     try {
+      // Verificar se campos do ID mudaram
+      const newVendor = values.vendor ?? editingExporter.meta?.vendor;
+      const newAccount = values.account ?? editingExporter.meta?.account;
+      const newRegion = values.region ?? editingExporter.meta?.region;
+      const newGroup = values.group ?? editingExporter.meta?.group;
+      const newName = values.name ?? editingExporter.meta?.name;
+
+      const oldVendor = editingExporter.meta?.vendor;
+      const oldAccount = editingExporter.meta?.account;
+      const oldRegion = editingExporter.meta?.region;
+      const oldGroup = editingExporter.meta?.group;
+      const oldName = editingExporter.meta?.name;
+
+      const idChanged =
+        newVendor !== oldVendor ||
+        newAccount !== oldAccount ||
+        newRegion !== oldRegion ||
+        newGroup !== oldGroup ||
+        newName !== oldName;
+
+      // Construir novo Meta com todos os campos
       const metaPayload = {
         ...editingExporter.meta,
+        vendor: newVendor,
+        account: newAccount,
+        region: newRegion,
+        group: newGroup,
+        name: newName,
+        instance: values.instance ?? editingExporter.meta?.instance,
+        os: values.os ?? editingExporter.meta?.os,
         company: values.company ?? editingExporter.meta?.company,
         project: values.project ?? editingExporter.meta?.project,
         env: values.env ?? editingExporter.meta?.env,
       };
 
-      const updatePayload: ServiceUpdatePayload = {
-        address: values.address ?? editingExporter.address,
-        port: values.port ?? editingExporter.port,
-        tags: values.tags ?? editingExporter.tags ?? [],
-        Meta: metaPayload as unknown as Record<string, string>,
-        node_addr: editingExporter.nodeAddr || editingExporter.node, // Necessário para identificar o nó
-      };
+      if (idChanged) {
+        // CASO 1: ID mudou - usar padrão deregister + register
+        const newId = `${newVendor}/${newAccount}/${newRegion}/${newGroup}@${newName}`;
 
-      await consulAPI.updateService(editingExporter.id, updatePayload);
+        // Validar novo ID
+        if (newId.includes('//') || newId.startsWith('/') || newId.endsWith('/')) {
+          message.error('ID inválido: não pode conter "//" ou começar/terminar com "/"');
+          return false;
+        }
+
+        // 1. Deregister serviço antigo
+        await consulAPI.deregisterService({
+          service_id: editingExporter.id,
+          node_addr: editingExporter.nodeAddr || editingExporter.node,
+        });
+
+        // 2. Register serviço com novo ID
+        const createPayload: ServiceCreatePayload = {
+          id: newId,
+          name: editingExporter.service,
+          address: values.address ?? editingExporter.address,
+          port: values.port ?? editingExporter.port,
+          tags: values.tags ?? editingExporter.tags ?? [],
+          Meta: metaPayload as unknown as Record<string, string>,
+        };
+
+        await consulAPI.createService(createPayload);
+
+        message.success(`Exporter atualizado com novo ID: ${newId}`);
+      } else {
+        // CASO 2: ID não mudou - usar update simples
+        const updatePayload: ServiceUpdatePayload = {
+          address: values.address ?? editingExporter.address,
+          port: values.port ?? editingExporter.port,
+          tags: values.tags ?? editingExporter.tags ?? [],
+          Meta: metaPayload as unknown as Record<string, string>,
+          node_addr: editingExporter.nodeAddr || editingExporter.node,
+        };
+
+        await consulAPI.updateService(editingExporter.id, updatePayload);
+
+        message.success('Exporter atualizado com sucesso');
+      }
 
       // Limpar cache após atualizar
       await consulAPI.clearCache('exporters');
 
-      message.success('Exporter atualizado com sucesso');
       setEditModalOpen(false);
       setEditingExporter(null);
       actionRef.current?.reload();
@@ -592,7 +563,67 @@ const Exporters: React.FC = () => {
     } catch (error: unknown) {
       let errorMsg = 'Erro ao atualizar exporter';
       if (typeof error === 'object' && error !== null) {
-        const maybeResponse = error as { response?: { data?: { detail?: string } } }; // API retorna detail
+        const maybeResponse = error as { response?: { data?: { detail?: string } } };
+        errorMsg = maybeResponse.response?.data?.detail
+          || (error as { message?: string }).message
+          || errorMsg;
+      }
+      message.error(errorMsg);
+      return false;
+    }
+  };
+
+  const handleCreateSubmit = async (values: CreateFormValues) => {
+    try {
+      // Gerar ID no formato: {vendor}/{account}/{region}/{group}@{name}
+      const serviceId = `${values.vendor}/${values.account}/${values.region}/${values.group}@${values.name}`;
+
+      // Validar formato do ID (sem // e sem / no início/fim)
+      if (serviceId.includes('//') || serviceId.startsWith('/') || serviceId.endsWith('/')) {
+        message.error('ID inválido: não pode conter "//" ou começar/terminar com "/"');
+        return false;
+      }
+
+      // Validar formato instance (IP:PORT)
+      const instanceRegex = /^[\w.-]+:\d+$/;
+      if (!instanceRegex.test(values.instance)) {
+        message.error('Formato de instance inválido. Use: IP:PORTA (ex: 192.168.1.10:9100)');
+        return false;
+      }
+
+      // Construir payload de registro - usar ServiceCreatePayload
+      const createPayload: ServiceCreatePayload = {
+        id: serviceId,
+        name: values.service,
+        address: values.address,
+        port: values.port,
+        tags: values.tags || [],
+        Meta: {
+          vendor: values.vendor,
+          account: values.account,
+          region: values.region,
+          group: values.group,
+          name: values.name,
+          instance: values.instance,
+          os: values.os,
+        },
+      };
+
+      // Registrar serviço via API
+      await consulAPI.createService(createPayload);
+
+      // Limpar cache após criar
+      await consulAPI.clearCache('exporters');
+
+      message.success('Exporter criado com sucesso');
+      setCreateModalOpen(false);
+      setGeneratedId('');
+      actionRef.current?.reload();
+      return true;
+    } catch (error: unknown) {
+      let errorMsg = 'Erro ao criar exporter';
+      if (typeof error === 'object' && error !== null) {
+        const maybeResponse = error as { response?: { data?: { detail?: string } } };
         errorMsg = maybeResponse.response?.data?.detail
           || (error as { message?: string }).message
           || errorMsg;
@@ -665,6 +696,26 @@ const Exporters: React.FC = () => {
         width: 200,
         render: (_, record) => <Text strong>{record.service}</Text>,
         sorter: (a, b) => a.service.localeCompare(b.service),
+      },
+      {
+        title: 'ID Consul',
+        dataIndex: 'id',
+        key: 'id',
+        width: 350,
+        ellipsis: {
+          showTitle: false,
+        },
+        render: (_, record) => (
+          <Tooltip title={record.id}>
+            <code style={{ fontSize: '11px', cursor: 'pointer' }} onClick={() => {
+              navigator.clipboard.writeText(record.id);
+              message.success('ID copiado para área de transferência');
+            }}>
+              {record.id}
+            </code>
+          </Tooltip>
+        ),
+        sorter: (a, b) => a.id.localeCompare(b.id),
       },
       {
         title: 'Tipo',
@@ -887,6 +938,14 @@ const Exporters: React.FC = () => {
             </Space>
 
             <Space wrap>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateModalOpen(true)}
+              >
+                Adicionar Exporter
+              </Button>
+
               <Search
                 placeholder="Buscar por nome, no, tipo..."
                 allowClear
@@ -1069,13 +1128,183 @@ const Exporters: React.FC = () => {
         />
       </Drawer>
 
+      {/* Create Exporter Modal */}
+      <ModalForm<CreateFormValues>
+        title="Adicionar Novo Exporter"
+        width={700}
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        initialValues={{
+          service: 'selfnode_exporter',
+          port: 9100,
+          os: 'linux',
+        }}
+        modalProps={{
+          destroyOnHidden: true,
+          onCancel: () => {
+            setCreateModalOpen(false);
+            setGeneratedId('');
+          },
+        }}
+        submitter={{
+          searchConfig: {
+            submitText: 'Criar Exporter',
+            resetText: 'Limpar',
+          },
+        }}
+        onFinish={handleCreateSubmit}
+        onValuesChange={(_, allValues) => {
+          // Atualizar ID gerado conforme usuário preenche os campos
+          if (allValues.vendor && allValues.account && allValues.region && allValues.group && allValues.name) {
+            const id = `${allValues.vendor}/${allValues.account}/${allValues.region}/${allValues.group}@${allValues.name}`;
+            setGeneratedId(id);
+          } else {
+            setGeneratedId('');
+          }
+        }}
+      >
+        <ProFormSelect
+          name="service"
+          label="Tipo de Serviço"
+          placeholder="Selecione o tipo de exporter"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          options={[
+            { label: 'Self Node Exporter', value: 'selfnode_exporter' },
+            { label: 'Node Exporter', value: 'node_exporter' },
+            { label: 'Windows Exporter', value: 'windows_exporter' },
+            { label: 'MySQL Exporter', value: 'mysqld_exporter' },
+            { label: 'PostgreSQL Exporter', value: 'postgres_exporter' },
+            { label: 'Redis Exporter', value: 'redis_exporter' },
+            { label: 'MongoDB Exporter', value: 'mongodb_exporter' },
+          ]}
+        />
+
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+          <strong>Campos para construção do ID:</strong> {generatedId || '(preencha os campos abaixo)'}
+        </Text>
+
+        <ProFormText
+          name="vendor"
+          label="Vendor"
+          placeholder="Ex: Skills, GrupoWink"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Fornecedor ou empresa principal"
+        />
+
+        <ProFormText
+          name="account"
+          label="Account"
+          placeholder="Ex: Aplicacao, AD, Monit_Print"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Conta ou departamento"
+        />
+
+        <ProFormText
+          name="region"
+          label="Region"
+          placeholder="Ex: InfraLocal, Cliente"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Região ou localização"
+        />
+
+        <ProFormText
+          name="group"
+          label="Group"
+          placeholder="Ex: DTC_Cluster_Local"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Grupo ou cluster"
+        />
+
+        <ProFormText
+          name="name"
+          label="Name"
+          placeholder="Ex: HUDU_172.16.1.25"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_.-]+$/, message: 'Apenas letras, números, _, . e -' },
+          ]}
+          tooltip="Nome identificador único do exporter"
+        />
+
+        <ProFormText
+          name="instance"
+          label="Instance"
+          placeholder="Ex: 192.168.1.10:9100"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
+          ]}
+          tooltip="Endereço no formato IP:PORTA"
+        />
+
+        <ProFormSelect
+          name="os"
+          label="Sistema Operacional"
+          placeholder="Selecione o sistema operacional"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          options={[
+            { label: 'Linux', value: 'linux' },
+            { label: 'Windows', value: 'windows' },
+          ]}
+          tooltip="Sistema operacional do host monitorado"
+        />
+
+        <ProFormText
+          name="address"
+          label="Endereço"
+          placeholder="Ex: 192.168.1.10"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          tooltip="Endereço IP ou hostname"
+        />
+
+        <ProFormDigit
+          name="port"
+          label="Porta"
+          placeholder="Ex: 9100"
+          min={1}
+          max={65535}
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          tooltip="Porta do exporter"
+        />
+
+        <ProFormSelect
+          name="tags"
+          label="Tags"
+          mode="tags"
+          placeholder="Adicione tags para classificação (opcional)"
+          fieldProps={{
+            tokenSeparators: [','],
+          }}
+          tooltip="Tags devem incluir o vendor e o tipo de OS correspondente"
+        />
+      </ModalForm>
+
       {/* Edit Exporter Modal */}
-      <ModalForm
+      <ModalForm<EditFormValues>
         title="Editar Exporter"
-        width={600}
+        width={700}
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         initialValues={editingExporter ? {
+          vendor: editingExporter.meta?.vendor,
+          account: editingExporter.meta?.account,
+          region: editingExporter.meta?.region,
+          group: editingExporter.meta?.group,
+          name: editingExporter.meta?.name,
+          instance: editingExporter.meta?.instance,
+          os: (editingExporter.meta?.os as 'linux' | 'windows') || 'linux',
           address: editingExporter.address,
           port: editingExporter.port,
           tags: editingExporter.tags,
@@ -1092,46 +1321,156 @@ const Exporters: React.FC = () => {
         }}
         submitter={{
           searchConfig: {
-            submitText: 'Salvar alteracoes',
+            submitText: 'Salvar alterações',
+            resetText: 'Cancelar',
           },
         }}
         onFinish={handleEditSubmit}
       >
+        {editingExporter && (
+          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+            <strong>ID Atual:</strong> <code>{editingExporter.id}</code>
+          </Text>
+        )}
+
+        <Text type="warning" style={{ display: 'block', marginBottom: 16 }}>
+          ⚠️ Alterar os campos abaixo mudará o ID do serviço (deregister + register)
+        </Text>
+
         <ProFormText
-          name="address"
-          label="Endereco"
-          placeholder="Endereco do exporter"
+          name="vendor"
+          label="Vendor"
+          placeholder="Ex: Skills, GrupoWink"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Fornecedor ou empresa principal"
         />
-        <ProFormDigit
-          name="port"
-          label="Porta"
-          placeholder="Porta do exporter"
-          min={1}
-          max={65535}
+
+        <ProFormText
+          name="account"
+          label="Account"
+          placeholder="Ex: Aplicacao, AD, Monit_Print"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Conta ou departamento"
         />
+
+        <ProFormText
+          name="region"
+          label="Region"
+          placeholder="Ex: InfraLocal, Cliente"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Região ou localização"
+        />
+
+        <ProFormText
+          name="group"
+          label="Group"
+          placeholder="Ex: DTC_Cluster_Local"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
+          ]}
+          tooltip="Grupo ou cluster"
+        />
+
+        <ProFormText
+          name="name"
+          label="Name"
+          placeholder="Ex: HUDU_172.16.1.25"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[a-zA-Z0-9_.-]+$/, message: 'Apenas letras, números, _, . e -' },
+          ]}
+          tooltip="Nome identificador único do exporter"
+        />
+
+        <ProFormText
+          name="instance"
+          label="Instance"
+          placeholder="Ex: 192.168.1.10:9100"
+          rules={[
+            { required: true, message: 'Campo obrigatório' },
+            { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
+          ]}
+          tooltip="Endereço no formato IP:PORTA"
+        />
+
+        <ProFormSelect
+          name="os"
+          label="Sistema Operacional"
+          placeholder="Selecione o sistema operacional"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          options={[
+            { label: 'Linux', value: 'linux' },
+            { label: 'Windows', value: 'windows' },
+          ]}
+          tooltip="Sistema operacional do host monitorado"
+        />
+
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16, marginTop: 16 }}>
+          <strong>Campos adicionais do Meta:</strong>
+        </Text>
+
         <ProFormText
           name="company"
           label="Empresa"
-          placeholder="Organizacao responsavel"
+          placeholder="Organização responsável"
+          tooltip="Campo adicional de metadata"
         />
+
         <ProFormText
           name="project"
           label="Projeto"
           placeholder="Projeto associado"
+          tooltip="Campo adicional de metadata"
         />
+
         <ProFormText
           name="env"
           label="Ambiente"
           placeholder="Ex: prod, dev, homolog"
+          tooltip="Campo adicional de metadata"
         />
+
+        <Text type="secondary" style={{ display: 'block', marginBottom: 16, marginTop: 16 }}>
+          <strong>Configurações do serviço:</strong>
+        </Text>
+
+        <ProFormText
+          name="address"
+          label="Endereço"
+          placeholder="Ex: 192.168.1.10"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          tooltip="Endereço IP ou hostname"
+        />
+
+        <ProFormDigit
+          name="port"
+          label="Porta"
+          placeholder="Ex: 9100"
+          min={1}
+          max={65535}
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          tooltip="Porta do exporter"
+        />
+
         <ProFormSelect
           name="tags"
           label="Tags"
           mode="tags"
-          placeholder="Adicione tags para classificacao"
+          placeholder="Adicione tags para classificação"
           fieldProps={{
             tokenSeparators: [','],
           }}
+          tooltip="Tags para classificação do serviço"
         />
       </ModalForm>
     </PageContainer>
