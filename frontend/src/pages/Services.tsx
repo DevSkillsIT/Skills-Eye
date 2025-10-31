@@ -278,12 +278,12 @@ const Services: React.FC = () => {
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
-  // Atualizar columnConfig quando defaultColumnConfig mudar
+  // Atualizar columnConfig quando defaultColumnConfig mudar (sempre que tableFields mudar)
   useEffect(() => {
-    if (defaultColumnConfig.length > 0 && columnConfig.length === 0) {
+    if (defaultColumnConfig.length > 0) {
       setColumnConfig(defaultColumnConfig);
     }
-  }, [defaultColumnConfig, columnConfig.length]);
+  }, [defaultColumnConfig]);
 
   // Suporte para filtro via URL (ex: /services?service=nome_do_servico)
   const [searchParams, setSearchParams] = useSearchParams();
