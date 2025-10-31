@@ -151,6 +151,7 @@ const Exporters: React.FC = () => {
   const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
   const [visibleOptionalFields, setVisibleOptionalFields] = useState<string[]>([]);
   const [masterNodeAddr, setMasterNodeAddr] = useState<string>(''); // Armazena o endereço do nó master
+  const createFormRef = useRef<{ setFieldsValue: (values: Record<string, unknown>) => void } | null>(null); // Ref para controlar o formulário de criação
 
   // Hook para gerenciar nó selecionado na página principal
   const { selectedNode, isAllNodes, selectNode } = useSelectedNode();
@@ -307,6 +308,12 @@ const Exporters: React.FC = () => {
       const response = await consulAPI.getPrometheusJobNames(nodeAddr);
       const names = response.data?.job_names || [];
       setServiceNames(names);
+
+      // Definir o primeiro job_name como padrão no campo "service" quando carregar
+      if (names.length > 0 && createFormRef.current) {
+        createFormRef.current.setFieldsValue({ service: names[0] });
+        console.log(`[Exporters] Campo "service" definido como: ${names[0]}`);
+      }
     } catch (error) {
       console.error('Error fetching Prometheus job names for node:', error);
       message.error('Erro ao carregar tipos de job do Prometheus para o nó selecionado');
@@ -1314,11 +1321,20 @@ const Exporters: React.FC = () => {
             resetText: 'Limpar',
           },
         }}
+        formRef={createFormRef}
         onFinish={handleCreateSubmit}
         onValuesChange={(changedValues, allValues) => {
-          // Quando o nó muda, buscar serviços daquele nó
+          // Quando o nó muda, buscar serviços daquele nó E limpar campo "service"
           if (changedValues.node_addr) {
+            console.log(`[Exporters] Nó alterado para: ${changedValues.node_addr}`);
             setSelectedNodeForModal(changedValues.node_addr);
+
+            // Limpar o campo "service" para forçar o usuário a selecionar um novo
+            // (ou aguardar o fetchServiceNamesForNode definir o primeiro automaticamente)
+            if (createFormRef.current) {
+              createFormRef.current.setFieldsValue({ service: undefined });
+              console.log('[Exporters] Campo "service" limpo');
+            }
           }
 
           // Atualizar ID gerado conforme usuário preenche os campos
