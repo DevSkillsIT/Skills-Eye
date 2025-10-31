@@ -129,6 +129,32 @@ async def list_services(
         )
 
 
+@router.get("/catalog/names", include_in_schema=True)
+async def get_service_catalog_names():
+    """
+    Retorna lista de nomes de serviços disponíveis no catálogo do Consul
+
+    Útil para popular dropdown de tipos de serviços na criação/edição de exporters.
+    Retorna apenas nomes únicos de serviços registrados no Consul (ex: selfnode_exporter,
+    node_exporter, windows_exporter, etc.)
+    """
+    try:
+        consul = ConsulManager()
+
+        logger.info("Obtendo nomes de serviços do catálogo Consul")
+        service_names = await consul.get_service_names()
+
+        return {
+            "success": True,
+            "data": service_names,
+            "total": len(service_names)
+        }
+
+    except Exception as e:
+        logger.error(f"Erro ao obter nomes de serviços: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/metadata/unique-values", include_in_schema=True)
 async def get_unique_metadata_values(
     field: str = Query(..., description="Campo de metadados (module, company, project, env, etc)")

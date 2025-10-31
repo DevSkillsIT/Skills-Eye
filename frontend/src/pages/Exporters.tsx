@@ -67,6 +67,9 @@ interface ExporterTableItem {
 }
 
 interface EditFormValues {
+  // Nó do Consul (se alterado, requer deregister do nó antigo + register no nó novo)
+  node_addr?: string;
+
   // Campos do ID (se alterados, requer deregister + register)
   vendor?: string;
   account?: string;
@@ -90,6 +93,9 @@ interface EditFormValues {
 }
 
 interface CreateFormValues {
+  // Nó do Consul onde o serviço será registrado
+  node_addr: string;
+
   service: string;
   vendor: string;
   account: string;
@@ -139,9 +145,12 @@ const Exporters: React.FC = () => {
   const [editingExporter, setEditingExporter] = useState<ExporterTableItem | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [generatedId, setGeneratedId] = useState<string>('');
+  const [serviceNames, setServiceNames] = useState<string[]>([]);
+  const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
 
   useEffect(() => {
     fetchNodes();
+    fetchServiceNames();
   }, []);
 
   useEffect(() => {
@@ -212,6 +221,20 @@ const Exporters: React.FC = () => {
       setNodes(nodeList);
     } catch (error) {
       console.error('Error fetching nodes:', error);
+    }
+  };
+
+  const fetchServiceNames = async () => {
+    try {
+      setServiceNamesLoading(true);
+      const response = await consulAPI.getServiceCatalogNames();
+      const names = response.data?.data || [];
+      setServiceNames(names);
+    } catch (error) {
+      console.error('Error fetching service names:', error);
+      message.error('Erro ao carregar tipos de serviços');
+    } finally {
+      setServiceNamesLoading(false);
     }
   };
 
@@ -474,6 +497,11 @@ const Exporters: React.FC = () => {
     if (!editingExporter) return false;
 
     try {
+      // Verificar se o nó mudou
+      const oldNodeAddr = editingExporter.nodeAddr || editingExporter.node;
+      const newNodeAddr = values.node_addr ?? oldNodeAddr;
+      const nodeChanged = newNodeAddr !== oldNodeAddr;
+
       // Verificar se campos do ID mudaram
       const newVendor = values.vendor ?? editingExporter.meta?.vendor;
       const newAccount = values.account ?? editingExporter.meta?.account;
@@ -509,8 +537,8 @@ const Exporters: React.FC = () => {
         env: values.env ?? editingExporter.meta?.env,
       };
 
-      if (idChanged) {
-        // CASO 1: ID mudou - usar padrão deregister + register
+      if (nodeChanged || idChanged) {
+        // CASO 1: Nó mudou OU ID mudou - usar padrão deregister + register
         const newId = `${newVendor}/${newAccount}/${newRegion}/${newGroup}@${newName}`;
 
         // Validar novo ID
@@ -519,13 +547,13 @@ const Exporters: React.FC = () => {
           return false;
         }
 
-        // 1. Deregister serviço antigo
+        // 1. Deregister serviço do nó antigo
         await consulAPI.deregisterService({
           service_id: editingExporter.id,
-          node_addr: editingExporter.nodeAddr || editingExporter.node,
+          node_addr: oldNodeAddr,
         });
 
-        // 2. Register serviço com novo ID
+        // 2. Register serviço no nó novo (ou mesmo nó com ID novo)
         const createPayload: ServiceCreatePayload = {
           id: newId,
           name: editingExporter.service,
@@ -533,19 +561,26 @@ const Exporters: React.FC = () => {
           port: values.port ?? editingExporter.port,
           tags: values.tags ?? editingExporter.tags ?? [],
           Meta: metaPayload as unknown as Record<string, string>,
+          node_addr: newNodeAddr, // Registrar no nó novo
         };
 
         await consulAPI.createService(createPayload);
 
-        message.success(`Exporter atualizado com novo ID: ${newId}`);
+        if (nodeChanged && idChanged) {
+          message.success(`Exporter movido para nó ${newNodeAddr} com novo ID: ${newId}`);
+        } else if (nodeChanged) {
+          message.success(`Exporter movido para nó ${newNodeAddr}`);
+        } else {
+          message.success(`Exporter atualizado com novo ID: ${newId}`);
+        }
       } else {
-        // CASO 2: ID não mudou - usar update simples
+        // CASO 2: Nó e ID não mudaram - usar update simples
         const updatePayload: ServiceUpdatePayload = {
           address: values.address ?? editingExporter.address,
           port: values.port ?? editingExporter.port,
           tags: values.tags ?? editingExporter.tags ?? [],
           Meta: metaPayload as unknown as Record<string, string>,
-          node_addr: editingExporter.nodeAddr || editingExporter.node,
+          node_addr: newNodeAddr,
         };
 
         await consulAPI.updateService(editingExporter.id, updatePayload);
@@ -607,9 +642,10 @@ const Exporters: React.FC = () => {
           instance: values.instance,
           os: values.os,
         },
+        node_addr: values.node_addr, // Nó onde o serviço será registrado
       };
 
-      // Registrar serviço via API
+      // Registrar serviço via API no nó especificado
       await consulAPI.createService(createPayload);
 
       // Limpar cache após criar
@@ -1164,19 +1200,30 @@ const Exporters: React.FC = () => {
         }}
       >
         <ProFormSelect
+          name="node_addr"
+          label="Nó do Consul"
+          placeholder="Selecione o nó onde o serviço será registrado"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          options={nodes.map((node) => ({
+            label: `${node.node} (${node.addr})`,
+            value: node.addr,
+          }))}
+          tooltip="Escolha em qual nó do cluster Consul este exporter será registrado"
+        />
+
+        <ProFormSelect
           name="service"
           label="Tipo de Serviço"
           placeholder="Selecione o tipo de exporter"
           rules={[{ required: true, message: 'Campo obrigatório' }]}
-          options={[
-            { label: 'Self Node Exporter', value: 'selfnode_exporter' },
-            { label: 'Node Exporter', value: 'node_exporter' },
-            { label: 'Windows Exporter', value: 'windows_exporter' },
-            { label: 'MySQL Exporter', value: 'mysqld_exporter' },
-            { label: 'PostgreSQL Exporter', value: 'postgres_exporter' },
-            { label: 'Redis Exporter', value: 'redis_exporter' },
-            { label: 'MongoDB Exporter', value: 'mongodb_exporter' },
-          ]}
+          options={serviceNames.map((name) => ({
+            label: name,
+            value: name,
+          }))}
+          fieldProps={{
+            loading: serviceNamesLoading,
+          }}
+          tooltip="Tipos de serviços disponíveis no catálogo do Consul"
         />
 
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
@@ -1298,6 +1345,7 @@ const Exporters: React.FC = () => {
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         initialValues={editingExporter ? {
+          node_addr: editingExporter.nodeAddr || editingExporter.node,
           vendor: editingExporter.meta?.vendor,
           account: editingExporter.meta?.account,
           region: editingExporter.meta?.region,
@@ -1328,14 +1376,31 @@ const Exporters: React.FC = () => {
         onFinish={handleEditSubmit}
       >
         {editingExporter && (
-          <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-            <strong>ID Atual:</strong> <code>{editingExporter.id}</code>
-          </Text>
+          <>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+              <strong>ID Atual:</strong> <code>{editingExporter.id}</code>
+            </Text>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+              <strong>Nó Atual:</strong> {editingExporter.node} ({editingExporter.nodeAddr || editingExporter.node})
+            </Text>
+          </>
         )}
 
         <Text type="warning" style={{ display: 'block', marginBottom: 16 }}>
-          ⚠️ Alterar os campos abaixo mudará o ID do serviço (deregister + register)
+          ⚠️ Alterar o nó ou os campos abaixo exigirá deregister + register do serviço
         </Text>
+
+        <ProFormSelect
+          name="node_addr"
+          label="Nó do Consul"
+          placeholder="Selecione o nó onde o serviço está/será registrado"
+          rules={[{ required: true, message: 'Campo obrigatório' }]}
+          options={nodes.map((node) => ({
+            label: `${node.node} (${node.addr})`,
+            value: node.addr,
+          }))}
+          tooltip="Escolha em qual nó do cluster Consul este exporter ficará registrado. Mudar o nó fará deregister no nó antigo e register no nó novo."
+        />
 
         <ProFormText
           name="vendor"

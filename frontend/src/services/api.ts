@@ -549,6 +549,9 @@ export const consulAPI = {
   getService: (serviceId: string, params?: ServiceQuery) =>
     api.get(`/services/${encodeURIComponent(serviceId)}`, { params }),
 
+  // Service Catalog - busca nomes de serviços disponíveis no Consul
+  getServiceCatalogNames: () => api.get<{ success: boolean; data: string[]; total: number }>('/services/catalog/names'),
+
   createService: (serviceData: ServiceCreatePayload) =>
     api.post('/services', serviceData),
 
