@@ -848,14 +848,14 @@ const BlackboxTargets: React.FC = () => {
         onChange={(value) => setSelectedNode(value)}
       >
         <Select.Option value={ALL_NODES}>Todos os nos</Select.Option>
-        {(metadataOptions.nodes || []).map((node) => (
+        {(metadataOptions['node'] || []).map((node) => (
           <Select.Option key={node} value={node}>
             {node}
           </Select.Option>
         ))}
       </Select>
     ),
-    [metadataOptions.nodes, selectedNode],
+    [metadataOptions, selectedNode],
   );
 
   const renderExpandedRow = useCallback(

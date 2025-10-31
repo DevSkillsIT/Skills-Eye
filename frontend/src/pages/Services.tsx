@@ -104,8 +104,8 @@ type ServiceColumn<T> = import('@ant-design/pro-components').ProColumns<T>;
 interface ServiceFormValues {
   module: string;
   company: string;
-  project: string;
-  env: string;
+  grupo_monitoramento: string; // RENOMEADO de 'project'
+  tipo_monitoramento: string; // RENOMEADO de 'env'
   serviceDisplayName: string;
   instance: string;
   consulServiceName?: string;
@@ -144,8 +144,8 @@ const composeServiceId = (values: ServiceFormValues) => {
   const parts = [
     sanitizeSegment(values.module),
     sanitizeSegment(values.company),
-    sanitizeSegment(values.project),
-    sanitizeSegment(values.env),
+    sanitizeSegment(values.grupo_monitoramento),
+    sanitizeSegment(values.tipo_monitoramento),
   ];
   const display = sanitizeSegment(values.serviceDisplayName);
   return `${parts.join('/')}`.concat(`@${display}`);
@@ -157,8 +157,8 @@ const buildServicePayload = (
   const meta: Record<string, string> = {
     module: values.module,
     company: values.company,
-    project: values.project,
-    env: values.env,
+    grupo_monitoramento: values.grupo_monitoramento,
+    tipo_monitoramento: values.tipo_monitoramento,
     name: values.serviceDisplayName,
     instance: values.instance,
   };
@@ -199,8 +199,8 @@ const mapRecordToFormValues = (record: ServiceTableItem): ServiceFormValues => {
   return {
     module: meta.module || '',
     company: meta.company || '',
-    project: meta.project || '',
-    env: meta.env || '',
+    grupo_monitoramento: meta.grupo_monitoramento || meta.project || '', // Suporte para nome antigo
+    tipo_monitoramento: meta.tipo_monitoramento || meta.env || '', // Suporte para nome antigo
     serviceDisplayName: meta.name || '',
     instance: meta.instance || '',
     consulServiceName: record.service || '',
@@ -1213,7 +1213,7 @@ const Services: React.FC = () => {
             name="module"
             label="Modulo"
             placeholder="Selecione o modulo"
-            options={metadataOptions.modules.map((module) => ({
+            options={(metadataOptions['module'] || []).map((module) => ({
               label: module,
               value: module,
             }))}
