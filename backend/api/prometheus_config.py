@@ -1835,3 +1835,146 @@ async def get_alertmanager_inhibit_rules(
     except Exception as e:
         logger.error(f"Erro ao extrair regras de inibição: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/job-names")
+async def get_prometheus_job_names(
+    hostname: Optional[str] = Query(None, description="Hostname do servidor Prometheus (opcional, usa master se não fornecido)")
+):
+    """
+    Extrai todos os job_names configurados no prometheus.yml de um servidor específico
+
+    Retorna apenas jobs que possuem consul_sd_configs (service discovery do Consul).
+    Isso é usado no frontend para popular o dropdown de "Tipo de Serviço" ao criar exporters.
+
+    Args:
+        hostname: IP ou hostname do servidor Prometheus (ex: 172.16.1.26)
+                 Se não fornecido, usa o servidor master (primeiro da lista)
+
+    Returns:
+        Lista de job_names disponíveis para aquele servidor
+
+    Example:
+        GET /api/v1/prometheus-config/job-names?hostname=172.16.1.26
+
+        Response:
+        {
+            "success": true,
+            "job_names": ["selfnode_exporter_rio", "blackbox_remote_rmd_ldc", ...],
+            "total": 5,
+            "hostname": "172.16.1.26",
+            "file_path": "/etc/prometheus/prometheus.yml"
+        }
+    """
+    try:
+        # Detectar caminho do prometheus.yml no servidor
+        from core.server_utils import get_server_detector
+
+        # Se hostname não fornecido, usar o master (primeiro servidor)
+        if not hostname:
+            import os
+            prometheus_hosts_str = os.getenv("PROMETHEUS_CONFIG_HOSTS", "")
+            if not prometheus_hosts_str:
+                raise HTTPException(
+                    status_code=500,
+                    detail="PROMETHEUS_CONFIG_HOSTS não configurado no .env"
+                )
+
+            # Pegar primeiro host (master)
+            first_host = prometheus_hosts_str.split(';')[0]
+            hostname = first_host.split(':')[0]
+
+        logger.info(f"[JOB-NAMES] Buscando job_names para servidor: {hostname}")
+
+        # Detectar capacidades do servidor
+        detector = get_server_detector()
+        server_info = detector.detect_server_capabilities(hostname, use_cache=False)
+
+        if not server_info.has_prometheus:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Servidor {hostname} não possui Prometheus instalado. {server_info.description}"
+            )
+
+        prometheus_file_path = server_info.prometheus_config_path
+        if not prometheus_file_path:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Não foi possível detectar o caminho do prometheus.yml no servidor {hostname}"
+            )
+
+        logger.info(f"[JOB-NAMES] Arquivo detectado: {prometheus_file_path}")
+
+        # Ler conteúdo do prometheus.yml
+        yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
+
+        if not yaml_content:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Arquivo prometheus.yml não encontrado ou vazio no servidor {hostname}"
+            )
+
+        # Parsear YAML
+        import yaml as pyyaml
+        try:
+            config = pyyaml.safe_load(yaml_content)
+        except pyyaml.YAMLError as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erro ao parsear prometheus.yml: {str(e)}"
+            )
+
+        # Extrair job_names dos scrape_configs
+        scrape_configs = config.get('scrape_configs', [])
+        if not scrape_configs:
+            logger.warning(f"[JOB-NAMES] Nenhum scrape_config encontrado no prometheus.yml de {hostname}")
+            return {
+                "success": True,
+                "job_names": [],
+                "total": 0,
+                "hostname": hostname,
+                "file_path": prometheus_file_path,
+                "message": "Nenhum job configurado no prometheus.yml"
+            }
+
+        job_names = []
+        jobs_with_consul_sd = []
+
+        for job in scrape_configs:
+            if not isinstance(job, dict):
+                continue
+
+            job_name = job.get('job_name')
+            if not job_name:
+                continue
+
+            # Filtrar apenas jobs com consul_sd_configs (os que fazem service discovery)
+            has_consul_sd = job.get('consul_sd_configs') is not None
+
+            if has_consul_sd:
+                jobs_with_consul_sd.append({
+                    'job_name': job_name,
+                    'has_consul_sd': True,
+                    'scrape_interval': job.get('scrape_interval', 'default'),
+                    'metrics_path': job.get('metrics_path', '/metrics')
+                })
+                job_names.append(job_name)
+            else:
+                logger.debug(f"[JOB-NAMES] Job '{job_name}' ignorado (sem consul_sd_configs)")
+
+        logger.info(f"[JOB-NAMES] Encontrados {len(job_names)} jobs com consul_sd_configs em {hostname}")
+
+        return {
+            "success": True,
+            "job_names": sorted(job_names),  # Ordenar alfabeticamente
+            "total": len(job_names),
+            "hostname": hostname,
+            "file_path": prometheus_file_path,
+            "jobs_details": jobs_with_consul_sd  # Detalhes extras (opcional para debug)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[JOB-NAMES] Erro ao buscar job_names: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

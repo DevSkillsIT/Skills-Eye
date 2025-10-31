@@ -264,12 +264,14 @@ const Exporters: React.FC = () => {
   const fetchServiceNamesForNode = async (nodeAddr: string) => {
     try {
       setServiceNamesLoading(true);
-      const response = await consulAPI.getNodeServiceNames(nodeAddr);
-      const names = response.data?.data || [];
+      // Buscar job_names do Prometheus para aquele servidor
+      // (não mais os serviços do Consul, mas os job_names configurados no prometheus.yml)
+      const response = await consulAPI.getPrometheusJobNames(nodeAddr);
+      const names = response.data?.job_names || [];
       setServiceNames(names);
     } catch (error) {
-      console.error('Error fetching service names for node:', error);
-      message.error('Erro ao carregar tipos de serviços do nó selecionado');
+      console.error('Error fetching Prometheus job names for node:', error);
+      message.error('Erro ao carregar tipos de job do Prometheus para o nó selecionado');
     } finally {
       setServiceNamesLoading(false);
     }

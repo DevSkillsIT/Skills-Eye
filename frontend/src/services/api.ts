@@ -544,6 +544,22 @@ export const consulAPI = {
   getNodeServiceNames: (nodeAddr: string) =>
     api.get<{ success: boolean; node: string; data: string[]; total: number }>(`/nodes/${nodeAddr}/service-names`),
 
+  // Prometheus Config - busca job_names configurados no prometheus.yml
+  getPrometheusJobNames: (hostname?: string) =>
+    api.get<{
+      success: boolean;
+      job_names: string[];
+      total: number;
+      hostname: string;
+      file_path: string;
+      jobs_details?: Array<{
+        job_name: string;
+        has_consul_sd: boolean;
+        scrape_interval: string;
+        metrics_path: string;
+      }>;
+    }>('/prometheus-config/job-names', { params: hostname ? { hostname } : {} }),
+
   // Services
   listServices: (params?: ServiceQuery) =>
     api.get<ServiceListResponse>('/services', { params }),
