@@ -21,6 +21,190 @@
 
 ---
 
+## 🔓 **ZERO LOCK-IN: FIELD MAPPING & FLEXIBILIDADE TOTAL**
+
+### ⚠️ **CRITICAL: Não assumir NADA sobre nomes**
+
+```
+❌ ERRADO: Hardcoded "node_exporter", "selfnode", "blackbox"
+✅ CORRETO: Tudo configurável via JSON schemas
+```
+
+**Problema Real Encontrado:**
+- Código assumia nomes fixos: `exporterType === "Node Exporter"`
+- E se empresa usar `"node-exporter-custom"` ou `"selfnode"` ou `"custom-linux-metrics"`?
+- Sistema ficaria **quebrado** → **INACEITÁVEL!**
+
+### ✅ **Solução: Field Mapping Layer**
+
+#### **1. Source of Truth: Prometheus Configs**
+
+O sistema **JÁ TEM** mapeamento dos campos via `/api/v1/metadata-dynamic/fields`:
+- Lê `prometheus.yml` → `relabel_configs`
+- Extrai `target_label` → vira coluna da tabela
+- **100% agnóstico** a nomes de exporters/módulos
+
+#### **2. JSON Schema com Mapeamentos Flexíveis**
+
+```json
+{
+  "id": "icmp",
+  "display_name": "ICMP (Ping)",
+
+  // ✅ FLEXÍVEL: Permite múltiplos nomes para o mesmo tipo
+  "matchers": {
+    "exporter_type_field": "exporter_type",  // Campo no Consul Meta
+    "exporter_type_values": [
+      "blackbox",
+      "blackbox-exporter",
+      "bb-exporter",
+      "custom-blackbox"
+    ],
+
+    "module_field": "module",  // Campo no Consul Meta
+    "module_values": [
+      "icmp",
+      "ping",
+      "icmp_ipv4",
+      "icmp_ipv6"
+    ],
+
+    // ✅ Permite filtrar por qualquer combinação
+    "additional_filters": [
+      { "field": "job", "values": ["blackbox"] },
+      { "field": "probe", "values": ["icmp"] }
+    ]
+  },
+
+  // ✅ Field Mapping: Renomear campos do Prometheus
+  "field_mapping": {
+    "instance": "target",           // Prometheus "instance" → UI "target"
+    "__meta_consul_service": "service_name",
+    "job": "job_name",
+    // Suporta nested fields
+    "Meta.custom_field": "display_field"
+  }
+}
+```
+
+#### **3. Backend: Query Builder Dinâmico**
+
+```python
+# backend/core/monitoring_type_manager.py
+
+def build_filter_query(type_schema: dict) -> dict:
+    """Constrói query de filtro baseado em matchers do schema"""
+
+    matchers = type_schema.get('matchers', {})
+    filters = []
+
+    # Filtro por exporter_type (múltiplos valores aceitos)
+    exporter_field = matchers.get('exporter_type_field', 'exporter_type')
+    exporter_values = matchers.get('exporter_type_values', [])
+    if exporter_values:
+        filters.append({
+            'field': f'Meta.{exporter_field}',
+            'operator': 'in',
+            'values': exporter_values
+        })
+
+    # Filtro por module (múltiplos valores aceitos)
+    module_field = matchers.get('module_field', 'module')
+    module_values = matchers.get('module_values', [])
+    if module_values:
+        filters.append({
+            'field': f'Meta.{module_field}',
+            'operator': 'in',
+            'values': module_values
+        })
+
+    # Filtros adicionais customizados
+    for additional in matchers.get('additional_filters', []):
+        filters.append(additional)
+
+    return {
+        'operator': 'and',
+        'conditions': filters
+    }
+```
+
+#### **4. Admin UI: Configurar Matchers**
+
+```typescript
+// Admin pode configurar múltiplos "apelidos" para o mesmo tipo
+<ProFormList
+  name={['matchers', 'exporter_type_values']}
+  label="Valores de Exporter Type aceitos"
+  tooltip="Liste todos os nomes possíveis. Ex: blackbox, bb-exporter, custom-blackbox"
+>
+  <ProFormText placeholder="blackbox" />
+</ProFormList>
+
+// Resultado no JSON:
+{
+  "matchers": {
+    "exporter_type_values": [
+      "blackbox",           // Nome oficial
+      "blackbox-exporter",  // Variação 1
+      "bb-exporter",        // Variação 2
+      "skillsit-blackbox"   // Nome customizado da empresa
+    ]
+  }
+}
+```
+
+#### **5. Exemplo Real: Múltiplos Nomes para Node Exporter**
+
+```json
+{
+  "id": "node",
+  "display_name": "Node Exporter (Linux)",
+  "matchers": {
+    "exporter_type_values": [
+      "node",
+      "node_exporter",
+      "node-exporter",
+      "selfnode",           // Nome usado no projeto atual!
+      "linux-metrics",
+      "server-metrics",
+      "prometheus-node",
+      "custom-node-exporter"
+    ],
+    "module_values": [
+      "node",
+      "node_exporter",
+      null  // Permite ausência do campo module
+    ]
+  }
+}
+```
+
+#### **6. Benefícios**
+
+| Cenário | Solução Flexível |
+|---------|------------------|
+| **Empresa renomeia exporter** | Adicionar novo nome ao array `exporter_type_values` |
+| **Migração de nome** | Manter ambos nomes no array durante transição |
+| **Exporters customizados** | Cadastrar via Admin UI com matcher específico |
+| **Múltiplos Prometheus** | Cada um pode usar nomenclatura diferente |
+| **Vendor lock-in** | Zero! Sistema adapta a qualquer nome |
+
+### 🎯 **Regra de Ouro**
+
+```python
+# ❌ NUNCA FAZER:
+if service['Meta']['exporter_type'] == 'node_exporter':
+    # ...
+
+# ✅ SEMPRE FAZER:
+if matches_type(service, type_schema['matchers']):
+    # ...
+```
+
+**TODO código que verifica tipo DEVE usar matchers do schema JSON!**
+
+---
+
 ## 📐 **ARQUITETURA EM CAMADAS**
 
 ```

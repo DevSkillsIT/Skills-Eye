@@ -10,6 +10,25 @@
 
 Transformar o sistema atual em uma arquitetura **configuration-driven** e **plugin-based**, onde novos tipos de monitoramento podem ser adicionados via UI sem alteração de código.
 
+### ⚠️ **REGRA CRÍTICA: ZERO HARDCODING DE NOMES**
+
+```
+❌ PROIBIDO: Assumir nomes fixos ("node_exporter", "selfnode", "blackbox")
+✅ OBRIGATÓRIO: Tudo via matchers configuráveis em JSON
+
+Exemplo Real:
+- Sistema atual usa "selfnode", "SelfNode Exporter"
+- Outra empresa pode usar "node", "node-exporter-custom", "linux-metrics"
+- Sistema DEVE funcionar com QUALQUER nome via field mapping
+```
+
+**Source of Truth:**
+- Prometheus `relabel_configs` → `/api/v1/metadata-dynamic/fields` (já implementado!)
+- JSON schemas com `matchers` flexíveis (múltiplos valores aceitos)
+- Field mapping layer (renomear campos do Prometheus → UI)
+
+**Ver `REFACTORING_ARCHITECTURE.md` seção "ZERO LOCK-IN" para detalhes completos.**
+
 ---
 
 ## 📅 **TIMELINE GERAL**
