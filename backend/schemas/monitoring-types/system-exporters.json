@@ -1,0 +1,331 @@
+{
+  "schema_version": "1.0",
+  "category": "system-exporters",
+  "display_name": "Exporters: Sistemas",
+  "display_name_singular": "System Exporter",
+  "icon": "💻",
+  "color": "orange",
+  "description": "Métricas de servidores, sistemas operacionais e equipamentos de rede",
+  "enabled": true,
+  "order": 3,
+
+  "types": [
+    {
+      "id": "node",
+      "display_name": "Node Exporter (Linux)",
+      "icon": "🐧",
+      "description": "Métricas de servidores Linux (CPU, memória, disco, rede)",
+      "enabled": true,
+      "order": 1,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": [
+          "node",
+          "node_exporter",
+          "node-exporter",
+          "selfnode",
+          "SelfNode Exporter",
+          "linux-metrics",
+          "server-metrics",
+          "prometheus-node",
+          "custom-node-exporter"
+        ],
+        "module_field": "module",
+        "module_values": [
+          "node",
+          "node_exporter",
+          null
+        ]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "node_name",
+            "label": "Nome do Servidor",
+            "type": "text",
+            "required": true,
+            "placeholder": "server-prod-01",
+            "help": "Nome identificador do servidor",
+            "validation": {
+              "pattern": "^[a-zA-Z0-9-_\\.]+$",
+              "message": "Use apenas letras, números, hífens e underscores"
+            }
+          },
+          {
+            "name": "address",
+            "label": "Endereço",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.100 ou server.domain.com",
+            "help": "IP ou hostname do servidor",
+            "validation": {
+              "pattern": "^[a-zA-Z0-9.-]+$",
+              "message": "Digite um IP ou hostname válido"
+            }
+          },
+          {
+            "name": "port",
+            "label": "Porta",
+            "type": "number",
+            "required": false,
+            "default": 9100,
+            "min": 1,
+            "max": 65535,
+            "help": "Porta do Node Exporter (padrão: 9100)"
+          },
+          {
+            "name": "os_version",
+            "label": "Versão do SO",
+            "type": "text",
+            "required": false,
+            "placeholder": "Ubuntu 22.04 LTS",
+            "help": "Versão do sistema operacional"
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento", "grupo_monitoramento"],
+        "optional_metadata": ["localizacao", "notas", "provedor"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "node_name",
+          "address",
+          "port",
+          "status",
+          "company",
+          "tipo_monitoramento",
+          "grupo_monitoramento",
+          "last_scrape"
+        ],
+        "default_sort": {
+          "field": "node_name",
+          "order": "asc"
+        },
+        "row_actions": ["view_metrics", "edit", "delete", "view_history"],
+        "bulk_actions": ["delete", "export", "change_group"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "tipo_monitoramento", "grupo_monitoramento", "status"],
+        "advanced_filters": ["localizacao", "provedor", "os_version", "uptime"]
+      },
+
+      "metrics": {
+        "primary": "up",
+        "secondary": [
+          "node_cpu_seconds_total",
+          "node_memory_MemAvailable_bytes",
+          "node_filesystem_avail_bytes",
+          "node_network_receive_bytes_total"
+        ]
+      }
+    },
+
+    {
+      "id": "windows",
+      "display_name": "Windows Exporter",
+      "icon": "🪟",
+      "description": "Métricas de servidores Windows (CPU, memória, disco, serviços)",
+      "enabled": true,
+      "order": 2,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": [
+          "windows",
+          "windows_exporter",
+          "windows-exporter",
+          "wmi-exporter",
+          "wmi_exporter",
+          "custom-windows-exporter"
+        ],
+        "module_field": "module",
+        "module_values": [
+          "windows",
+          "windows_exporter",
+          "wmi",
+          null
+        ]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "node_name",
+            "label": "Nome do Servidor",
+            "type": "text",
+            "required": true,
+            "placeholder": "server-win-01"
+          },
+          {
+            "name": "address",
+            "label": "Endereço",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.101"
+          },
+          {
+            "name": "port",
+            "label": "Porta",
+            "type": "number",
+            "required": false,
+            "default": 9182,
+            "min": 1,
+            "max": 65535,
+            "help": "Porta do Windows Exporter (padrão: 9182)"
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento", "grupo_monitoramento"],
+        "optional_metadata": ["localizacao", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "node_name",
+          "address",
+          "port",
+          "status",
+          "company",
+          "tipo_monitoramento"
+        ],
+        "default_sort": {
+          "field": "node_name",
+          "order": "asc"
+        },
+        "row_actions": ["view_metrics", "edit", "delete"],
+        "bulk_actions": ["delete", "export"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "tipo_monitoramento", "status"],
+        "advanced_filters": ["localizacao", "windows_version"]
+      },
+
+      "metrics": {
+        "primary": "up",
+        "secondary": [
+          "windows_cpu_time_total",
+          "windows_memory_available_bytes",
+          "windows_logical_disk_free_bytes"
+        ]
+      }
+    },
+
+    {
+      "id": "snmp",
+      "display_name": "SNMP Exporter",
+      "icon": "🌐",
+      "description": "Métricas de equipamentos de rede via SNMP (switches, roteadores, etc)",
+      "enabled": true,
+      "order": 3,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": [
+          "snmp",
+          "snmp_exporter",
+          "snmp-exporter",
+          "network-device",
+          "custom-snmp"
+        ],
+        "module_field": "snmp_module",
+        "module_values": [
+          "if_mib",
+          "mikrotik",
+          "cisco",
+          "dell",
+          "hp",
+          "custom"
+        ]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "device_name",
+            "label": "Nome do Dispositivo",
+            "type": "text",
+            "required": true,
+            "placeholder": "switch-core-01"
+          },
+          {
+            "name": "target",
+            "label": "Endereço SNMP",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.1",
+            "help": "IP do dispositivo"
+          },
+          {
+            "name": "snmp_module",
+            "label": "Módulo SNMP",
+            "type": "select",
+            "required": true,
+            "options": ["if_mib", "mikrotik", "cisco", "dell", "hp", "custom"],
+            "default": "if_mib",
+            "help": "Módulo SNMP configurado no snmp.yml"
+          },
+          {
+            "name": "snmp_community",
+            "label": "Community String",
+            "type": "text",
+            "required": false,
+            "default": "public",
+            "help": "SNMP community (v2c) ou deixe vazio para v3"
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento", "fabricante"],
+        "optional_metadata": ["modelo", "localizacao", "cidade", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "device_name",
+          "target",
+          "snmp_module",
+          "status",
+          "company",
+          "fabricante",
+          "tipo_monitoramento"
+        ],
+        "default_sort": {
+          "field": "device_name",
+          "order": "asc"
+        },
+        "row_actions": ["view_metrics", "edit", "delete", "test_snmp"],
+        "bulk_actions": ["delete", "export", "test_connectivity"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "fabricante", "snmp_module", "status"],
+        "advanced_filters": ["modelo", "localizacao", "cidade"]
+      },
+
+      "metrics": {
+        "primary": "up",
+        "secondary": [
+          "ifInOctets",
+          "ifOutOctets",
+          "ifOperStatus",
+          "sysUpTime"
+        ]
+      }
+    }
+  ],
+
+  "page_config": {
+    "title": "Exporters: Sistemas",
+    "subtitle": "Monitoramento de servidores Linux, Windows e equipamentos de rede",
+    "show_summary_cards": true,
+    "summary_metrics": ["total", "active", "inactive", "by_type"],
+    "show_filters": true,
+    "show_search": true,
+    "show_advanced_search": true,
+    "show_column_selector": true,
+    "show_export": true,
+    "allow_bulk_actions": true,
+    "default_page_size": 20
+  }
+}

@@ -1,0 +1,358 @@
+{
+  "schema_version": "1.0",
+  "category": "network-probes",
+  "display_name": "Network Probes (Rede)",
+  "display_name_singular": "Network Probe",
+  "icon": "📡",
+  "color": "blue",
+  "description": "Testes de conectividade e protocolos de rede (ping, TCP, DNS, SSH)",
+  "enabled": true,
+  "order": 1,
+
+  "types": [
+    {
+      "id": "icmp",
+      "display_name": "ICMP (Ping)",
+      "icon": "🏓",
+      "description": "Testes de conectividade via ICMP ping",
+      "enabled": true,
+      "order": 1,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": [
+          "blackbox",
+          "blackbox-exporter",
+          "blackbox_exporter",
+          "bb-exporter",
+          "probe",
+          "custom-blackbox"
+        ],
+        "module_field": "module",
+        "module_values": [
+          "icmp",
+          "ping",
+          "icmp_ipv4",
+          "icmp_ipv6",
+          "icmp_test"
+        ]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "target",
+            "label": "Alvo",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.1 ou hostname.com",
+            "help": "IP ou hostname do dispositivo a ser monitorado",
+            "validation": {
+              "pattern": "^[a-zA-Z0-9.-]+$",
+              "message": "Digite um IP ou hostname válido"
+            }
+          },
+          {
+            "name": "interval",
+            "label": "Intervalo",
+            "type": "select",
+            "required": true,
+            "default": "30s",
+            "options": ["15s", "30s", "60s", "5m", "10m"],
+            "help": "Frequência de verificação"
+          },
+          {
+            "name": "timeout",
+            "label": "Timeout",
+            "type": "select",
+            "required": false,
+            "default": "10s",
+            "options": ["5s", "10s", "30s", "60s"],
+            "help": "Tempo máximo de espera por resposta"
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento", "grupo_monitoramento"],
+        "optional_metadata": ["localizacao", "cidade", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "target",
+          "status",
+          "latency_ms",
+          "company",
+          "tipo_monitoramento",
+          "grupo_monitoramento",
+          "last_check",
+          "uptime_percent"
+        ],
+        "default_sort": {
+          "field": "target",
+          "order": "asc"
+        },
+        "row_actions": ["edit", "delete", "view_history", "pause", "test_now"],
+        "bulk_actions": ["delete", "pause", "resume", "export", "change_interval"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "tipo_monitoramento", "status"],
+        "advanced_filters": ["latency", "uptime_percent", "localizacao", "cidade"]
+      },
+
+      "metrics": {
+        "primary": "probe_success",
+        "secondary": ["probe_duration_seconds", "probe_icmp_duration_seconds"]
+      }
+    },
+
+    {
+      "id": "tcp",
+      "display_name": "TCP Connect",
+      "icon": "🔌",
+      "description": "Testes de conectividade TCP em portas específicas",
+      "enabled": true,
+      "order": 2,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": [
+          "blackbox",
+          "blackbox-exporter",
+          "blackbox_exporter",
+          "bb-exporter",
+          "probe"
+        ],
+        "module_field": "module",
+        "module_values": [
+          "tcp_connect",
+          "tcp",
+          "tcp_test"
+        ]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "target",
+            "label": "Alvo",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.1",
+            "help": "IP ou hostname"
+          },
+          {
+            "name": "port",
+            "label": "Porta",
+            "type": "number",
+            "required": true,
+            "min": 1,
+            "max": 65535,
+            "placeholder": "80",
+            "help": "Porta TCP a ser testada"
+          },
+          {
+            "name": "interval",
+            "label": "Intervalo",
+            "type": "select",
+            "required": true,
+            "default": "30s",
+            "options": ["15s", "30s", "60s", "5m"]
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento"],
+        "optional_metadata": ["grupo_monitoramento", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "target",
+          "port",
+          "status",
+          "company",
+          "tipo_monitoramento",
+          "last_check"
+        ],
+        "default_sort": {
+          "field": "target",
+          "order": "asc"
+        },
+        "row_actions": ["edit", "delete", "test_now"],
+        "bulk_actions": ["delete", "export"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "status", "port"],
+        "advanced_filters": ["tipo_monitoramento", "response_time"]
+      },
+
+      "metrics": {
+        "primary": "probe_success",
+        "secondary": ["probe_duration_seconds"]
+      }
+    },
+
+    {
+      "id": "dns",
+      "display_name": "DNS Query",
+      "icon": "🌐",
+      "description": "Testes de resolução DNS",
+      "enabled": true,
+      "order": 3,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": ["blackbox", "blackbox-exporter", "probe"],
+        "module_field": "module",
+        "module_values": ["dns", "dns_query", "dns_test"]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "target",
+            "label": "Servidor DNS",
+            "type": "text",
+            "required": true,
+            "placeholder": "8.8.8.8 ou dns.google.com",
+            "help": "Servidor DNS a ser testado"
+          },
+          {
+            "name": "query_name",
+            "label": "Domínio para Consulta",
+            "type": "text",
+            "required": true,
+            "placeholder": "example.com",
+            "help": "Domínio para testar resolução"
+          },
+          {
+            "name": "interval",
+            "label": "Intervalo",
+            "type": "select",
+            "required": true,
+            "default": "60s",
+            "options": ["30s", "60s", "5m", "10m"]
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento"],
+        "optional_metadata": ["provedor", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "target",
+          "query_name",
+          "status",
+          "response_time_ms",
+          "company",
+          "last_check"
+        ],
+        "default_sort": {
+          "field": "target",
+          "order": "asc"
+        },
+        "row_actions": ["edit", "delete", "test_now"],
+        "bulk_actions": ["delete", "export"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "status"],
+        "advanced_filters": ["provedor", "response_time"]
+      },
+
+      "metrics": {
+        "primary": "probe_success",
+        "secondary": ["probe_dns_lookup_time_seconds"]
+      }
+    },
+
+    {
+      "id": "ssh",
+      "display_name": "SSH Banner",
+      "icon": "🔐",
+      "description": "Verificação de banner SSH (disponibilidade de serviço SSH)",
+      "enabled": true,
+      "order": 4,
+
+      "matchers": {
+        "exporter_type_field": "exporter_type",
+        "exporter_type_values": ["blackbox", "blackbox-exporter", "probe"],
+        "module_field": "module",
+        "module_values": ["ssh_banner", "ssh", "ssh_test"]
+      },
+
+      "form_schema": {
+        "fields": [
+          {
+            "name": "target",
+            "label": "Alvo",
+            "type": "text",
+            "required": true,
+            "placeholder": "192.168.1.1",
+            "help": "IP ou hostname do servidor SSH"
+          },
+          {
+            "name": "port",
+            "label": "Porta",
+            "type": "number",
+            "required": false,
+            "default": 22,
+            "min": 1,
+            "max": 65535,
+            "help": "Porta SSH (padrão: 22)"
+          },
+          {
+            "name": "interval",
+            "label": "Intervalo",
+            "type": "select",
+            "required": true,
+            "default": "60s",
+            "options": ["30s", "60s", "5m", "10m"]
+          }
+        ],
+        "required_metadata": ["company", "tipo_monitoramento"],
+        "optional_metadata": ["localizacao", "notas"]
+      },
+
+      "table_schema": {
+        "default_visible_columns": [
+          "target",
+          "port",
+          "status",
+          "company",
+          "tipo_monitoramento",
+          "last_check"
+        ],
+        "default_sort": {
+          "field": "target",
+          "order": "asc"
+        },
+        "row_actions": ["edit", "delete", "test_now"],
+        "bulk_actions": ["delete", "export"]
+      },
+
+      "filters": {
+        "quick_filters": ["company", "status"],
+        "advanced_filters": ["localizacao", "tipo_monitoramento"]
+      },
+
+      "metrics": {
+        "primary": "probe_success",
+        "secondary": ["probe_duration_seconds"]
+      }
+    }
+  ],
+
+  "page_config": {
+    "title": "Network Probes (Rede)",
+    "subtitle": "Monitoramento de conectividade e protocolos de rede",
+    "show_summary_cards": true,
+    "summary_metrics": ["total", "active", "inactive", "critical", "by_module"],
+    "show_filters": true,
+    "show_search": true,
+    "show_advanced_search": true,
+    "show_column_selector": true,
+    "show_export": true,
+    "allow_bulk_actions": true,
+    "default_page_size": 20
+  }
+}
