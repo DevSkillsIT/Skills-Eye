@@ -38,13 +38,10 @@ class MetadataField:
 
 
 class FieldsExtractionService:
-    """Serviço para extrair campos dinâmicos dos relabel_configs"""
+    """Serviço para extrair campos dinâmicos dos relabel_configs
 
-    # Campos que consideramos obrigatórios por padrão
-    REQUIRED_FIELDS = {'company', 'env', 'project', 'name', 'instance'}
-
-    # Campos que aparecem no dashboard
-    DASHBOARD_FIELDS = {'company', 'env', 'project', 'module'}
+    AGORA USA METADATA_LOADER - Sistema totalmente dinâmico!
+    """
 
     def __init__(self, consul_manager=None):
         """
@@ -54,6 +51,32 @@ class FieldsExtractionService:
             consul_manager: Instância do ConsulManager para buscar valores únicos
         """
         self.consul_manager = consul_manager
+
+        # Importar metadata_loader
+        from core.metadata_loader import metadata_loader
+        self.metadata_loader = metadata_loader
+
+        # Cache de campos obrigatórios e dashboard
+        self._required_fields = None
+        self._dashboard_fields = None
+
+    @property
+    def REQUIRED_FIELDS(self) -> set:
+        """Campos obrigatórios (carregados dinamicamente do JSON)"""
+        if self._required_fields is None:
+            self._required_fields = set(self.metadata_loader.get_required_fields())
+        return self._required_fields
+
+    @property
+    def DASHBOARD_FIELDS(self) -> set:
+        """Campos do dashboard (carregados dinamicamente do JSON)"""
+        if self._dashboard_fields is None:
+            field_names = self.metadata_loader.get_field_names(
+                enabled=True,
+                show_in_dashboard=True
+            )
+            self._dashboard_fields = set(field_names)
+        return self._dashboard_fields
 
     def extract_fields_from_jobs(self, jobs: List[Dict[str, Any]]) -> List[MetadataField]:
         """
@@ -126,6 +149,10 @@ class FieldsExtractionService:
                 break
 
         if not metadata_source or not target_label:
+            return None
+
+        # FILTRO: Ignorar campos internos do Prometheus que começam com "__"
+        if isinstance(target_label, str) and target_label.startswith('__'):
             return None
 
         # Extrair nome do campo do source_label

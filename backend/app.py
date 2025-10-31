@@ -26,6 +26,7 @@ from api.dashboard import router as dashboard_router
 from api.optimized_endpoints import router as optimized_router
 from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
+from api.metadata_dynamic import router as metadata_dynamic_router  # NOVO: Sistema dinâmico
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -174,6 +175,7 @@ app.include_router(dashboard_router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
 app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus-config"])
 app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
+app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # NOVO: Campos dinâmicos
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])

@@ -1,5 +1,5 @@
 {
-  "_comment": "Sistema TOTALMENTE DINÂMICO - Campos controlam sua própria visibilidade",
+  "_comment": "Configuração centralizada de campos metadata do Prometheus/Consul",
   "_description": "Este arquivo define TODOS os campos metadata usados em todo o sistema",
   "_usage": [
     "Usado pelo fields_extraction_service para gerar display names",
@@ -7,8 +7,8 @@
     "Usado pelo frontend em todas as páginas (Services, Exporters, Installer)",
     "Fonte única da verdade para campos metadata"
   ],
-  "version": "2.0.0",
-  "last_updated": "2025-10-31T18:40:23.776192Z",
+  "version": "1.0.0",
+  "last_updated": "2025-10-31T20:58:46.143140Z",
   "fields": [
     {
       "name": "cservice",
@@ -22,19 +22,7 @@
       "show_in_form": true,
       "order": 1,
       "category": "infrastructure",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Serviço Consul",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "vendor",
@@ -55,16 +43,7 @@
       ],
       "order": 2,
       "category": "infrastructure",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione fornecedor",
-      "default_value": null,
-      "validation": {}
+      "editable": true
     },
     {
       "name": "region",
@@ -85,16 +64,7 @@
       ],
       "order": 3,
       "category": "infrastructure",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione região",
-      "default_value": null,
-      "validation": {}
+      "editable": true
     },
     {
       "name": "account",
@@ -108,19 +78,7 @@
       "show_in_form": true,
       "order": 5,
       "category": "infrastructure",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Conta",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "instance",
@@ -135,20 +93,7 @@
       "order": 8,
       "category": "basic",
       "editable": true,
-      "validation_regex": "^[a-zA-Z0-9\\.\\-:]+$",
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Instância",
-      "default_value": null,
-      "validation": {
-        "required_message": "Informe instância",
-        "min_length": 1,
-        "max_length": 200
-      }
+      "validation_regex": "^[a-zA-Z0-9\\.\\-:]+$"
     },
     {
       "name": "company",
@@ -162,20 +107,7 @@
       "show_in_form": true,
       "order": 9,
       "category": "basic",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Empresa",
-      "default_value": null,
-      "validation": {
-        "required_message": "Informe empresa",
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "tipo_monitoramento",
@@ -196,18 +128,7 @@
       ],
       "order": 10,
       "category": "basic",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione tipo monitoramento",
-      "default_value": null,
-      "validation": {
-        "required_message": "Informe tipo monitoramento"
-      }
+      "editable": true
     },
     {
       "name": "name",
@@ -221,20 +142,7 @@
       "show_in_form": true,
       "order": 11,
       "category": "basic",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Nome",
-      "default_value": null,
-      "validation": {
-        "required_message": "Informe nome",
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "grupo_monitoramento",
@@ -248,20 +156,7 @@
       "show_in_form": true,
       "order": 12,
       "category": "basic",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Grupo Monitoramento",
-      "default_value": null,
-      "validation": {
-        "required_message": "Informe grupo monitoramento",
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "localizacao",
@@ -275,19 +170,7 @@
       "show_in_form": true,
       "order": 13,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Localização",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "fabricante",
@@ -310,16 +193,7 @@
       ],
       "order": 14,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione fabricante",
-      "default_value": null,
-      "validation": {}
+      "editable": true
     },
     {
       "name": "tipo",
@@ -333,19 +207,7 @@
       "show_in_form": true,
       "order": 15,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Tipo",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "modelo",
@@ -359,19 +221,7 @@
       "show_in_form": true,
       "order": 16,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Modelo",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "cod_localidade",
@@ -385,19 +235,7 @@
       "show_in_form": true,
       "order": 17,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Código da Localidade",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "tipo_dispositivo_abrev",
@@ -411,19 +249,7 @@
       "show_in_form": true,
       "order": 18,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Tipo Dispositivo (Abrev)",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "cidade",
@@ -437,19 +263,7 @@
       "show_in_form": true,
       "order": 19,
       "category": "device",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Cidade",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     },
     {
       "name": "notas",
@@ -463,16 +277,7 @@
       "show_in_form": true,
       "order": 20,
       "category": "extra",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Notas",
-      "default_value": null,
-      "validation": {}
+      "editable": true
     },
     {
       "name": "glpi_URL",
@@ -487,16 +292,7 @@
       "order": 21,
       "category": "extra",
       "editable": true,
-      "validation_regex": "^https?://.*$",
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "URL do GLPI",
-      "default_value": null,
-      "validation": {}
+      "validation_regex": "^https?://.*$"
     },
     {
       "name": "provedor",
@@ -510,19 +306,7 @@
       "show_in_form": true,
       "order": 22,
       "category": "extra",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Provedor",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "editable": true
     }
   ],
   "categories": {
@@ -546,6 +330,5 @@
       "description": "Campos adicionais e opcionais",
       "icon": "plus"
     }
-  },
-  "_schema_version": "2.0"
+  }
 }
