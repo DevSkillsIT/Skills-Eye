@@ -50,9 +50,9 @@ import type {
   BlackboxListResponse,
   BlackboxTargetPayload,
   BlackboxTargetRecord,
-  MetadataFilters,
 } from '../services/api';
 import { useSearchParams } from 'react-router-dom';
+import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -63,20 +63,15 @@ interface BlackboxTableItem extends BlackboxTargetRecord {
 
 type TableColumn<T> = import('@ant-design/pro-components').ProColumns<T>;
 
-const BLACKBOX_COLUMN_PRESETS: ColumnConfig[] = [
-  { key: 'service', title: 'Servico', visible: true },
-  { key: 'module', title: 'Modulo', visible: true },
-  { key: 'company', title: 'Empresa', visible: true },
-  { key: 'project', title: 'Projeto', visible: true },
-  { key: 'env', title: 'Ambiente', visible: true },
-  { key: 'group', title: 'Grupo', visible: false },
-  { key: 'node', title: 'No', visible: false },
-  { key: 'instance', title: 'Instancia', visible: true },
+// COLUNAS FIXAS (não metadata) - sempre presentes
+const FIXED_BLACKBOX_COLUMNS: ColumnConfig[] = [
+  { key: 'service', title: 'Serviço', visible: true },
+  { key: 'node', title: 'Nó', visible: false },
   { key: 'interval', title: 'Intervalo', visible: false },
   { key: 'timeout', title: 'Timeout', visible: false },
   { key: 'enabled', title: 'Ativo', visible: true },
   { key: 'tags', title: 'Tags', visible: false },
-  { key: 'actions', title: 'Acoes', visible: true, locked: true },
+  { key: 'actions', title: 'Ações', visible: true, locked: true },
 ];
 
 const DEFAULT_BLACKBOX_MODULES = [
@@ -168,15 +163,16 @@ interface BlackboxFormValues extends BlackboxTargetPayload {
 
 const BlackboxTargets: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
-  const [filters, setFilters] = useState<MetadataFilters>({});
-  const [metadataOptions, setMetadataOptions] = useState({
-    modules: [] as string[],
-    companies: [] as string[],
-    projects: [] as string[],
-    envs: [] as string[],
-    groups: [] as string[],
-    nodes: [] as string[],
-  });
+
+  // SISTEMA DINÂMICO: Carregar campos metadata do backend
+  const { tableFields } = useTableFields('blackbox');
+  // TODO: Implementar formulário dinâmico com formFields
+  // const { formFields, loading: formFieldsLoading } = useFormFields('blackbox');
+  const { filterFields, loading: filterFieldsLoading } = useFilterFields('blackbox');
+
+  // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
+  const [filters, setFilters] = useState<Record<string, string | undefined>>({});
+  const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
   const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
@@ -191,10 +187,37 @@ const BlackboxTargets: React.FC = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
-  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>(() =>
-    BLACKBOX_COLUMN_PRESETS.map((column) => ({ ...column })),
-  );
+  // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata dinâmicos
+  const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
+    const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
+      key: field.name,
+      title: field.display_name,
+      visible: field.show_in_table ?? true,
+      locked: false,
+    }));
+
+    // ORDEM: service → campos metadata → interval, timeout, enabled, tags, actions
+    return [
+      FIXED_BLACKBOX_COLUMNS[0], // service
+      ...metadataColumns,        // campos dinâmicos
+      FIXED_BLACKBOX_COLUMNS[1], // node
+      FIXED_BLACKBOX_COLUMNS[2], // interval
+      FIXED_BLACKBOX_COLUMNS[3], // timeout
+      FIXED_BLACKBOX_COLUMNS[4], // enabled
+      FIXED_BLACKBOX_COLUMNS[5], // tags
+      FIXED_BLACKBOX_COLUMNS[6], // actions
+    ];
+  }, [tableFields]);
+
+  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+
+  // Atualizar columnConfig quando defaultColumnConfig mudar
+  useEffect(() => {
+    if (defaultColumnConfig.length > 0 && columnConfig.length === 0) {
+      setColumnConfig(defaultColumnConfig);
+    }
+  }, [defaultColumnConfig, columnConfig.length]);
   const [detailRecord, setDetailRecord] =
     useState<BlackboxTargetRecord | null>(null);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);
@@ -240,10 +263,10 @@ const BlackboxTargets: React.FC = () => {
         return row.meta?.module || '';
       case 'company':
         return row.meta?.company || '';
-      case 'project':
-        return row.meta?.project || '';
-      case 'env':
-        return row.meta?.env || '';
+      case 'grupo_monitoramento':
+        return row.meta?.grupo_monitoramento || '';
+      case 'tipo_monitoramento':
+        return row.meta?.tipo_monitoramento || '';
       case 'name':
         return row.meta?.name || '';
       case 'instance':
@@ -305,8 +328,9 @@ const BlackboxTargets: React.FC = () => {
     [advancedConditions, advancedOperator, getFieldValue],
   );
 
-  const buildQueryParams = useCallback((): MetadataFilters => {
-    const query: MetadataFilters = { ...filters };
+  // SISTEMA DINÂMICO: buildQueryParams retorna filtros dinâmicos
+  const buildQueryParams = useCallback((): Record<string, string | undefined> => {
+    const query: Record<string, string | undefined> = { ...filters };
     if (selectedNode !== ALL_NODES) {
       query.node = selectedNode;
     } else {
@@ -340,31 +364,42 @@ const BlackboxTargets: React.FC = () => {
           },
         }));
 
-        // Extrair metadataOptions
-        const modules = new Set<string>();
-        const companies = new Set<string>();
-        const projects = new Set<string>();
-        const envs = new Set<string>();
-        const groups = new Set<string>();
-        const nodes = new Set<string>();
+        // SISTEMA DINÂMICO: Extrair metadataOptions dinamicamente de filterFields
+        const optionsSets: Record<string, Set<string>> = {};
 
+        // Inicializar Set para cada filterField
+        filterFields.forEach((field) => {
+          optionsSets[field.name] = new Set<string>();
+        });
+
+        // Extrair valores de todos os registros
         backendRows.forEach((item) => {
-          if (item.module) modules.add(item.module);
-          if (item.company) companies.add(item.company);
-          if (item.project) projects.add(item.project);
-          if (item.env) envs.add(item.env);
-          if (item.meta?.group) groups.add(item.meta.group);
-          if (item.node) nodes.add(item.node);
+          filterFields.forEach((field) => {
+            const value = item[field.name as keyof typeof item] || item.meta?.[field.name];
+            if (value && typeof value === 'string') {
+              optionsSets[field.name].add(value);
+            }
+          });
+
+          // CAMPO ESPECIAL: node (não é metadata)
+          if (item.node) {
+            if (!optionsSets['node']) optionsSets['node'] = new Set();
+            optionsSets['node'].add(item.node);
+          }
         });
 
-        setMetadataOptions({
-          modules: Array.from(new Set([...DEFAULT_BLACKBOX_MODULES, ...modules])),
-          companies: Array.from(companies),
-          projects: Array.from(projects),
-          envs: Array.from(envs),
-          groups: Array.from(groups),
-          nodes: Array.from(nodes),
+        // Converter Sets para Arrays
+        const options: Record<string, string[]> = {};
+        Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
+          // CASO ESPECIAL: campo 'module' inclui módulos padrão
+          if (fieldName === 'module') {
+            options[fieldName] = Array.from(new Set([...DEFAULT_BLACKBOX_MODULES, ...valueSet]));
+          } else {
+            options[fieldName] = Array.from(valueSet);
+          }
         });
+
+        setMetadataOptions(options);
 
         // Usar summary do backend
         if (backendSummary) {
@@ -577,8 +612,8 @@ const BlackboxTargets: React.FC = () => {
     const header = [
       'module',
       'company',
-      'project',
-      'env',
+      'grupo_monitoramento',
+      'tipo_monitoramento',
       'name',
       'instance',
       'group',
@@ -662,8 +697,8 @@ const BlackboxTargets: React.FC = () => {
       { label: 'Nome', value: 'name', type: 'text' },
       { label: 'Modulo', value: 'module', type: 'text' },
       { label: 'Empresa', value: 'company', type: 'text' },
-      { label: 'Projeto', value: 'project', type: 'text' },
-      { label: 'Ambiente', value: 'env', type: 'text' },
+      { label: 'Grupo Monitoramento', value: 'grupo_monitoramento', type: 'text' },
+      { label: 'Tipo Monitoramento', value: 'tipo_monitoramento', type: 'text' },
       { label: 'Instancia', value: 'instance', type: 'text' },
       { label: 'Grupo', value: 'group', type: 'text' },
       { label: 'No', value: 'node', type: 'text' },
@@ -671,10 +706,12 @@ const BlackboxTargets: React.FC = () => {
     [],
   );
 
-  const columnMap = useMemo<Record<string, TableColumn<BlackboxTableItem>>>(
-    () => ({
+  // SISTEMA DINÂMICO: Gerar columnMap combinando fixas + metadata
+  const columnMap = useMemo<Record<string, TableColumn<BlackboxTableItem>>>(() => {
+    // COLUNAS FIXAS com lógica específica
+    const fixedColumns: Record<string, TableColumn<BlackboxTableItem>> = {
       service: {
-        title: 'Servico',
+        title: 'Serviço',
         dataIndex: 'service',
         width: 220,
         ellipsis: true,
@@ -685,46 +722,12 @@ const BlackboxTargets: React.FC = () => {
           </Space>
         ),
       },
-      module: {
-        title: 'Modulo',
-        dataIndex: ['meta', 'module'],
-        width: 150,
-      },
-      company: {
-        title: 'Empresa',
-        dataIndex: ['meta', 'company'],
-        width: 200,
-        ellipsis: true,
-      },
-      project: {
-        title: 'Projeto',
-        dataIndex: ['meta', 'project'],
-        width: 200,
-        ellipsis: true,
-      },
-      env: {
-        title: 'Ambiente',
-        dataIndex: ['meta', 'env'],
-        width: 140,
-      },
-      group: {
-        title: 'Grupo',
-        dataIndex: ['meta', 'group'],
-        width: 180,
-        ellipsis: true,
-      },
       node: {
-        title: 'No',
+        title: 'Nó',
         dataIndex: 'node',
         width: 180,
         ellipsis: true,
         render: (_, record) => (record as any).node || '-',
-      },
-      instance: {
-        title: 'Instancia',
-        dataIndex: ['meta', 'instance'],
-        width: 240,
-        ellipsis: true,
       },
       interval: {
         title: 'Intervalo',
@@ -760,7 +763,7 @@ const BlackboxTargets: React.FC = () => {
         ),
       },
       actions: {
-        title: 'Acoes',
+        title: 'Ações',
         valueType: 'option',
         width: 140,
         render: (_, record) => [
@@ -798,9 +801,23 @@ const BlackboxTargets: React.FC = () => {
           </Popconfirm>,
         ],
       },
-    }),
-    [handleDelete, openEditModal],
-  );
+    };
+
+    // COLUNAS METADATA DINÂMICAS
+    const metadataColumns: Record<string, TableColumn<BlackboxTableItem>> = {};
+    tableFields.forEach((field) => {
+      metadataColumns[field.name] = {
+        title: field.display_name,
+        dataIndex: ['meta', field.name],
+        width: field.field_type === 'string' ? 200 : 140,
+        ellipsis: true,
+        tooltip: field.description,
+      };
+    });
+
+    // Combinar fixas + dinâmicas
+    return { ...fixedColumns, ...metadataColumns };
+  }, [tableFields, handleDelete, openEditModal]);
 
   const visibleColumns = useMemo(
     () =>
@@ -869,8 +886,8 @@ const BlackboxTargets: React.FC = () => {
       { label: 'No', value: 'node', type: 'text' },
       { label: 'Modulo', value: 'module', type: 'text' },
       { label: 'Empresa', value: 'company', type: 'text' },
-      { label: 'Projeto', value: 'project', type: 'text' },
-      { label: 'Ambiente', value: 'env', type: 'text' },
+      { label: 'Grupo Monitoramento', value: 'grupo_monitoramento', type: 'text' },
+      { label: 'Tipo Monitoramento', value: 'tipo_monitoramento', type: 'text' },
       { label: 'Grupo', value: 'group', type: 'text' },
     ],
     [],
@@ -908,8 +925,10 @@ const BlackboxTargets: React.FC = () => {
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <Space wrap>
               <MetadataFilterBar
+                fields={filterFields}
                 value={filters}
                 options={metadataOptions}
+                loading={filterFieldsLoading}
                 onChange={setFilters}
                 onReset={() => {
                   setFilters({});
@@ -1195,19 +1214,19 @@ const BlackboxTargets: React.FC = () => {
             rules={[{ required: true, message: 'Informe a empresa' }]}
           />
           <ProFormText
-            name="project"
-            label="Projeto"
-            placeholder="Projeto associado"
-            rules={[{ required: true, message: 'Informe o projeto' }]}
+            name="grupo_monitoramento"
+            label="Grupo Monitoramento"
+            placeholder="Grupo de monitoramento (projeto)"
+            rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
           />
         </div>
 
         <div style={FORM_ROW_STYLE}>
           <ProFormText
-            name="env"
-            label="Ambiente"
+            name="tipo_monitoramento"
+            label="Tipo Monitoramento"
             placeholder="Ex: prod, dev, homolog"
-            rules={[{ required: true, message: 'Informe o ambiente' }]}
+            rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
           />
           <ProFormText
             name="name"

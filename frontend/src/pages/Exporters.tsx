@@ -46,11 +46,11 @@ import { NodeSelector, useSelectedNode, type ConsulNode } from '../components/No
 import { consulAPI, metadataFieldsAPI } from '../services/api';
 import type {
   MetadataField,
-  MetadataFilters,
   ServiceUpdatePayload,
   ServiceCreatePayload,
   ServiceMeta,
 } from '../services/api';
+import { useFilterFields } from '../hooks/useMetadataFields';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -126,10 +126,20 @@ const BASE_COLUMN_PRESETS: ColumnConfig[] = [
 
 const Exporters: React.FC = () => {
   const actionRef = useRef<ActionType>(null);
+
+  // SISTEMA DINÂMICO: Carregar campos metadata do backend
+  // TODO: Implementar colunas dinâmicas com tableFields
+  // const { tableFields, loading: tableFieldsLoading } = useTableFields('exporters');
+  // TODO: Implementar formulário dinâmico com formFields
+  // const { formFields, loading: formFieldsLoading } = useFormFields('exporters');
+  const { filterFields, loading: filterFieldsLoading } = useFilterFields('exporters');
+
   const [nodes, setNodes] = useState<any[]>([]);
   const [searchValue, setSearchValue] = useState('');
-  const [filters, setFilters] = useState<MetadataFilters>({});
-  const [metadataOptions, setMetadataOptions] = useState<any>({});
+
+  // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
+  const [filters, setFilters] = useState<Record<string, string | undefined>>({});
+  const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
   const [summary, setSummary] = useState<any>({ total: 0, byEnv: {}, byType: {} });
   const [metadataFields, setMetadataFields] = useState<MetadataField[]>([]);
   const [metadataLoading, setMetadataLoading] = useState(false);
@@ -770,7 +780,7 @@ const Exporters: React.FC = () => {
         return '-';
       }
 
-      if (field.name === 'env' && typeof value === 'string') {
+      if (field.name === 'tipo_monitoramento' && typeof value === 'string') {
         const colorMap: Record<string, string> = {
           prd: 'red',
           prod: 'red',
@@ -1075,9 +1085,10 @@ const Exporters: React.FC = () => {
             {/* Linha 1: Filtros metadata + busca + busca avançada */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <MetadataFilterBar
+                fields={filterFields}
                 value={filters}
                 options={metadataOptions}
-                loading={metadataLoading}
+                loading={metadataLoading || filterFieldsLoading}
                 onChange={(newFilters) => {
                   setFilters(newFilters);
                   actionRef.current?.reload();
@@ -1722,21 +1733,21 @@ const Exporters: React.FC = () => {
           />
         )}
 
-        {visibleOptionalFields.includes('project') && (
+        {visibleOptionalFields.includes('grupo_monitoramento') && (
           <ProFormText
             colProps={{ span: 8 }}
-            name="project"
-            label="Projeto"
-            placeholder="Projeto"
+            name="grupo_monitoramento"
+            label="Grupo Monitoramento"
+            placeholder="Grupo de monitoramento"
             tooltip="Campo adicional de metadata"
           />
         )}
 
-        {visibleOptionalFields.includes('env') && (
+        {visibleOptionalFields.includes('tipo_monitoramento') && (
           <ProFormText
             colProps={{ span: 8 }}
-            name="env"
-            label="Ambiente"
+            name="tipo_monitoramento"
+            label="Tipo Monitoramento"
             placeholder="prod, dev, etc"
             tooltip="Campo adicional de metadata"
           />
@@ -1746,7 +1757,7 @@ const Exporters: React.FC = () => {
         {metadataFields
           .filter(field =>
             visibleOptionalFields.includes(field.name) &&
-            !['company', 'project', 'env', 'vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name)
+            !['company', 'grupo_monitoramento', 'tipo_monitoramento', 'vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name)
           )
           .map(field => (
             <ProFormText
