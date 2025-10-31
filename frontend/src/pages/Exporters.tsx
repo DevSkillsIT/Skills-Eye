@@ -181,13 +181,35 @@ const Exporters: React.FC = () => {
     }
   }, [selectedNodeForModal]);
 
-  // Quando modal CREATE abre, carregar job_names do master automaticamente
+  // Quando modal CREATE abre, fazer PREFETCH de TODOS os nós em paralelo
   useEffect(() => {
-    if (createModalOpen && masterNodeAddr) {
-      console.log('[Exporters] Modal CREATE aberto, carregando job_names do master:', masterNodeAddr);
-      fetchServiceNamesForNode(masterNodeAddr);
+    if (createModalOpen && nodes.length > 0) {
+      console.log('[Exporters] Modal CREATE aberto, fazendo prefetch de job_names de TODOS os nós...');
+
+      // Buscar job_names de TODOS os nós em paralelo
+      // Isso popula o cache do backend para tornar as trocas instantâneas
+      const prefetchPromises = nodes.map(async (node) => {
+        try {
+          console.log(`[Exporters] Prefetch: buscando job_names de ${node.node} (${node.addr})`);
+          await consulAPI.getPrometheusJobNames(node.addr);
+          console.log(`[Exporters] ✓ Prefetch completo para ${node.node}`);
+        } catch (error) {
+          console.warn(`[Exporters] ⚠ Erro no prefetch de ${node.node}:`, error);
+          // Não falha se um nó der erro - continua com os outros
+        }
+      });
+
+      // Executar todos em paralelo (não esperar - fire and forget)
+      Promise.all(prefetchPromises).then(() => {
+        console.log('[Exporters] ✓ Prefetch de todos os nós concluído - cache populado!');
+      });
+
+      // Carregar job_names do master para exibir imediatamente
+      if (masterNodeAddr) {
+        fetchServiceNamesForNode(masterNodeAddr);
+      }
     }
-  }, [createModalOpen, masterNodeAddr]);
+  }, [createModalOpen, nodes, masterNodeAddr]);
 
   // Quando modal EDIT abre, buscar serviços do nó atual
   useEffect(() => {
