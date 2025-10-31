@@ -353,8 +353,17 @@ const Exporters: React.FC = () => {
           exporterType: item.exporterType || 'unknown',
         }));
 
+        // Aplicar filtro de nó selecionado
+        let nodeFilteredRows = rows;
+        if (!isAllNodes && selectedNodeAddr && selectedNodeAddr !== 'all') {
+          nodeFilteredRows = rows.filter((item) => {
+            // Filtrar por node ou nodeAddr
+            return item.nodeAddr === selectedNodeAddr || item.node === selectedNodeAddr;
+          });
+        }
+
         // Aplicar filtros avançados (se houver)
-        const advancedRows = applyAdvancedFilters(rows);
+        const advancedRows = applyAdvancedFilters(nodeFilteredRows);
 
         // Usar summary do backend ou recalcular se houve filtros
         if (advancedRows.length === rows.length && backendSummary) {
@@ -442,7 +451,7 @@ const Exporters: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, metadataFields, searchValue],
+    [applyAdvancedFilters, metadataFields, searchValue, isAllNodes, selectedNodeAddr],
   );
 
   const handleAdvancedSearch = useCallback(
@@ -1145,7 +1154,8 @@ const Exporters: React.FC = () => {
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
-          scroll={{ x: 1400 }}
+          scroll={{ x: 'max-content' }}
+          sticky={{ offsetHeader: 0 }}
           locale={{ emptyText: 'Nenhum exporter disponivel' }}
           options={{ density: true, fullScreen: true, reload: false, setting: false }}
           expandable={{
@@ -1282,27 +1292,12 @@ const Exporters: React.FC = () => {
           fieldProps={{
             size: 'large',
             suffixIcon: <CloudServerOutlined />,
-            optionLabelProp: 'children',
-            options: nodes.map((node, index) => {
-              const isMaster = index === 0;
-              return {
-                label: `${node.node} (${node.addr})`,
-                value: node.addr,
-                children: (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <CloudServerOutlined />
-                      <strong>{node.node}</strong>
-                      <span style={{ color: '#8c8c8c', fontSize: '12px' }}>({node.addr})</span>
-                    </div>
-                    <Tag color={isMaster ? 'green' : 'blue'}>
-                      {isMaster ? 'Master' : 'Slave'}
-                    </Tag>
-                  </div>
-                ),
-              };
-            }),
+            optionLabelProp: 'label',
           }}
+          options={nodes.map((node) => ({
+            label: `${node.node} (${node.addr})`,
+            value: node.addr,
+          }))}
           tooltip="Escolha em qual nó do cluster Consul este exporter será registrado"
         />
 
@@ -1530,27 +1525,12 @@ const Exporters: React.FC = () => {
           fieldProps={{
             size: 'large',
             suffixIcon: <CloudServerOutlined />,
-            optionLabelProp: 'children',
-            options: nodes.map((node, index) => {
-              const isMaster = index === 0;
-              return {
-                label: `${node.node} (${node.addr})`,
-                value: node.addr,
-                children: (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <CloudServerOutlined />
-                      <strong>{node.node}</strong>
-                      <span style={{ color: '#8c8c8c', fontSize: '12px' }}>({node.addr})</span>
-                    </div>
-                    <Tag color={isMaster ? 'green' : 'blue'}>
-                      {isMaster ? 'Master' : 'Slave'}
-                    </Tag>
-                  </div>
-                ),
-              };
-            }),
+            optionLabelProp: 'label',
           }}
+          options={nodes.map((node) => ({
+            label: `${node.node} (${node.addr})`,
+            value: node.addr,
+          }))}
           tooltip="Escolha em qual nó do cluster Consul este exporter ficará registrado. Mudar o nó fará deregister no nó antigo e register no nó novo."
         />
 
