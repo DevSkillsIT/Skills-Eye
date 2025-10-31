@@ -29,6 +29,9 @@ yaml_service = YamlConfigService()
 fields_service = FieldsExtractionService()
 multi_config = MultiConfigManager()  # NOVO - Gerenciador de múltiplos arquivos
 
+# Cache para job_names (evitar SSH toda vez) - TTL de 5 minutos
+_job_names_cache: Dict[str, Dict[str, Any]] = {}
+
 
 # ============================================================================
 # MODELOS PYDANTIC
@@ -1847,6 +1850,8 @@ async def get_prometheus_job_names(
     Retorna apenas jobs que possuem consul_sd_configs (service discovery do Consul).
     Isso é usado no frontend para popular o dropdown de "Tipo de Serviço" ao criar exporters.
 
+    **Performance**: Usa cache de 5 minutos para evitar SSH repetidos.
+
     Args:
         hostname: IP ou hostname do servidor Prometheus (ex: 172.16.1.26)
                  Se não fornecido, usa o servidor master (primeiro da lista)
@@ -1863,12 +1868,14 @@ async def get_prometheus_job_names(
             "job_names": ["selfnode_exporter_rio", "blackbox_remote_rmd_ldc", ...],
             "total": 5,
             "hostname": "172.16.1.26",
-            "file_path": "/etc/prometheus/prometheus.yml"
+            "file_path": "/etc/prometheus/prometheus.yml",
+            "from_cache": false
         }
     """
     try:
         # Detectar caminho do prometheus.yml no servidor
         from core.server_utils import get_server_detector
+        import time
 
         # Se hostname não fornecido, usar o master (primeiro servidor)
         if not hostname:
@@ -1884,7 +1891,23 @@ async def get_prometheus_job_names(
             first_host = prometheus_hosts_str.split(';')[0]
             hostname = first_host.split(':')[0]
 
-        logger.info(f"[JOB-NAMES] Buscando job_names para servidor: {hostname}")
+        # VERIFICAR CACHE PRIMEIRO (TTL de 5 minutos = 300 segundos)
+        cache_ttl = 300
+        now = time.time()
+        cache_key = hostname
+
+        if cache_key in _job_names_cache:
+            cached_entry = _job_names_cache[cache_key]
+            cached_time = cached_entry.get('timestamp', 0)
+            age = now - cached_time
+
+            if age < cache_ttl:
+                logger.info(f"[JOB-NAMES] ✓ Cache HIT para {hostname} (idade: {age:.1f}s)")
+                result = cached_entry['data']
+                result['from_cache'] = True
+                return result
+
+        logger.info(f"[JOB-NAMES] Cache MISS para {hostname}, buscando do servidor via SSH...")
 
         # Detectar capacidades do servidor
         detector = get_server_detector()
@@ -1964,14 +1987,24 @@ async def get_prometheus_job_names(
 
         logger.info(f"[JOB-NAMES] Encontrados {len(job_names)} jobs com consul_sd_configs em {hostname}")
 
-        return {
+        result = {
             "success": True,
             "job_names": sorted(job_names),  # Ordenar alfabeticamente
             "total": len(job_names),
             "hostname": hostname,
             "file_path": prometheus_file_path,
-            "jobs_details": jobs_with_consul_sd  # Detalhes extras (opcional para debug)
+            "jobs_details": jobs_with_consul_sd,  # Detalhes extras (opcional para debug)
+            "from_cache": False
         }
+
+        # SALVAR NO CACHE
+        _job_names_cache[cache_key] = {
+            'data': result,
+            'timestamp': now
+        }
+        logger.info(f"[JOB-NAMES] ✓ Cache atualizado para {hostname} (TTL: {cache_ttl}s)")
+
+        return result
 
     except HTTPException:
         raise

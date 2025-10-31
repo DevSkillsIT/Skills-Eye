@@ -150,6 +150,7 @@ const Exporters: React.FC = () => {
   const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
   const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
   const [visibleOptionalFields, setVisibleOptionalFields] = useState<string[]>([]);
+  const [masterNodeAddr, setMasterNodeAddr] = useState<string>(''); // Armazena o endereço do nó master
 
   // Hook para gerenciar nó selecionado na página principal
   const { selectedNode, isAllNodes, selectNode } = useSelectedNode();
@@ -179,6 +180,14 @@ const Exporters: React.FC = () => {
       fetchServiceNamesForNode(selectedNodeForModal);
     }
   }, [selectedNodeForModal]);
+
+  // Quando modal CREATE abre, carregar job_names do master automaticamente
+  useEffect(() => {
+    if (createModalOpen && masterNodeAddr) {
+      console.log('[Exporters] Modal CREATE aberto, carregando job_names do master:', masterNodeAddr);
+      fetchServiceNamesForNode(masterNodeAddr);
+    }
+  }, [createModalOpen, masterNodeAddr]);
 
   // Quando modal EDIT abre, buscar serviços do nó atual
   useEffect(() => {
@@ -256,6 +265,13 @@ const Exporters: React.FC = () => {
       const payload = response.data;
       const nodeList = Array.isArray(payload.data) ? payload.data : [];
       setNodes(nodeList);
+
+      // Identificar o nó master (primeiro da lista) e armazenar seu endereço
+      if (nodeList.length > 0) {
+        const masterNode = nodeList[0];
+        setMasterNodeAddr(masterNode.addr);
+        console.log('[Exporters] Nó master identificado:', masterNode.addr, '-', masterNode.node);
+      }
     } catch (error) {
       console.error('Error fetching nodes:', error);
     }
@@ -1249,8 +1265,16 @@ const Exporters: React.FC = () => {
           gutter: [16, 0],
         }}
         open={createModalOpen}
-        onOpenChange={setCreateModalOpen}
+        onOpenChange={(open) => {
+          setCreateModalOpen(open);
+          // Limpar estado ao fechar
+          if (!open) {
+            setSelectedNodeForModal('');
+            setGeneratedId('');
+          }
+        }}
         initialValues={{
+          node_addr: masterNodeAddr, // Definir master como padrão
           service: 'selfnode_exporter',
           port: 9100,
           os: 'linux',
