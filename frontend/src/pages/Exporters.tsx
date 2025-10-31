@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -7,7 +8,6 @@ import {
   Input,
   message,
   Popconfirm,
-  Select,
   Space,
   Statistic,
   Tag,
@@ -38,6 +38,7 @@ import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector'
 import MetadataFilterBar from '../components/MetadataFilterBar';
 import AdvancedSearchPanel, { type SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
+import { NodeSelector, useSelectedNode, type ConsulNode } from '../components/NodeSelector';
 import { consulAPI, metadataFieldsAPI } from '../services/api';
 import type {
   MetadataField,
@@ -47,11 +48,8 @@ import type {
   ServiceMeta,
 } from '../services/api';
 
-const { Option } = Select;
 const { Search } = Input;
 const { Text } = Typography;
-
-const ALL_NODES = 'ALL';
 
 interface ExporterTableItem {
   key: string;
@@ -125,7 +123,6 @@ const BASE_COLUMN_PRESETS: ColumnConfig[] = [
 const Exporters: React.FC = () => {
   const actionRef = useRef<ActionType>(null);
   const [nodes, setNodes] = useState<any[]>([]);
-  const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
   const [searchValue, setSearchValue] = useState('');
   const [filters, setFilters] = useState<MetadataFilters>({});
   const [metadataOptions, setMetadataOptions] = useState<any>({});
@@ -148,6 +145,10 @@ const Exporters: React.FC = () => {
   const [serviceNames, setServiceNames] = useState<string[]>([]);
   const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
   const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
+
+  // Hook para gerenciar nó selecionado na página principal
+  const { selectedNode, isAllNodes, selectNode } = useSelectedNode();
+  const [selectedNodeAddr, setSelectedNodeAddr] = useState<string>('all');
 
   useEffect(() => {
     fetchNodes();
@@ -898,23 +899,12 @@ const Exporters: React.FC = () => {
     });
   }, [allColumns, columnConfig, columnWidths, handleResize]);
 
-  const nodeSelector = useMemo(
-    () => (
-      <Select
-        value={selectedNode}
-        style={{ minWidth: 180 }}
-        onChange={(value) => setSelectedNode(value)}
-      >
-        <Option value={ALL_NODES}>Todos os nos</Option>
-        {nodes.map((node) => (
-          <Option key={node.node} value={node.addr}>
-            {node.node}
-          </Option>
-        ))}
-      </Select>
-    ),
-    [nodes, selectedNode],
-  );
+  // Handler para mudança de nó selecionado
+  const handleNodeChange = useCallback((nodeAddr: string, node?: ConsulNode) => {
+    selectNode(nodeAddr, node);
+    setSelectedNodeAddr(nodeAddr);
+    actionRef.current?.reload();
+  }, [selectNode]);
 
   const advancedSearchFields = useMemo(() => {
     const baseFields = [
@@ -940,29 +930,57 @@ const Exporters: React.FC = () => {
       }}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* Summary Cards */}
+        {/* NodeSelector e Summary Cards */}
         <Card>
-          <Space size="large" wrap>
-            <Statistic
-              title="Total de Exporters"
-              value={summary.total}
-              prefix={<CloudServerOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-            />
-            {Object.entries(summary.byType || {}).map(([type, count]) => (
-              <Statistic
-                key={type}
-                title={type}
-                value={count as number}
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div style={{ flex: '0 0 auto' }}>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  Nó do Consul
+                </Text>
+                <NodeSelector
+                  value={selectedNodeAddr}
+                  onChange={handleNodeChange}
+                  showAllNodesOption={true}
+                  style={{ width: 400 }}
+                />
+              </div>
+
+              <div style={{ flex: '1 1 auto', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                <Statistic
+                  title="Total de Exporters"
+                  value={summary.total}
+                  prefix={<CloudServerOutlined />}
+                  valueStyle={{ color: '#3f8600' }}
+                />
+                {Object.entries(summary.byType || {}).slice(0, 4).map(([type, count]) => (
+                  <Statistic
+                    key={type}
+                    title={type}
+                    value={count as number}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Info de nó selecionado */}
+            {!isAllNodes && selectedNode && (
+              <Alert
+                message={`Visualizando exporters do nó: ${selectedNode.name || selectedNode.addr}`}
+                type="info"
+                showIcon
+                closable
+                onClose={() => handleNodeChange('all')}
               />
-            ))}
+            )}
           </Space>
         </Card>
 
-        {/* Filters */}
+        {/* Filtros, busca e ações na mesma linha */}
         <Card size="small">
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Space wrap>
+            {/* Linha 1: Filtros metadata + busca + busca avançada */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               <MetadataFilterBar
                 value={filters}
                 options={metadataOptions}
@@ -973,21 +991,10 @@ const Exporters: React.FC = () => {
                 }}
                 onReset={() => {
                   setFilters({});
-                  setSelectedNode(ALL_NODES);
+                  handleNodeChange('all');
                   actionRef.current?.reload();
                 }}
-                extra={nodeSelector}
               />
-            </Space>
-
-            <Space wrap>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setCreateModalOpen(true)}
-              >
-                Adicionar Exporter
-              </Button>
 
               <Search
                 placeholder="Buscar por nome, no, tipo..."
@@ -1015,6 +1022,17 @@ const Exporters: React.FC = () => {
                   Limpar Filtros Avancados
                 </Button>
               )}
+            </div>
+
+            {/* Linha 2: Ações principais */}
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateModalOpen(true)}
+              >
+                Adicionar Exporter
+              </Button>
 
               <ColumnSelector
                 columns={columnConfig}
@@ -1055,6 +1073,7 @@ const Exporters: React.FC = () => {
               </Popconfirm>
             </Space>
 
+            {/* Painel de busca avançada */}
             {advancedOpen && (
               <AdvancedSearchPanel
                 availableFields={advancedSearchFields}
@@ -1174,7 +1193,12 @@ const Exporters: React.FC = () => {
       {/* Create Exporter Modal */}
       <ModalForm<CreateFormValues>
         title="Adicionar Novo Exporter"
-        width={700}
+        width={900}
+        layout="horizontal"
+        grid={true}
+        rowProps={{
+          gutter: [16, 0],
+        }}
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
         initialValues={{
@@ -1211,7 +1235,9 @@ const Exporters: React.FC = () => {
           }
         }}
       >
+        {/* Seção: Configuração do Nó */}
         <ProFormSelect
+          colProps={{ span: 12 }}
           name="node_addr"
           label="Nó do Consul"
           placeholder="Selecione o nó onde o serviço será registrado"
@@ -1224,6 +1250,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormSelect
+          colProps={{ span: 12 }}
           name="service"
           label="Tipo de Serviço"
           placeholder="Selecione o tipo de exporter"
@@ -1238,11 +1265,22 @@ const Exporters: React.FC = () => {
           tooltip="Tipos de serviços disponíveis no catálogo do Consul"
         />
 
-        <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          <strong>Campos para construção do ID:</strong> {generatedId || '(preencha os campos abaixo)'}
-        </Text>
+        {/* ID Preview */}
+        <div style={{ gridColumn: '1 / -1', marginBottom: 16 }}>
+          <Alert
+            message={
+              <span>
+                <strong>ID Gerado:</strong> {generatedId || '(preencha os campos abaixo)'}
+              </span>
+            }
+            type="info"
+            showIcon
+          />
+        </div>
 
+        {/* Seção: Campos do ID (Grid 2x3) */}
         <ProFormText
+          colProps={{ span: 12 }}
           name="vendor"
           label="Vendor"
           placeholder="Ex: Skills, GrupoWink"
@@ -1254,6 +1292,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="account"
           label="Account"
           placeholder="Ex: Aplicacao, AD, Monit_Print"
@@ -1265,6 +1304,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="region"
           label="Region"
           placeholder="Ex: InfraLocal, Cliente"
@@ -1276,6 +1316,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="group"
           label="Group"
           placeholder="Ex: DTC_Cluster_Local"
@@ -1287,6 +1328,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 24 }}
           name="name"
           label="Name"
           placeholder="Ex: HUDU_172.16.1.25"
@@ -1297,7 +1339,9 @@ const Exporters: React.FC = () => {
           tooltip="Nome identificador único do exporter"
         />
 
+        {/* Seção: Configuração do Exporter */}
         <ProFormText
+          colProps={{ span: 16 }}
           name="instance"
           label="Instance"
           placeholder="Ex: 192.168.1.10:9100"
@@ -1309,9 +1353,10 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormSelect
+          colProps={{ span: 8 }}
           name="os"
           label="Sistema Operacional"
-          placeholder="Selecione o sistema operacional"
+          placeholder="Selecione o SO"
           rules={[{ required: true, message: 'Campo obrigatório' }]}
           options={[
             { label: 'Linux', value: 'linux' },
@@ -1321,6 +1366,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 16 }}
           name="address"
           label="Endereço"
           placeholder="Ex: 192.168.1.10"
@@ -1329,6 +1375,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormDigit
+          colProps={{ span: 8 }}
           name="port"
           label="Porta"
           placeholder="Ex: 9100"
@@ -1339,6 +1386,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormSelect
+          colProps={{ span: 24 }}
           name="tags"
           label="Tags"
           mode="tags"
@@ -1353,7 +1401,12 @@ const Exporters: React.FC = () => {
       {/* Edit Exporter Modal */}
       <ModalForm<EditFormValues>
         title="Editar Exporter"
-        width={700}
+        width={900}
+        layout="horizontal"
+        grid={true}
+        rowProps={{
+          gutter: [16, 0],
+        }}
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         initialValues={editingExporter ? {
@@ -1393,22 +1446,26 @@ const Exporters: React.FC = () => {
           }
         }}
       >
+        {/* Informações do exporter atual */}
         {editingExporter && (
-          <>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-              <strong>ID Atual:</strong> <code>{editingExporter.id}</code>
-            </Text>
-            <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-              <strong>Nó Atual:</strong> {editingExporter.node} ({editingExporter.nodeAddr || editingExporter.node})
-            </Text>
-          </>
+          <div style={{ gridColumn: '1 / -1', marginBottom: 16 }}>
+            <Alert
+              message={
+                <div>
+                  <div><strong>ID Atual:</strong> <code>{editingExporter.id}</code></div>
+                  <div><strong>Nó Atual:</strong> {editingExporter.node} ({editingExporter.nodeAddr || editingExporter.node})</div>
+                </div>
+              }
+              description="⚠️ Alterar o nó ou os campos do ID exigirá deregister + register do serviço"
+              type="warning"
+              showIcon
+            />
+          </div>
         )}
 
-        <Text type="warning" style={{ display: 'block', marginBottom: 16 }}>
-          ⚠️ Alterar o nó ou os campos abaixo exigirá deregister + register do serviço
-        </Text>
-
+        {/* Seção: Configuração do Nó */}
         <ProFormSelect
+          colProps={{ span: 24 }}
           name="node_addr"
           label="Nó do Consul"
           placeholder="Selecione o nó onde o serviço está/será registrado"
@@ -1420,7 +1477,9 @@ const Exporters: React.FC = () => {
           tooltip="Escolha em qual nó do cluster Consul este exporter ficará registrado. Mudar o nó fará deregister no nó antigo e register no nó novo."
         />
 
+        {/* Seção: Campos do ID */}
         <ProFormText
+          colProps={{ span: 12 }}
           name="vendor"
           label="Vendor"
           placeholder="Ex: Skills, GrupoWink"
@@ -1432,6 +1491,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="account"
           label="Account"
           placeholder="Ex: Aplicacao, AD, Monit_Print"
@@ -1443,6 +1503,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="region"
           label="Region"
           placeholder="Ex: InfraLocal, Cliente"
@@ -1454,6 +1515,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 12 }}
           name="group"
           label="Group"
           placeholder="Ex: DTC_Cluster_Local"
@@ -1465,6 +1527,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormText
+          colProps={{ span: 24 }}
           name="name"
           label="Name"
           placeholder="Ex: HUDU_172.16.1.25"
@@ -1475,7 +1538,9 @@ const Exporters: React.FC = () => {
           tooltip="Nome identificador único do exporter"
         />
 
+        {/* Seção: Configuração do Exporter */}
         <ProFormText
+          colProps={{ span: 16 }}
           name="instance"
           label="Instance"
           placeholder="Ex: 192.168.1.10:9100"
@@ -1487,9 +1552,10 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormSelect
+          colProps={{ span: 8 }}
           name="os"
           label="Sistema Operacional"
-          placeholder="Selecione o sistema operacional"
+          placeholder="Selecione o SO"
           rules={[{ required: true, message: 'Campo obrigatório' }]}
           options={[
             { label: 'Linux', value: 'linux' },
@@ -1498,36 +1564,34 @@ const Exporters: React.FC = () => {
           tooltip="Sistema operacional do host monitorado"
         />
 
-        <Text type="secondary" style={{ display: 'block', marginBottom: 16, marginTop: 16 }}>
-          <strong>Campos adicionais do Meta:</strong>
-        </Text>
-
+        {/* Seção: Campos Opcionais de Metadata */}
         <ProFormText
+          colProps={{ span: 8 }}
           name="company"
           label="Empresa"
-          placeholder="Organização responsável"
+          placeholder="Organização"
           tooltip="Campo adicional de metadata"
         />
 
         <ProFormText
+          colProps={{ span: 8 }}
           name="project"
           label="Projeto"
-          placeholder="Projeto associado"
+          placeholder="Projeto"
           tooltip="Campo adicional de metadata"
         />
 
         <ProFormText
+          colProps={{ span: 8 }}
           name="env"
           label="Ambiente"
-          placeholder="Ex: prod, dev, homolog"
+          placeholder="prod, dev, etc"
           tooltip="Campo adicional de metadata"
         />
 
-        <Text type="secondary" style={{ display: 'block', marginBottom: 16, marginTop: 16 }}>
-          <strong>Configurações do serviço:</strong>
-        </Text>
-
+        {/* Seção: Configurações do Serviço */}
         <ProFormText
+          colProps={{ span: 16 }}
           name="address"
           label="Endereço"
           placeholder="Ex: 192.168.1.10"
@@ -1536,6 +1600,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormDigit
+          colProps={{ span: 8 }}
           name="port"
           label="Porta"
           placeholder="Ex: 9100"
@@ -1546,6 +1611,7 @@ const Exporters: React.FC = () => {
         />
 
         <ProFormSelect
+          colProps={{ span: 24 }}
           name="tags"
           label="Tags"
           mode="tags"
