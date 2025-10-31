@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 /**
  * Página de Gerenciamento de Campos Metadata
  *
@@ -9,7 +10,7 @@
  * - Reiniciar serviços Prometheus
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   PageContainer,
   ProTable,
@@ -110,6 +111,9 @@ const MetadataFieldsPage: React.FC = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingField, setEditingField] = useState<MetadataField | null>(null);
+  const [fallbackWarningVisible, setFallbackWarningVisible] = useState(false);
+  const [fallbackWarningMessage, setFallbackWarningMessage] = useState('');
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // FASE 2: Preview de Mudanças
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
@@ -195,6 +199,25 @@ const MetadataFieldsPage: React.FC = () => {
         setServerHasNoPrometheus(hasNoPrometheus);
         setServerPrometheusMessage(hasNoPrometheus ? response.data.message : '');
 
+        if (response.data.fallback_used) {
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+          }
+          setFallbackWarningMessage('Estrutura avançada detectada no prometheus.yml (fallback aplicado)');
+          setFallbackWarningVisible(true);
+          fallbackTimerRef.current = setTimeout(() => {
+            setFallbackWarningVisible(false);
+            setFallbackWarningMessage('');
+          }, 10000);
+        } else if (fallbackWarningVisible) {
+          if (fallbackTimerRef.current) {
+            clearTimeout(fallbackTimerRef.current);
+            fallbackTimerRef.current = null;
+          }
+          setFallbackWarningVisible(false);
+          setFallbackWarningMessage('');
+        }
+
         // Atualizar campos com status de sincronização
         const syncStatusMap = new Map<string, {
           sync_status: 'synced' | 'outdated' | 'missing' | 'error';
@@ -229,6 +252,13 @@ const MetadataFieldsPage: React.FC = () => {
           sync_message: 'Erro ao verificar status',
         }))
       );
+
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      setFallbackWarningVisible(false);
+      setFallbackWarningMessage('');
 
       if (error.code === 'ECONNABORTED') {
         message.error('Tempo esgotado ao verificar sincronização (mais de 30 segundos). Verifique a conexão SSH.');
@@ -270,6 +300,14 @@ const MetadataFieldsPage: React.FC = () => {
       fetchSyncStatus(selectedServer);
     }
   }, [selectedServer]);
+
+  useEffect(() => {
+    return () => {
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleCreateField = async (values: any) => {
     try {
@@ -1001,7 +1039,29 @@ const MetadataFieldsPage: React.FC = () => {
               (f) => f.sync_status === 'outdated' || f.sync_status === 'missing'
             ).length;
 
-            return [
+            const toolbarItems = [] as React.ReactNode[];
+
+            if (fallbackWarningVisible && fallbackWarningMessage) {
+              toolbarItems.push(
+                <Tooltip key="fallback-info" title={fallbackWarningMessage}>
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="Leitura alternativa aplicada"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      height: 32,
+                      padding: '0 12px',
+                      margin: 0,
+                      whiteSpace: 'nowrap',
+                    }}
+                  />
+                </Tooltip>
+              );
+            }
+
+            toolbarItems.push(
               <Tooltip key="batch-sync" title="Sincronizar campos desatualizados em lote (FASE 3)">
                 <Button
                   type="primary"
@@ -1011,7 +1071,10 @@ const MetadataFieldsPage: React.FC = () => {
                 >
                   Sincronizar Campos {outdatedCount > 0 && `(${outdatedCount})`}
                 </Button>
-              </Tooltip>,
+              </Tooltip>
+            );
+
+            toolbarItems.push(
               <Tooltip key="sync" title="Atualizar status de sincronização">
                 <Button
                   icon={<SyncOutlined spin={loadingSyncStatus} />}
@@ -1020,8 +1083,10 @@ const MetadataFieldsPage: React.FC = () => {
                 >
                   {loadingSyncStatus ? 'Verificando...' : 'Verificar Sincronização'}
                 </Button>
-              </Tooltip>,
-            ];
+              </Tooltip>
+            );
+
+            return toolbarItems;
           }}
         />
       </ProCard>

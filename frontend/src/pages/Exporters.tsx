@@ -38,10 +38,12 @@ import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector'
 import MetadataFilterBar from '../components/MetadataFilterBar';
 import AdvancedSearchPanel, { type SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
-import { consulAPI } from '../services/api';
+import { consulAPI, metadataFieldsAPI } from '../services/api';
 import type {
   ConsulServiceRecord,
+  MetadataField,
   MetadataFilters,
+  ServiceUpdatePayload,
   ServiceMeta,
 } from '../services/api';
 
@@ -89,17 +91,23 @@ interface ExporterTableItem {
   exporterType?: string; // node, windows, mysql, redis, etc.
 }
 
+interface EditFormValues {
+  address?: string;
+  port?: number;
+  tags?: string[];
+  company?: string;
+  project?: string;
+  env?: string;
+}
+
 type ExporterColumn<T> = import('@ant-design/pro-components').ProColumns<T>;
 
-const EXPORTER_COLUMN_PRESETS: ColumnConfig[] = [
+const BASE_COLUMN_PRESETS: ColumnConfig[] = [
   { key: 'service', title: 'Servico', visible: true },
   { key: 'exporterType', title: 'Tipo', visible: true },
   { key: 'node', title: 'No', visible: true },
   { key: 'address', title: 'Endereco', visible: true },
   { key: 'port', title: 'Porta', visible: true },
-  { key: 'company', title: 'Empresa', visible: true },
-  { key: 'project', title: 'Projeto', visible: true },
-  { key: 'env', title: 'Ambiente', visible: true },
   { key: 'tags', title: 'Tags', visible: false },
   { key: 'actions', title: 'Acoes', visible: true, locked: true },
 ];
@@ -112,7 +120,9 @@ const Exporters: React.FC = () => {
   const [filters, setFilters] = useState<MetadataFilters>({});
   const [metadataOptions, setMetadataOptions] = useState<any>({});
   const [summary, setSummary] = useState<any>({ total: 0, byEnv: {}, byType: {} });
-  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>(EXPORTER_COLUMN_PRESETS);
+  const [metadataFields, setMetadataFields] = useState<MetadataField[]>([]);
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>(BASE_COLUMN_PRESETS);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [detailsDrawerVisible, setDetailsDrawerVisible] = useState(false);
   const [selectedExporter, setSelectedExporter] = useState<ExporterTableItem | null>(null);
@@ -127,6 +137,66 @@ const Exporters: React.FC = () => {
 
   useEffect(() => {
     fetchNodes();
+  }, []);
+
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        setMetadataLoading(true);
+        const response = await metadataFieldsAPI.listFields({ show_in_table_only: true });
+        const fields = response?.data?.fields || [];
+        const visibleFields = fields
+          .filter((field) => field.show_in_table)
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        setMetadataFields(visibleFields);
+
+        setColumnConfig((prev) => {
+          const visibilityMap = prev.reduce<Record<string, boolean>>((acc, col) => {
+            acc[col.key] = col.visible;
+            return acc;
+          }, {});
+
+          const baseColumns = BASE_COLUMN_PRESETS.map((col) => ({
+            ...col,
+            visible: visibilityMap[col.key] ?? col.visible,
+          }));
+
+          const dynamicColumns = visibleFields.map<ColumnConfig>((field) => ({
+            key: field.name,
+            title: field.display_name || field.name,
+            visible: visibilityMap[field.name] ?? true,
+          }));
+
+          if (!dynamicColumns.length) {
+            return baseColumns;
+          }
+
+          const nextConfig: ColumnConfig[] = [];
+          let metadataInserted = false;
+
+          baseColumns.forEach((col) => {
+            if (!metadataInserted && col.key === 'tags') {
+              nextConfig.push(...dynamicColumns);
+              metadataInserted = true;
+            }
+            nextConfig.push(col);
+          });
+
+          if (!metadataInserted) {
+            nextConfig.push(...dynamicColumns);
+          }
+
+          return nextConfig;
+        });
+      } catch (error) {
+        console.error('Erro ao carregar campos metadata:', error);
+      } finally {
+        setMetadataLoading(false);
+      }
+    };
+
+    fetchMetadata();
   }, []);
 
   const fetchNodes = async () => {
@@ -253,17 +323,8 @@ const Exporters: React.FC = () => {
             case 'exporterType':
               fieldValue = item.exporterType;
               break;
-            case 'company':
-              fieldValue = item.meta?.company;
-              break;
-            case 'project':
-              fieldValue = item.meta?.project;
-              break;
-            case 'env':
-              fieldValue = item.meta?.env;
-              break;
             default:
-              fieldValue = '';
+              fieldValue = item.meta?.[condition.field];
           }
 
           const valueStr = String(fieldValue || '').toLowerCase();
@@ -309,7 +370,7 @@ const Exporters: React.FC = () => {
         const { data: backendRows, summary: backendSummary } = response.data;
 
         // Converter para formato esperado pela tabela
-        let rows: ExporterTableItem[] = backendRows.map((item) => ({
+        const rows: ExporterTableItem[] = backendRows.map((item) => ({
           key: item.key,
           id: item.id,
           node: item.node,
@@ -373,14 +434,13 @@ const Exporters: React.FC = () => {
         let searchedRows = advancedRows;
         if (keyword) {
           searchedRows = advancedRows.filter((item) => {
+            const metadataValues = metadataFields.map((field) => item.meta?.[field.name]);
             const fields = [
               item.service,
               item.id,
               item.node,
               item.exporterType,
-              item.meta?.company,
-              item.meta?.project,
-              item.meta?.instance,
+              ...metadataValues,
             ];
             return fields.some(
               (field) =>
@@ -403,6 +463,7 @@ const Exporters: React.FC = () => {
           total: searchedRows.length,
         };
       } catch (error) {
+        console.error('Falha ao carregar exporters:', error);
         message.error('Falha ao carregar exporters');
         return {
           data: [],
@@ -411,7 +472,7 @@ const Exporters: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, searchValue],
+    [applyAdvancedFilters, metadataFields, searchValue],
   );
 
   const handleAdvancedSearch = useCallback(
@@ -438,10 +499,10 @@ const Exporters: React.FC = () => {
     [],
   );
 
-  const handleShowDetails = (record: ExporterTableItem) => {
+  const handleShowDetails = useCallback((record: ExporterTableItem) => {
     setSelectedExporter(record);
     setDetailsDrawerVisible(true);
-  };
+  }, []);
 
   const handleExportData = () => {
     const dataStr = JSON.stringify(tableSnapshot, null, 2);
@@ -476,7 +537,7 @@ const Exporters: React.FC = () => {
     }
   };
 
-  const handleDeleteExporter = async (record: ExporterTableItem) => {
+  const handleDeleteExporter = useCallback(async (record: ExporterTableItem) => {
     try {
       await consulAPI.deregisterService({
         node_addr: record.nodeAddr || record.node,
@@ -492,28 +553,30 @@ const Exporters: React.FC = () => {
       console.error('Erro ao remover exporter:', error);
       message.error('Falha ao remover exporter');
     }
-  };
+  }, []);
 
-  const handleEditExporter = (record: ExporterTableItem) => {
+  const handleEditExporter = useCallback((record: ExporterTableItem) => {
     setEditingExporter(record);
     setEditModalOpen(true);
-  };
+  }, []);
 
-  const handleEditSubmit = async (values: any) => {
+  const handleEditSubmit = async (values: EditFormValues) => {
     if (!editingExporter) return false;
 
     try {
-      const updatePayload = {
-        address: values.address || editingExporter.address,
-        port: values.port || editingExporter.port,
-        tags: values.tags || editingExporter.tags || [],
-        Meta: {
-          ...editingExporter.meta,
-          company: values.company || editingExporter.meta?.company,
-          project: values.project || editingExporter.meta?.project,
-          env: values.env || editingExporter.meta?.env,
-        },
-        node_addr: editingExporter.nodeAddr || editingExporter.node, // CRITICAL: Necessário para identificar o nó
+      const metaPayload = {
+        ...editingExporter.meta,
+        company: values.company ?? editingExporter.meta?.company,
+        project: values.project ?? editingExporter.meta?.project,
+        env: values.env ?? editingExporter.meta?.env,
+      };
+
+      const updatePayload: ServiceUpdatePayload = {
+        address: values.address ?? editingExporter.address,
+        port: values.port ?? editingExporter.port,
+        tags: values.tags ?? editingExporter.tags ?? [],
+        Meta: metaPayload as unknown as Record<string, string>,
+        node_addr: editingExporter.nodeAddr || editingExporter.node, // Necessário para identificar o nó
       };
 
       await consulAPI.updateService(editingExporter.id, updatePayload);
@@ -526,21 +589,81 @@ const Exporters: React.FC = () => {
       setEditingExporter(null);
       actionRef.current?.reload();
       return true;
-    } catch (error: any) {
-      const errorMsg = error?.response?.data?.detail || error?.message || 'Erro ao atualizar exporter';
+    } catch (error: unknown) {
+      let errorMsg = 'Erro ao atualizar exporter';
+      if (typeof error === 'object' && error !== null) {
+        const maybeResponse = error as { response?: { data?: { detail?: string } } }; // API retorna detail
+        errorMsg = maybeResponse.response?.data?.detail
+          || (error as { message?: string }).message
+          || errorMsg;
+      }
       message.error(errorMsg);
       return false;
     }
   };
 
-  const allColumns: ExporterColumn<ExporterTableItem>[] = useMemo(
-    () => [
+  const renderMetadataCell = useCallback(
+    (field: MetadataField, record: ExporterTableItem) => {
+      const value = record.meta?.[field.name];
+
+      if (value === undefined || value === null || value === '') {
+        return '-';
+      }
+
+      if (field.name === 'env' && typeof value === 'string') {
+        const colorMap: Record<string, string> = {
+          prd: 'red',
+          prod: 'red',
+          hml: 'orange',
+          homolog: 'orange',
+          dev: 'blue',
+          lab: 'green',
+        };
+        return <Tag color={colorMap[value.toLowerCase()] || 'default'}>{value}</Tag>;
+      }
+
+      if (Array.isArray(value)) {
+        if (!value.length) {
+          return '-';
+        }
+        return value.join(', ');
+      }
+
+      if (typeof value === 'boolean') {
+        return value ? 'Sim' : 'Nao';
+      }
+
+      return String(value);
+    },
+    [],
+  );
+
+  const metadataColumns = useMemo<ExporterColumn<ExporterTableItem>[]>(
+    () =>
+      metadataFields.map((field) => ({
+        title: field.display_name || field.name,
+        dataIndex: ['meta', field.name],
+        key: field.name,
+        width: 150,
+        ellipsis: true,
+        render: (_, record) => renderMetadataCell(field, record),
+        sorter: (a, b) => {
+          const valueA = a.meta?.[field.name];
+          const valueB = b.meta?.[field.name];
+          return String(valueA ?? '').localeCompare(String(valueB ?? ''));
+        },
+      })),
+    [metadataFields, renderMetadataCell],
+  );
+
+  const allColumns: ExporterColumn<ExporterTableItem>[] = useMemo(() => {
+    const baseColumns: ExporterColumn<ExporterTableItem>[] = [
       {
         title: 'Servico',
         dataIndex: 'service',
         key: 'service',
         width: 200,
-        render: (text) => <Text strong>{text}</Text>,
+        render: (_, record) => <Text strong>{record.service}</Text>,
         sorter: (a, b) => a.service.localeCompare(b.service),
       },
       {
@@ -548,7 +671,8 @@ const Exporters: React.FC = () => {
         dataIndex: 'exporterType',
         key: 'exporterType',
         width: 150,
-        render: (text) => {
+        render: (_, record) => {
+          const text = record.exporterType || '-';
           const colorMap: Record<string, string> = {
             'Node Exporter': 'blue',
             'Windows Exporter': 'cyan',
@@ -580,58 +704,27 @@ const Exporters: React.FC = () => {
         dataIndex: 'address',
         key: 'address',
         width: 150,
-        render: (text) => text || '-',
+        render: (_, record) => record.address || '-',
       },
       {
         title: 'Porta',
         dataIndex: 'port',
         key: 'port',
         width: 80,
-        render: (port) => port || '-',
-      },
-      {
-        title: 'Empresa',
-        dataIndex: ['meta', 'company'],
-        key: 'company',
-        width: 120,
-        render: (company) => company || '-',
-      },
-      {
-        title: 'Projeto',
-        dataIndex: ['meta', 'project'],
-        key: 'project',
-        width: 120,
-        render: (project) => project || '-',
-      },
-      {
-        title: 'Ambiente',
-        dataIndex: ['meta', 'env'],
-        key: 'env',
-        width: 100,
-        render: (env) => {
-          const colorMap: Record<string, string> = {
-            prd: 'red',
-            prod: 'red',
-            hml: 'orange',
-            homolog: 'orange',
-            dev: 'blue',
-            lab: 'green',
-          };
-          return env ? <Tag color={colorMap[env.toLowerCase()] || 'default'}>{env}</Tag> : '-';
-        },
+        render: (_, record) => record.port || '-',
       },
       {
         title: 'Tags',
         dataIndex: 'tags',
         key: 'tags',
         width: 150,
-        render: (tags: string[]) =>
-          tags?.length ? (
+        render: (_, record) =>
+          record.tags?.length ? (
             <Space size={[4, 4]} wrap>
-              {tags.slice(0, 3).map((tag, idx) => (
+              {record.tags.slice(0, 3).map((tag, idx) => (
                 <Tag key={idx}>{tag}</Tag>
               ))}
-              {tags.length > 3 && <Tag>+{tags.length - 3}</Tag>}
+              {record.tags.length > 3 && <Tag>+{record.tags.length - 3}</Tag>}
             </Space>
           ) : (
             '-'
@@ -679,9 +772,21 @@ const Exporters: React.FC = () => {
           </Space>
         ),
       },
-    ],
-    [summary],
-  );
+    ];
+
+    if (!metadataColumns.length) {
+      return baseColumns;
+    }
+
+    const tagsIndex = baseColumns.findIndex((column) => column.key === 'tags');
+    if (tagsIndex === -1) {
+      return [...baseColumns, ...metadataColumns];
+    }
+
+    const beforeTags = baseColumns.slice(0, tagsIndex);
+    const afterTags = baseColumns.slice(tagsIndex);
+    return [...beforeTags, ...metadataColumns, ...afterTags];
+  }, [metadataColumns, summary, handleDeleteExporter, handleEditExporter, handleShowDetails]);
 
   const visibleColumns = useMemo(() => {
     const visibleKeys = columnConfig.filter((c) => c.visible).map((c) => c.key);
@@ -691,7 +796,7 @@ const Exporters: React.FC = () => {
       return {
         ...col,
         width,
-        onHeaderCell: (col: any) => ({
+        onHeaderCell: () => ({
           width,
           onResize: handleResize(key),
         }),
@@ -717,17 +822,21 @@ const Exporters: React.FC = () => {
     [nodes, selectedNode],
   );
 
-  const advancedSearchFields = useMemo(
-    () => [
-      { label: 'Servico', value: 'service', type: 'text' },
-      { label: 'No', value: 'node', type: 'text' },
-      { label: 'Tipo de Exporter', value: 'exporterType', type: 'text' },
-      { label: 'Empresa', value: 'company', type: 'text' },
-      { label: 'Projeto', value: 'project', type: 'text' },
-      { label: 'Ambiente', value: 'env', type: 'text' },
-    ],
-    [],
-  );
+  const advancedSearchFields = useMemo(() => {
+    const baseFields = [
+      { label: 'Servico', value: 'service', type: 'text' as const },
+      { label: 'No', value: 'node', type: 'text' as const },
+      { label: 'Tipo de Exporter', value: 'exporterType', type: 'text' as const },
+    ];
+
+    const metadataFieldOptions = metadataFields.map((field) => ({
+      label: field.display_name || field.name,
+      value: field.name,
+      type: 'text' as const,
+    }));
+
+    return [...baseFields, ...metadataFieldOptions];
+  }, [metadataFields]);
 
   return (
     <PageContainer
@@ -763,6 +872,7 @@ const Exporters: React.FC = () => {
               <MetadataFilterBar
                 value={filters}
                 options={metadataOptions}
+                loading={metadataLoading}
                 onChange={(newFilters) => {
                   setFilters(newFilters);
                   actionRef.current?.reload();

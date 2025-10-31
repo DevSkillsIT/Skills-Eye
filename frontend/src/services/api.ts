@@ -1017,9 +1017,13 @@ export interface MetadataField {
   name: string;
   display_name: string;
   category: string;
-  data_type: string;
+  data_type?: string;
+  field_type?: string;
+  order?: number;
   required: boolean;
   show_in_table: boolean;
+  show_in_form?: boolean;
+  show_in_dashboard?: boolean;
   show_in_filters: boolean;
   editable: boolean;
   source_label: string;

@@ -1,0 +1,253 @@
+# ============================================================================
+# PROMETHEUS.YML - SERVIDOR RIO (172.16.200.14)
+# ============================================================================
+# Versão: 3.0 - OTIMIZADO E DOCUMENTADO (rev1)
+# Última atualização: 2025-10-30
+# Função: Coletor LOCAL (RMD/LDC) — envia métricas para Palmas via remote_write
+# ----------------------------------------------------------------------------
+# MUDANÇAS NESTA REV1
+# - datacenter alterado para 'ramada-barra-rj'
+# - write_relabel_configs.remote_site => 'rio-rmd-ldc'
+# - Atualização de rule_files para a nova convenção:
+#   rules_monit_alerts_prometheus.yml, rules_monit_alerts_nodes_lin.yml,
+#   rules_monit_alerts_windows.yml, rules_monit_alerts_global.yml
+# - Mantidas as melhorias de anchors definidas no primeiro job que usa
+# ============================================================================
+
+# ============================================================================
+# CONFIGURAÇÃO GLOBAL
+# ============================================================================
+global:
+  scrape_interval: 30s
+  evaluation_interval: 45s
+  scrape_timeout: 10s
+  # Labels externos — identificam a origem no servidor central (Palmas)
+  external_labels:
+    cluster: 'rmd-ldc-cliente'
+    datacenter: 'ramada-barra-rj'
+    prometheus_instance: '172.16.200.14'
+    environment: 'production'
+    cliente: 'ramada-ldc'
+    location: 'rio-de-janeiro'
+
+# ============================================================================
+# CONFIGURAÇÃO DE STORAGE E RETENÇÃO (DOCUMENTAÇÃO)
+# ============================================================================
+# Estas flags vão no service systemd (prometheus.service) ou na linha de comando.
+# Mantidas aqui apenas como referência:
+#
+# --storage.tsdb.path=/var/lib/prometheus/data
+# --storage.tsdb.retention.time=150d  # Retenção: 150 dias
+# --storage.tsdb.retention.size=180GB # Limite: 180GB (ajuste conforme disco)
+# --web.enable-lifecycle               # Permite reload via HTTP POST
+# --web.enable-admin-api               # Habilita API admin
+# --web.config.file=/etc/prometheus/web-config.yml  # Basic Auth (bcrypt)
+# ============================================================================
+
+# ============================================================================
+# REMOTE WRITE — ENVIA MÉTRICAS PARA PALMAS (172.16.1.26)
+# ============================================================================
+remote_write:
+  - url: "http://172.16.1.26:9090/api/v1/write"
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    # Fila de envio ajustada para estabilidade em links com variação de latência
+    queue_config:
+      capacity: 5000
+      max_samples_per_send: 500
+      batch_send_deadline: 5s
+      min_backoff: 30s
+      max_backoff: 5m
+      max_shards: 5
+      # max_samples_per_second: 1000  # REMOVIDO: não suportado pelo Prometheus (campo inexistente em queue_config)
+    remote_timeout: 30s
+    write_relabel_configs:
+      - target_label: remote_site
+        replacement: 'rio-rmd-ldc'
+
+# ============================================================================
+# ALERTMANAGER LOCAL
+# ============================================================================
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+      timeout: 10s
+
+# ============================================================================
+# ARQUIVOS DE REGRAS (MANTER EM SINCRONIA COM O AMBIENTE)
+# ============================================================================
+rule_files:
+  - "rules_monit_alerts_prometheus.yml"
+  - "rules_monit_alerts_nodes_lin.yml"
+  - "rules_monit_alerts_windows.yml"
+  - "rules_monit_alerts_global.yml"
+
+# ============================================================================
+# SCRAPE CONFIGS — JOBS DE COLETA (RIO)
+# ============================================================================
+# Observação sobre anchors: definimos &relabel_exporter_rio NO PRIMEIRO JOB
+# que usa, e reusamos com *relabel_exporter_rio nos demais.
+# ============================================================================
+
+scrape_configs:
+
+  # --------------------------------------------------------------------------
+  # JOB 1: PROMETHEUS (SELF-MONITORING)
+  # --------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'localhost:9090'   # Prometheus
+          - 'localhost:9115'   # Blackbox Exporter (se instalado)
+        labels:
+          environment: 'production'
+          datacenter: 'rio'
+
+  # --------------------------------------------------------------------------
+  # JOB 2: NODE EXPORTER (LINUX) — TARGETS LOCAIS DO RIO
+  # --------------------------------------------------------------------------
+  - job_name: node_exporter_rio
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        refresh_interval: 45s
+        services: ['selfnode_exporter_rio']
+        tags: ['linux']
+    # Template de relabel para exporters (definição do ANCHOR aqui)
+    relabel_configs: &relabel_exporter_rio
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_group]
+        target_label: group
+      - source_labels: [__meta_consul_service_metadata_account]
+        target_label: account
+      - source_labels: [__meta_consul_service_metadata_iid]
+        target_label: iid
+      - source_labels: [__meta_consul_service_metadata_exp]
+        target_label: exp
+      - source_labels: [__meta_consul_service_metadata_instance]
+        target_label: instance
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_name]
+        target_label: name
+      - source_labels: [__meta_consul_service_metadata_project]
+        target_label: project
+      - source_labels: [__meta_consul_service_metadata_localizacao]
+        target_label: localizacao
+      - source_labels: [__meta_consul_service_metadata_fabricante]
+        target_label: fabricante
+      - source_labels: [__meta_consul_service_metadata_tipo]
+        target_label: tipo
+      - source_labels: [__meta_consul_service_metadata_modelo]
+        target_label: modelo
+      - source_labels: [__meta_consul_service_metadata_cod_localidade]
+        target_label: cod_localidade
+      - source_labels: [__meta_consul_service_metadata_tipo_dispositivo_abrev]
+        target_label: tipo_dispositivo_abrev
+      - source_labels: [__meta_consul_service_metadata_cidade]
+        target_label: cidade
+      - source_labels: [__meta_consul_service_metadata_notas]
+        target_label: notas
+      - source_labels: [__meta_consul_service_metadata_glpi_url]
+        target_label: glpi_URL
+
+      # Para exporters, instance do Consul vira __address__ diretamente
+      - source_labels: [instance]
+        target_label: __address__
+
+  # --------------------------------------------------------------------------
+  # JOB 3: WINDOWS EXPORTER — TARGETS LOCAIS DO RIO
+  # --------------------------------------------------------------------------
+  - job_name: windows_exporter_rio
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        refresh_interval: 45s
+        services: ['selfnode_exporter_rio']
+        tags: ['windows']
+    relabel_configs: *relabel_exporter_rio
+
+  # --------------------------------------------------------------------------
+  # JOB 4: SNMP EXPORTER (OPCIONAL/LOCAL)
+  # --------------------------------------------------------------------------
+  - job_name: snmp_rio
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    static_configs:
+      - targets:
+          - '127.0.0.1'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: '127.0.0.1:9116'
+
+  # --------------------------------------------------------------------------
+  # BLACKBOX EXPORTER JOBS (RIO) — MANTIDOS COMENTADOS PARA EVITAR DUPLICIDADE
+  # --------------------------------------------------------------------------
+  # NOTA IMPORTANTE: Para Blackbox (quando habilitar), manter o fluxo:
+  #   __meta_consul_service_metadata_instance -> __param_target  # CRÍTICO
+  #   __param_target -> instance
+  #   __address__ -> 127.0.0.1:9115 (ou endereço do exporter remoto)
+  # - job_name: 'icmp_rio'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [icmp]
+  #   static_configs:
+  #     - targets: ['8.8.8.8']
+  #   relabel_configs:
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: 127.0.0.1:9115
+
+# ============================================================================
+# VALIDAÇÃO PRÉ-DEPLOYMENT E TROUBLESHOOTING
+# ============================================================================
+# 1) Validar sintaxe:
+#    promtool check config /etc/prometheus/prometheus.yml
+#
+# 2) Recarregar sem restart:
+#    systemctl reload prometheus
+#
+# 3) Verificar remote_write (Rio → Palmas):
+#    curl http://localhost:9090/metrics | grep prometheus_remote_storage
+#
+# 4) No Palmas, checar recebimento do Rio:
+#    curl -u prometheus:'Promet@2025#Sk' -G \
+#      'http://172.16.1.26:9090/api/v1/query' \
+#      --data-urlencode 'query={remote_site="rio-rmd-ldc"}' | jq
+#
+# 5) Monitorar logs:
+#    journalctl -u prometheus -f | grep -Ei 'remote_write|error|warn'
+#
+# 6) Segurança (recomendado): habilitar web-config.yml com bcrypt e permissões 600.
+#    Em seguida, remova senhas inline e mantenha password_file com 600.
+# ============================================================================

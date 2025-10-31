@@ -10,12 +10,15 @@ Este módulo fornece endpoints para:
 
 from fastapi import APIRouter, HTTPException, Body, Query
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, cast
+from typing import List, Dict, Any, Optional, cast, Tuple
 from pathlib import Path
 import json
 import logging
+import asyncio
 from datetime import datetime, timedelta
-import yaml
+import re
+import yaml  # type: ignore
+from yaml import nodes as yaml_nodes  # type: ignore
 
 from core.multi_config_manager import MultiConfigManager
 from core.server_utils import get_server_detector, ServerInfo
@@ -103,6 +106,7 @@ class SyncStatusResponse(BaseModel):
     prometheus_file_path: Optional[str] = None
     checked_at: str
     message: Optional[str] = Field(None, description="Mensagem geral (ex: servidor sem Prometheus)")
+    fallback_used: bool = Field(False, description="True quando leitura alternativa do prometheus.yml foi utilizada")
 
 
 # ============================================================================
@@ -185,6 +189,176 @@ def get_field_by_name(config: Dict[str, Any], field_name: str) -> Optional[Dict[
         if field['name'] == field_name:
             return field
     return None
+
+
+def _build_labels_map_from_jobs(scrape_configs: List[Dict[str, Any]]) -> Tuple[Dict[str, str], bool]:
+    """Fallback para mapear source_labels -> target_label varrendo todos os jobs.
+
+    Retorna também flag indicando estruturas avançadas (anchors, merges ou dicts).
+    """
+    labels_map: Dict[str, str] = {}
+    advanced_detected = False
+
+    def _collect_relabel_blocks(candidate: Any, storage: List[Dict[str, Any]], job_name: str) -> None:
+        if isinstance(candidate, dict):
+            storage.append(candidate)
+        elif isinstance(candidate, list):
+            for entry in candidate:
+                _collect_relabel_blocks(entry, storage, job_name)
+        elif candidate is not None:
+            logger.debug(
+                "[FALLBACK] Ignorando bloco de relabel não suportado em '%s' (tipo=%s)",
+                job_name,
+                type(candidate).__name__,
+            )
+
+    seen_relabel_sequences: Dict[int, str] = {}
+
+    for job in scrape_configs or []:
+        relabel_configs = job.get('relabel_configs') or []
+        job_name = job.get('job_name', 'unknown') if isinstance(job, dict) else 'unknown'
+
+        normalized_relabels: List[Dict[str, Any]] = []
+
+        # PyYAML já expande anchors para listas, mas garantimos iterabilidade
+        if isinstance(relabel_configs, dict):
+            advanced_detected = True
+            logger.debug(
+                "[FALLBACK] Job '%s' com relabel_configs dict (anchors/merge expandidos)",
+                job_name,
+            )
+            for value in relabel_configs.values():
+                _collect_relabel_blocks(value, normalized_relabels, job_name)
+        elif isinstance(relabel_configs, str):
+            advanced_detected = True
+            logger.debug(
+                "[FALLBACK] Job '%s' com relabel_configs str (alias referenciado)",
+                job_name,
+            )
+        else:
+            logger.debug(
+                "[FALLBACK] Job '%s' com relabel_configs tipo %s (len=%s)",
+                job_name,
+                type(relabel_configs).__name__,
+                len(relabel_configs) if isinstance(relabel_configs, list) else 'n/a',
+            )
+
+            if isinstance(relabel_configs, list):
+                relabel_id = id(relabel_configs)
+                if relabel_id in seen_relabel_sequences:
+                    advanced_detected = True
+                    logger.debug(
+                        "[FALLBACK] Job '%s' reutiliza sequência de relabel do job '%s' via alias",
+                        job_name,
+                        seen_relabel_sequences[relabel_id],
+                    )
+                else:
+                    seen_relabel_sequences[relabel_id] = job_name
+
+            _collect_relabel_blocks(relabel_configs, normalized_relabels, job_name)
+
+        if isinstance(job, dict) and '<<' in job:
+            advanced_detected = True
+            logger.debug("[FALLBACK] Job '%s' contém merge key '<<'", job_name)
+
+        for relabel in normalized_relabels:
+            if not isinstance(relabel, dict):
+                logger.debug(
+                    "[FALLBACK] Ignorando relabel não-dict em '%s' (tipo=%s)",
+                    job_name,
+                    type(relabel).__name__,
+                )
+                continue
+
+            source_labels = relabel.get('source_labels') or []
+            if isinstance(source_labels, str):
+                source_labels = [source_labels]
+
+            target_label = relabel.get('target_label')
+
+            if not source_labels or not target_label:
+                continue
+
+            primary_source = source_labels[0]
+
+            if primary_source not in labels_map:
+                labels_map[primary_source] = target_label
+
+    return labels_map, advanced_detected
+
+
+def _scrape_configs_use_aliases(yaml_text: str) -> bool:
+    """Detecta uso de anchors/aliases YAML dentro de scrape_configs."""
+    try:
+        root_node = yaml.compose(yaml_text, Loader=yaml.SafeLoader)  # type: ignore[attr-defined]
+    except yaml.YAMLError:
+        logger.debug("[FALLBACK] yaml.compose falhou - não foi possível detectar anchors")
+        return False
+
+    if root_node is None or not isinstance(root_node, yaml_nodes.MappingNode):
+        logger.debug("[FALLBACK] Nodo raiz não é MappingNode - anchors não detectados")
+        return False
+
+    def _node_uses_anchor(node: yaml_nodes.Node) -> bool:
+        if getattr(node, 'anchor', None):
+            logger.debug("[FALLBACK] Anchor detectado diretamente em nodo %s", type(node).__name__)
+            return True
+
+        if isinstance(node, yaml_nodes.MappingNode):
+            for key_node, value_node in node.value:
+                if (
+                    isinstance(key_node, yaml_nodes.ScalarNode)
+                    and key_node.value == '<<'
+                ):
+                    logger.debug("[FALLBACK] Merge key '<<' detectado em MappingNode")
+                    return True
+
+                if _node_uses_anchor(key_node) or _node_uses_anchor(value_node):
+                    return True
+
+            return False
+
+        if isinstance(node, yaml_nodes.SequenceNode):
+            return any(_node_uses_anchor(child) for child in node.value)
+
+        return False
+
+    for key_node, value_node in root_node.value:
+        if isinstance(key_node, yaml_nodes.ScalarNode) and key_node.value == 'scrape_configs':
+            return _node_uses_anchor(value_node)
+
+    logger.debug("[FALLBACK] Nenhum anchor detectado em scrape_configs via compose")
+    return False
+
+
+def _resolve_label_chain(
+    source_label: str,
+    labels_map: Dict[str, str],
+    max_depth: int = 20,
+) -> Tuple[Optional[str], Optional[str], List[str]]:
+    """Segue mapeamentos sucessivos até encontrar o rótulo final.
+
+    Retorna tupla com (target imediato, target final, cadeia completa).
+    """
+
+    raw_target = labels_map.get(source_label)
+    if raw_target is None:
+        return None, None, []
+
+    chain: List[str] = [raw_target]
+    current = raw_target
+    visited = {source_label, raw_target}
+
+    for _ in range(max_depth):
+        next_target = labels_map.get(current)
+        if not next_target or next_target in visited:
+            break
+        chain.append(next_target)
+        visited.add(next_target)
+        current = next_target
+
+    final_target = chain[-1] if chain else raw_target
+    return raw_target, final_target, chain
 
 
 # ============================================================================
@@ -395,7 +569,8 @@ async def get_sync_status(
                 total_error=len(fields),
                 prometheus_file_path=None,
                 checked_at=datetime.now().isoformat(),
-                message=f'Servidor não possui Prometheus ({server_info.description})'
+                message=f'Servidor não possui Prometheus ({server_info.description})',
+                fallback_used=False,
             )
 
         # Servidor TEM Prometheus - prosseguir com verificação de sincronização
@@ -415,6 +590,7 @@ async def get_sync_status(
 
         try:
             # Ler conteúdo do arquivo via SSH
+            assert isinstance(prometheus_file_path, str)
             yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
 
             if not yaml_content:
@@ -447,23 +623,76 @@ async def get_sync_status(
             )
 
         # Extrair relabel_configs do Prometheus
-        # Assumindo estrutura: scrape_configs[0].relabel_configs
-        relabel_configs = []
-        if 'scrape_configs' in prometheus_config and len(prometheus_config['scrape_configs']) > 0:
-            first_job = prometheus_config['scrape_configs'][0]
-            relabel_configs = first_job.get('relabel_configs', [])
+        scrape_configs_full = prometheus_config.get('scrape_configs', []) or []
 
-        logger.info(f"Encontrados {len(relabel_configs)} relabel_configs no Prometheus")
+        first_job_has_relabel = False
+        advanced_first_job = False
+        prometheus_labels_map: Dict[str, str] = {}
+        fallback_used = False
 
-        # Criar mapa de source_label → target_label do Prometheus
-        prometheus_labels_map = {}
-        for relabel_config in relabel_configs:
-            source_labels = relabel_config.get('source_labels', [])
-            target_label = relabel_config.get('target_label', None)
+        if scrape_configs_full:
+            first_job = scrape_configs_full[0]
+            first_job_raw = first_job.get('relabel_configs')
+            if isinstance(first_job_raw, list):
+                logger.info(
+                    "[SYNC-STATUS] Primeiro job possui %s relabel_configs declarados",
+                    len(first_job_raw),
+                )
+            elif first_job_raw is not None:
+                logger.info(
+                    "[SYNC-STATUS] Primeiro job possui relabel_configs do tipo %s",
+                    type(first_job_raw).__name__,
+                )
+            else:
+                logger.info("[SYNC-STATUS] Primeiro job não possui relabel_configs declarados")
 
-            # source_labels é uma lista, pegamos o primeiro
-            if source_labels and target_label:
-                prometheus_labels_map[source_labels[0]] = target_label
+            first_job_map, advanced_first_job = _build_labels_map_from_jobs([first_job])
+            if first_job_map:
+                logger.info(
+                    "[SYNC-STATUS] Mapa construído a partir do primeiro job (%s entradas, advanced=%s)",
+                    len(first_job_map),
+                    advanced_first_job,
+                )
+                prometheus_labels_map.update(first_job_map)
+                first_job_has_relabel = True
+            else:
+                logger.info(
+                    "[SYNC-STATUS] Primeiro job não gerou mapa direto (advanced=%s)",
+                    advanced_first_job,
+                )
+
+        if not prometheus_labels_map and scrape_configs_full:
+            fallback_map, advanced_from_jobs = _build_labels_map_from_jobs(scrape_configs_full)
+            if fallback_map:
+                logger.info(
+                    "[SYNC-STATUS] Fallback de leitura aplicado: estrutura alternativa de scrape_configs detectada"
+                )
+                print("[SYNC-STATUS] fallback_map construído a partir do scan completo de jobs")
+                prometheus_labels_map = fallback_map
+
+                anchors_detected = _scrape_configs_use_aliases(yaml_content)
+                advanced_structure_detected = anchors_detected or advanced_from_jobs
+
+                logger.info(
+                    "[SYNC-STATUS] Flags fallback -> advanced_from_jobs=%s, anchors_detected=%s, first_job_has_relabel=%s",
+                    advanced_from_jobs,
+                    anchors_detected,
+                    first_job_has_relabel,
+                )
+                print(
+                    "[SYNC-STATUS] Flags fallback => advanced_from_jobs=%s, anchors_detected=%s, first_job_has_relabel=%s"
+                    % (advanced_from_jobs, anchors_detected, first_job_has_relabel)
+                )
+
+                combined_advanced = advanced_structure_detected or advanced_first_job
+
+                if combined_advanced:
+                    fallback_used = True
+                    logger.info("[SYNC-STATUS] fallback_used marcado como True")
+                    print("[SYNC-STATUS] fallback_used=True")
+                else:
+                    logger.info("[SYNC-STATUS] fallback_used permaneceu False (estrutura padrão)")
+                    print("[SYNC-STATUS] fallback_used=False (estrutura padrão)")
 
         # Verificar status de cada campo
         field_statuses = []
@@ -491,9 +720,12 @@ async def get_sync_status(
                 continue
 
             # Verificar se existe no Prometheus
-            prometheus_target = prometheus_labels_map.get(field_source_label)
+            raw_target, resolved_target, target_chain = _resolve_label_chain(
+                field_source_label,
+                prometheus_labels_map,
+            )
 
-            if prometheus_target is None:
+            if raw_target is None:
                 # Campo não existe no Prometheus
                 field_statuses.append(FieldSyncStatus(
                     name=field_name,
@@ -505,29 +737,32 @@ async def get_sync_status(
                 ))
                 total_missing += 1
 
-            elif prometheus_target != field_name:
-                # Campo existe mas target_label está diferente
-                field_statuses.append(FieldSyncStatus(
-                    name=field_name,
-                    display_name=field_display_name,
-                    sync_status='outdated',
-                    metadata_source_label=field_source_label,
-                    prometheus_target_label=prometheus_target,
-                    message=f'Target label no Prometheus ({prometheus_target}) difere do esperado ({field_name})'
-                ))
-                total_outdated += 1
-
-            else:
-                # Campo sincronizado
+            elif field_name in target_chain:
                 field_statuses.append(FieldSyncStatus(
                     name=field_name,
                     display_name=field_display_name,
                     sync_status='synced',
                     metadata_source_label=field_source_label,
-                    prometheus_target_label=prometheus_target,
+                    prometheus_target_label=field_name,
                     message='Campo sincronizado corretamente'
                 ))
                 total_synced += 1
+
+            else:
+                # Campo existe mas target_label está diferente
+                mismatch_label = resolved_target or raw_target
+                field_statuses.append(FieldSyncStatus(
+                    name=field_name,
+                    display_name=field_display_name,
+                    sync_status='outdated',
+                    metadata_source_label=field_source_label,
+                    prometheus_target_label=mismatch_label,
+                    message=(
+                        f'Target label no Prometheus ({mismatch_label}) '
+                        f'difere do esperado ({field_name})'
+                    )
+                ))
+                total_outdated += 1
 
         return SyncStatusResponse(
             success=True,
@@ -539,7 +774,8 @@ async def get_sync_status(
             total_missing=total_missing,
             total_error=total_error,
             prometheus_file_path=prometheus_file_path,
-            checked_at=datetime.now().isoformat()
+            checked_at=datetime.now().isoformat(),
+            fallback_used=fallback_used,
         )
 
     except HTTPException:
@@ -595,7 +831,7 @@ async def preview_field_changes(
 
         try:
             yaml_content = multi_config.get_file_content_raw(prometheus_file_path, hostname=hostname)
-            import yaml as pyyaml
+            import yaml as pyyaml  # type: ignore
             prometheus_config = pyyaml.safe_load(yaml_content)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f"Prometheus.yml não encontrado no servidor {hostname}")
@@ -759,7 +995,6 @@ async def batch_sync_fields(request: BatchSyncRequest):
                             raise ValueError(f"Arquivo prometheus.yml vazio ou não encontrado no servidor {hostname}")
 
                         # MANIPULAÇÃO TEXTUAL (não YAML parsing!) para preservar formatação 100%
-                        import re
                         changes_count = 0
                         modified_content = yaml_content
 
@@ -833,7 +1068,7 @@ async def batch_sync_fields(request: BatchSyncRequest):
                                 job_index += 1
                                 continue
 
-                            relabel_match = re.search(r'^(\s*)relabel_configs:\s*\n', job_text, re.MULTILINE)
+                            relabel_match = re.search(r'^(\s*)relabel_configs:[^\n]*\n', job_text, re.MULTILINE)
                             if not relabel_match:
                                 logger.info(f"[BATCH-SYNC]   └─ Job '{job_name}' não tem relabel_configs, pulando")
                                 search_pos = job_end
@@ -855,7 +1090,10 @@ async def batch_sync_fields(request: BatchSyncRequest):
                             section_text = ''.join(section_lines)
 
                             if not section_text.strip():
-                                logger.warning(f"[BATCH-SYNC]   └─ Não foi possível identificar blocos de relabel em '{job_name}', pulando")
+                                logger.info(
+                                    "[BATCH-SYNC]   └─ Job '%s' utiliza alias inline para relabel_configs, nenhuma edição direta",
+                                    job_name,
+                                )
                                 search_pos = job_end
                                 job_index += 1
                                 continue
