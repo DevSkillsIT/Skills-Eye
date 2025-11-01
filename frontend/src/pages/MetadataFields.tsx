@@ -54,6 +54,7 @@ import {
   CloudSyncOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
+  MinusCircleOutlined,
   WarningOutlined,
   CloudServerOutlined,
   InfoCircleOutlined,
@@ -671,6 +672,22 @@ const MetadataFieldsPage: React.FC = () => {
       dataIndex: 'category',
       width: 120,
       render: (cat) => <Tag>{cat}</Tag>,
+    },
+    {
+      title: 'Auto-Cadastro',
+      dataIndex: 'available_for_registration',
+      width: 130,
+      align: 'center' as const,
+      render: (available) =>
+        available ? (
+          <Tooltip title="Este campo suporta retroalimentação (valores novos são cadastrados automaticamente)">
+            <Tag color="green" icon={<CheckCircleOutlined />}>Sim</Tag>
+          </Tooltip>
+        ) : (
+          <Tooltip title="Valores pré-definidos ou campo não suporta auto-cadastro">
+            <Tag icon={<MinusCircleOutlined />}>Não</Tag>
+          </Tooltip>
+        ),
     },
     {
       title: 'Obrigatório',

@@ -395,6 +395,168 @@ function AdministrarEmpresas() {
 }
 ```
 
+## 🎨 Integrações Frontend
+
+### Hook `useServiceTags`
+
+Hook especializado para gerenciar **service tags** (array de strings dos serviços Consul).
+
+**Arquivo:** `frontend/src/hooks/useServiceTags.ts`
+
+```typescript
+import { useServiceTags } from '../hooks/useServiceTags';
+
+const { tags, loading, ensureTag, ensureTags } = useServiceTags({
+  autoLoad: true,    // Carregar tags automaticamente
+  includeStats: false // Incluir estatísticas de uso
+});
+
+// Auto-cadastrar tag única
+await ensureTag('database');  // Retorna: "Database" (normalizado)
+
+// Auto-cadastrar múltiplas tags (batch)
+await ensureTags(['linux', 'production', 'critical']);
+```
+
+**Funcionalidades:**
+- Carrega tags de duas fontes: serviços Consul + valores cadastrados
+- Normalização automática Title Case
+- Proteção contra deleção de tags em uso
+- Suporte a batch operations
+
+---
+
+### Componente `TagsInput`
+
+Componente visual para select multi-tag com auto-cadastro.
+
+**Arquivo:** `frontend/src/components/TagsInput.tsx`
+
+```typescript
+import TagsInput from '../components/TagsInput';
+
+<TagsInput
+  value={tags}                    // Array de tags: ["linux", "monitoring"]
+  onChange={setTags}
+  placeholder="Selecione ou digite tags"
+  maxTags={10}                    // Limite opcional
+/>
+```
+
+**Características Visuais:**
+- **Tags Existentes:** Cor azul com ícone de tag
+- **Tags Novas:** Cor verde com ícone "+"
+- **Indicador:** Mostra quantas tags novas serão criadas
+- **Autocomplete:** Filtra opções enquanto usuário digita
+
+---
+
+### Integração em Services.tsx
+
+**Arquivo:** `frontend/src/pages/Services.tsx`
+
+**O que foi feito:**
+1. Importados hooks `useBatchEnsure` e `useServiceTags`
+2. Modificado `handleSubmit` para incluir auto-cadastro ANTES de salvar
+
+```typescript
+const handleSubmit = async (values: ServiceFormValues) => {
+  // PASSO 1A: Auto-cadastrar TAGS
+  if (values.tags && values.tags.length > 0) {
+    await ensureTags(values.tags);
+  }
+
+  // PASSO 1B: Auto-cadastrar METADATA FIELDS
+  const metadataValues = [];
+  formFields.forEach((field) => {
+    if (field.available_for_registration && values[field.name]) {
+      metadataValues.push({
+        fieldName: field.name,
+        value: values[field.name]
+      });
+    }
+  });
+
+  if (metadataValues.length > 0) {
+    await batchEnsure(metadataValues);
+  }
+
+  // PASSO 2: Salvar serviço (lógica original)
+  await consulAPI.createService(payload);
+};
+```
+
+**Resultado:**
+- Quando usuário cria serviço com empresa "NOVA EMPRESA LTDA"
+- Sistema auto-cadastra como "Nova Empresa Ltda" (normalizado)
+- Próximo cadastro: "Nova Empresa Ltda" aparece nas opções
+
+---
+
+### Integração em Exporters.tsx
+
+**Arquivo:** `frontend/src/pages/Exporters.tsx`
+
+**Campos auto-cadastrados:**
+- `vendor` (ex: "AWS", "DigitalOcean")
+- `account` (ex: "Production", "Development")
+- `region` (ex: "us-east-1", "sa-east-1")
+- `group` (ex: "Web Servers", "Database Cluster")
+- `name` (nome do exporter)
+- `instance` (IP:PORT)
+- `os` ("linux" ou "windows")
+- **Tags** (array de strings)
+
+---
+
+### Integração em BlackboxTargets.tsx
+
+**Arquivo:** `frontend/src/pages/BlackboxTargets.tsx`
+
+**Campos auto-cadastrados:**
+- `module` (ex: "http_2xx", "tcp_connect")
+- `company` (ex: "Empresa Ramada")
+- `project` (ex: "Website Principal")
+- `env` (ex: "production", "staging")
+- `name` (nome do target)
+- `instance` (URL ou IP:PORT)
+- `group` (agrupamento opcional)
+
+---
+
+### Coluna Visual em MetadataFields.tsx
+
+**Arquivo:** `frontend/src/pages/MetadataFields.tsx`
+
+**Nova coluna na tabela:**
+
+| Campo | Auto-Cadastro | Tooltip |
+|-------|---------------|---------|
+| company | ✅ Sim (verde) | Este campo suporta retroalimentação (valores novos são cadastrados automaticamente) |
+| tipo_dispositivo | ❌ Não (cinza) | Valores pré-definidos ou campo não suporta auto-cadastro |
+
+**Implementação:**
+```typescript
+{
+  title: 'Auto-Cadastro',
+  dataIndex: 'available_for_registration',
+  width: 130,
+  align: 'center',
+  render: (available) =>
+    available ? (
+      <Tooltip title="Este campo suporta retroalimentação">
+        <Tag color="green" icon={<CheckCircleOutlined />}>Sim</Tag>
+      </Tooltip>
+    ) : (
+      <Tooltip title="Valores pré-definidos">
+        <Tag icon={<MinusCircleOutlined />}>Não</Tag>
+      </Tooltip>
+    )
+}
+```
+
+---
+
 ## ⚠️ Importantes Notas Técnicas
 
 ### 1. **Categoria** NÃO é Campo Metadata
@@ -419,7 +581,10 @@ function AdministrarEmpresas() {
 
 **NÃO confundir com campo metadata!**
 
-Sistema de retroalimentação para tags será implementado separadamente.
+**✅ IMPLEMENTADO:** Sistema de retroalimentação para tags já está funcionando!
+- Backend: `/api/v1/service-tags/ensure` e `/api/v1/service-tags/batch-ensure`
+- Frontend: `useServiceTags` hook + `TagsInput` component
+- Integrado em: Services.tsx, Exporters.tsx, BlackboxTargets.tsx
 
 ### 3. **Vendor vs Fabricante**
 
@@ -431,25 +596,56 @@ Sistema de retroalimentação para tags será implementado separadamente.
 
 Ambos agora são retroalimentáveis!
 
-## 🚀 Próximos Passos
+## ✅ Status de Implementação
 
-- [ ] Integrar auto-cadastro em formulários (Services, Exporters, Blackbox)
-- [ ] Adicionar coluna "Suporta Auto-Cadastro" em MetadataFields.tsx
-- [ ] Criar helper para batch-ensure ao salvar formulários
-- [ ] Implementar sistema de retroalimentação para Tags (array)
-- [ ] Página de administração completa para Reference Values
-- [ ] Dashboard com estatísticas de uso
+- [x] **Integrar auto-cadastro em formulários** - CONCLUÍDO
+  - Services.tsx: Auto-cadastro de tags + metadata fields
+  - Exporters.tsx: Auto-cadastro de tags + metadata fields (vendor, account, region, group, name, instance, os)
+  - BlackboxTargets.tsx: Auto-cadastro de metadata fields (module, company, project, env, name, instance, group)
+
+- [x] **Adicionar coluna "Suporta Auto-Cadastro" em MetadataFields.tsx** - CONCLUÍDO
+  - Coluna visual com ícones verde (Sim) e cinza (Não)
+  - Tooltip explicativo para cada status
+
+- [x] **Criar helper para batch-ensure ao salvar formulários** - CONCLUÍDO
+  - Hook `useBatchEnsure()` disponível
+  - Integrado em todos os formulários de criação/edição
+
+- [x] **Implementar sistema de retroalimentação para Tags** - CONCLUÍDO
+  - Backend: service_tags.py com endpoints `/ensure` e `/batch-ensure`
+  - Frontend: `useServiceTags` hook + `TagsInput` component
+  - Integrado em Services.tsx, Exporters.tsx, BlackboxTargets.tsx
+
+- [ ] **Página de administração completa para Reference Values** - PENDENTE
+  - Página dedicada para gerenciar valores cadastrados
+  - Ver estatísticas de uso, editar, deletar
+
+- [ ] **Dashboard com estatísticas de uso** - PENDENTE
+  - Quantos valores cadastrados por campo
+  - Valores mais usados
+  - Timeline de criação
 
 ## 📚 Arquivos Relacionados
 
 **Backend:**
 - `backend/core/reference_values_manager.py` - Manager principal
-- `backend/api/reference_values.py` - API endpoints
+- `backend/api/reference_values.py` - API endpoints para reference values
+- `backend/api/service_tags.py` - API endpoints para service tags
 - `backend/config/metadata_fields.json` - Configuração de campos
 
-**Frontend:**
-- `frontend/src/hooks/useReferenceValues.ts` - Hook React
-- `frontend/src/components/ReferenceValueInput.tsx` - Componente AutoComplete
+**Frontend - Hooks:**
+- `frontend/src/hooks/useReferenceValues.ts` - Hook para reference values
+- `frontend/src/hooks/useServiceTags.ts` - Hook para service tags
+
+**Frontend - Componentes:**
+- `frontend/src/components/ReferenceValueInput.tsx` - AutoComplete para valores únicos
+- `frontend/src/components/TagsInput.tsx` - Select multi-tag com auto-cadastro
+
+**Frontend - Integrações:**
+- `frontend/src/pages/Services.tsx` - Integrado com auto-cadastro
+- `frontend/src/pages/Exporters.tsx` - Integrado com auto-cadastro
+- `frontend/src/pages/BlackboxTargets.tsx` - Integrado com auto-cadastro
+- `frontend/src/pages/MetadataFields.tsx` - Coluna visual "Auto-Cadastro"
 
 **Documentação:**
 - `REFERENCE_VALUES_GUIDE.md` (este arquivo)
@@ -458,6 +654,6 @@ Ambos agora são retroalimentáveis!
 
 ---
 
-**Última atualização:** 2025-10-31
-**Versão:** 1.0.0
+**Última atualização:** 2025-11-01
+**Versão:** 2.0.0 - Sistema completo com integrações frontend
 **Status:** ✅ Implementado (Backend + Frontend base)
