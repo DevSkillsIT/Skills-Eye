@@ -30,6 +30,7 @@ import BlackboxGroups from './pages/BlackboxGroups';
 import AuditLog from './pages/AuditLog';
 import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
+import TestMonitoringTypes from './pages/TestMonitoringTypes';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -100,6 +101,11 @@ const App: React.FC = () => {
       name: 'Instalar Exporters',
       icon: <ToolOutlined />,
     },
+    {
+      path: '/test-monitoring',
+      name: '🧪 TESTE: Config-Driven',
+      icon: <FileTextOutlined />,
+    },
   ];
 
   return (
@@ -145,6 +151,7 @@ const App: React.FC = () => {
             <Route path="/metadata-fields" element={<MetadataFields />} />
             <Route path="/audit-log" element={<AuditLog />} />
             <Route path="/installer" element={<Installer />} />
+            <Route path="/test-monitoring" element={<TestMonitoringTypes />} />
           </Routes>
         </ProLayout>
         </AntdApp>

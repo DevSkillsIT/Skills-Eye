@@ -258,13 +258,22 @@ const PrometheusConfig: React.FC = () => {
       console.error('Erro ao buscar servidores:', err);
     }
 
-    // PASSO 2: Fazer requisição de fields (isso vai demorar)
+    // PASSO 2: Fazer requisição de fields de TODOS os servidores (processamento paralelo)
     try {
+      console.log('[PrometheusConfig] Buscando fields de TODOS os 3 servidores em paralelo...');
+
       const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
-        timeout: 30000,
+        timeout: 60000, // 60 segundos (processamento paralelo SSH em 3 servidores)
       });
+      console.log('[PrometheusConfig] Resposta recebida:', {
+        success: response.data.success,
+        total: response.data.total,
+        server_status_length: response.data.server_status?.length,
+        server_status: response.data.server_status,
+      });
+
       if (response.data.success) {
-        setFieldsData({
+        const newFieldsData = {
           fields: response.data.fields,
           loading: false,
           error: null,
@@ -274,9 +283,12 @@ const PrometheusConfig: React.FC = () => {
           totalServers: response.data.total_servers || 0,
           successfulServers: response.data.successful_servers || 0,
           fromCache: response.data.from_cache || false,
-        });
+        };
+        console.log('[PrometheusConfig] Atualizando fieldsData com:', newFieldsData);
+        setFieldsData(newFieldsData);
       }
     } catch (err: any) {
+      console.error('[PrometheusConfig] Erro ao carregar fields:', err);
       setFieldsData(prev => ({
         ...prev,
         loading: false,
@@ -312,7 +324,7 @@ const PrometheusConfig: React.FC = () => {
       const url = `${API_URL}/prometheus-config/files?hostname=${encodeURIComponent(hostname)}`;
 
       const response = await axios.get<FilesResponse>(url, {
-        timeout: 30000, // 30 segundos (SSH pode ser lento)
+        timeout: 60000, // 60 segundos (SSH pode ser lento)
       });
       if (response.data.success) {
         setAllFiles(response.data.files);
@@ -729,7 +741,7 @@ const PrometheusConfig: React.FC = () => {
         `${API_URL}/prometheus-config/file/jobs?file_path=${encodeURIComponent(selectedFile!)}`,
         updatedJobs,
         {
-          timeout: 30000, // 30 segundos para operações SSH
+          timeout: 60000, // 60 segundos para operações SSH
         }
       );
 

@@ -212,12 +212,12 @@ const BlackboxTargets: React.FC = () => {
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
-  // Atualizar columnConfig quando defaultColumnConfig mudar (sempre que tableFields mudar)
+  // Atualizar columnConfig quando tableFields carregar (evitar loop infinito)
   useEffect(() => {
-    if (defaultColumnConfig.length > 0) {
+    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
       setColumnConfig(defaultColumnConfig);
     }
-  }, [defaultColumnConfig]);
+  }, [defaultColumnConfig, columnConfig.length]); // Verificar length previne loop infinito
   const [detailRecord, setDetailRecord] =
     useState<BlackboxTargetRecord | null>(null);
   const [configDrawerOpen, setConfigDrawerOpen] = useState(false);

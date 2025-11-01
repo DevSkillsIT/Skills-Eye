@@ -312,6 +312,89 @@ class MultiConfigManager:
             logger.error(f"Erro ao ler arquivo {config_file.path}: {e}")
             raise
 
+    def extract_single_server_fields(self, hostname: str) -> Dict[str, Any]:
+        """
+        Extrai campos metadata de UM ÚNICO servidor específico
+
+        OTIMIZAÇÃO CRÍTICA: Usa _process_single_server para processar apenas um servidor,
+        reduzindo tempo de 26s (3 servidores) para ~2-21s (1 servidor).
+
+        Args:
+            hostname: Hostname do servidor (ex: "172.16.1.26")
+
+        Returns:
+            Dict com:
+            - fields: Lista de MetadataField
+            - server_status: Lista com status do servidor
+            - total_servers: 1
+            - successful_servers: 1 ou 0
+            - from_cache: False (sempre SSH em servidor único)
+        """
+        import time
+
+        overall_start = time.time()
+
+        # Encontrar host na lista
+        target_host = None
+        for host in self.hosts:
+            if host.hostname == hostname:
+                target_host = host
+                break
+
+        if not target_host:
+            logger.error(f"[SINGLE-SERVER] Servidor não encontrado: {hostname}")
+            return {
+                'fields': [],
+                'server_status': [{
+                    'hostname': hostname,
+                    'success': False,
+                    'error': 'Servidor não encontrado',
+                    'duration_ms': 0,
+                    'files_count': 0,
+                    'fields_count': 0,
+                }],
+                'total_servers': 1,
+                'successful_servers': 0,
+                'from_cache': False,
+            }
+
+        logger.info(f"[SINGLE-SERVER] Processando APENAS servidor: {hostname}")
+        print(f"[SINGLE-SERVER] Processando APENAS {hostname} (otimização ativada)")
+
+        # Processar apenas este servidor
+        result = self._process_single_server(target_host)
+
+        overall_duration = int((time.time() - overall_start) * 1000)
+        print(f"[SINGLE-SERVER] OK - Processamento em {overall_duration}ms")
+
+        # Extrair fields
+        fields_map = result.get('fields_map', {})
+        all_fields = list(fields_map.values())
+        all_fields.sort(key=lambda f: (not f.required, f.name))
+
+        # Preparar server_status (remover fields_map)
+        server_status = [{
+            'hostname': result['hostname'],
+            'success': result['success'],
+            'from_cache': result.get('from_cache', False),
+            'files_count': result['files_count'],
+            'fields_count': result['fields_count'],
+            'error': result.get('error'),
+            'duration_ms': result['duration_ms']
+        }]
+
+        successful_count = 1 if result['success'] else 0
+
+        logger.info(f"Extraídos {len(all_fields)} campos de {hostname} em {overall_duration}ms")
+
+        return {
+            'fields': all_fields,
+            'server_status': server_status,
+            'total_servers': 1,
+            'successful_servers': successful_count,
+            'from_cache': False,
+        }
+
     def extract_all_fields(self) -> List[MetadataField]:
         """
         Extrai TODOS os campos metadata de TODOS os arquivos
@@ -328,10 +411,95 @@ class MultiConfigManager:
         result = self.extract_all_fields_with_status()
         return result['fields']
 
+    def _process_single_server(self, host: ConfigHost) -> Dict[str, Any]:
+        """
+        Processa um único servidor - extrai fields e retorna status
+
+        Esta função é projetada para ser executada em paralelo via ThreadPoolExecutor.
+
+        Args:
+            host: ConfigHost do servidor a processar
+
+        Returns:
+            Dict com: hostname, success, fields_map (Dict[str, MetadataField]), files_count, fields_count, error, duration_ms
+        """
+        import time
+
+        host_status = {
+            'hostname': host.hostname,
+            'success': False,
+            'from_cache': False,
+            'files_count': 0,
+            'fields_count': 0,
+            'error': None,
+            'duration_ms': 0,
+            'fields_map': {},  # Campos extraídos deste servidor
+        }
+
+        try:
+            start_time = time.time()
+
+            # Cada chamada usa cache com chave "all:{hostname}"
+            files_from_host = self.list_config_files(hostname=host.hostname)
+            host_status['files_count'] = len(files_from_host)
+
+            fields_service = FieldsExtractionService()
+            local_fields_map: Dict[str, MetadataField] = {}
+
+            # Processar cada arquivo do servidor
+            for config_file in files_from_host:
+                try:
+                    # Ler configuração
+                    config = self.read_config_file(config_file)
+
+                    # Extrair jobs (prometheus) ou scrape_configs (outros)
+                    jobs = []
+
+                    if 'scrape_configs' in config:
+                        # Prometheus
+                        jobs = config.get('scrape_configs', [])
+                    elif 'modules' in config:
+                        # Blackbox - não tem jobs mas tem módulos
+                        continue
+                    elif 'route' in config:
+                        # Alertmanager - não tem relabel_configs
+                        continue
+
+                    # Extrair campos de cada job
+                    for job in jobs:
+                        job_fields = fields_service.extract_fields_from_jobs([job])
+
+                        # Mesclar com campos locais deste servidor
+                        for field in job_fields:
+                            if field.name not in local_fields_map:
+                                local_fields_map[field.name] = field
+
+                except Exception as e:
+                    logger.error(f"Erro ao processar {config_file.filename}: {e}")
+                    # Continua processando outros arquivos
+
+            host_status['fields_count'] = len(local_fields_map)
+            host_status['fields_map'] = local_fields_map
+            host_status['success'] = True
+            host_status['duration_ms'] = int((time.time() - start_time) * 1000)
+
+            print(f"[SERVER OK] {host.hostname}: {host_status['files_count']} arquivos, {host_status['fields_count']} campos em {host_status['duration_ms']}ms")
+
+        except Exception as e:
+            host_status['error'] = str(e)
+            logger.error(f"[ERROR] Erro ao processar servidor {host.hostname}: {e}")
+            print(f"[SERVER ERROR] {host.hostname}: {str(e)}")
+            # Retornar com erro mas não falhar
+
+        return host_status
+
     def extract_all_fields_with_status(self) -> Dict[str, Any]:
         """
         Extrai TODOS os campos metadata de TODOS os arquivos
         Retorna fields + status de cada servidor para tracking de progresso
+
+        **OTIMIZADO**: Processa servidores em PARALELO usando ThreadPoolExecutor
+        Reduz tempo de 30+ segundos para ~21s (tempo do servidor mais lento)
 
         Returns:
             Dict com:
@@ -362,81 +530,64 @@ class MultiConfigManager:
             }
 
         print(f"[CACHE] extract_all_fields: CACHE MISS - extraindo fields de todos os arquivos")
+        print(f"[PARALLEL] Processando {len(self.hosts)} servidores em PARALELO...")
 
-        all_fields_map: Dict[str, MetadataField] = {}
-        fields_service = FieldsExtractionService()
-        server_status = []
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # OTIMIZAÇÃO: Listar arquivos por servidor para aproveitar cache _files_cache
-        # Isso evita SSH desnecessário se os arquivos já foram listados antes
-        # FAILBACK: Continua mesmo se um servidor falhar
-        for host in self.hosts:
-            host_status = {
-                'hostname': host.hostname,
-                'success': False,
-                'from_cache': False,
-                'files_count': 0,
-                'fields_count': 0,
-                'error': None,
-                'duration_ms': 0,
+        overall_start = time.time()
+
+        # Processar servidores em PARALELO
+        server_results = []
+        with ThreadPoolExecutor(max_workers=len(self.hosts)) as executor:
+            # Submeter tasks para todos os servidores
+            future_to_host = {
+                executor.submit(self._process_single_server, host): host
+                for host in self.hosts
             }
 
-            try:
-                import time
-                start_time = time.time()
+            # Coletar resultados conforme completam
+            for future in as_completed(future_to_host):
+                host = future_to_host[future]
+                try:
+                    result = future.result()
+                    server_results.append(result)
+                except Exception as e:
+                    logger.error(f"Exceção ao processar {host.hostname}: {e}")
+                    server_results.append({
+                        'hostname': host.hostname,
+                        'success': False,
+                        'error': str(e),
+                        'duration_ms': 0,
+                        'files_count': 0,
+                        'fields_count': 0,
+                        'fields_map': {}
+                    })
 
-                # Cada chamada usa cache com chave "all:{hostname}"
-                files_from_host = self.list_config_files(hostname=host.hostname)
-                host_status['files_count'] = len(files_from_host)
+        overall_duration = int((time.time() - overall_start) * 1000)
+        print(f"[PARALLEL] OK - Processamento paralelo completo em {overall_duration}ms (vs {sum(r['duration_ms'] for r in server_results)}ms sequencial)")
 
-                fields_before = len(all_fields_map)
+        # Consolidar fields de todos os servidores
+        all_fields_map: Dict[str, MetadataField] = {}
+        for result in server_results:
+            local_fields = result.get('fields_map', {})
+            for field_name, field in local_fields.items():
+                if field_name not in all_fields_map:
+                    all_fields_map[field_name] = field
 
-                # Processar cada arquivo do servidor
-                for config_file in files_from_host:
-                    try:
-                        # Ler configuração
-                        config = self.read_config_file(config_file)
-
-                        # Extrair jobs (prometheus) ou scrape_configs (outros)
-                        jobs = []
-
-                        if 'scrape_configs' in config:
-                            # Prometheus
-                            jobs = config.get('scrape_configs', [])
-                        elif 'modules' in config:
-                            # Blackbox - não tem jobs mas tem módulos
-                            continue
-                        elif 'route' in config:
-                            # Alertmanager - não tem relabel_configs
-                            continue
-
-                        # Extrair campos de cada job
-                        for job in jobs:
-                            job_fields = fields_service.extract_fields_from_jobs([job])
-
-                            # Mesclar com campos existentes
-                            for field in job_fields:
-                                if field.name not in all_fields_map:
-                                    all_fields_map[field.name] = field
-
-                    except Exception as e:
-                        logger.error(f"Erro ao processar {config_file.filename}: {e}")
-                        # Continua processando outros arquivos
-
-                fields_after = len(all_fields_map)
-                host_status['fields_count'] = fields_after - fields_before
-                host_status['success'] = True
-                host_status['duration_ms'] = int((time.time() - start_time) * 1000)
-
-                print(f"[SERVER OK] {host.hostname}: {host_status['files_count']} arquivos, {host_status['fields_count']} campos novos em {host_status['duration_ms']}ms")
-
-            except Exception as e:
-                host_status['error'] = str(e)
-                logger.error(f"❌ Erro ao processar servidor {host.hostname}: {e}")
-                print(f"[SERVER ERROR] {host.hostname}: {str(e)}")
-                # Continua com próximo servidor (FAILBACK)
-
-            server_status.append(host_status)
+        # Preparar server_status (remover fields_map do retorno)
+        server_status = [
+            {
+                'hostname': r['hostname'],
+                'success': r['success'],
+                'from_cache': r.get('from_cache', False),
+                'files_count': r['files_count'],
+                'fields_count': r['fields_count'],
+                'error': r.get('error'),
+                'duration_ms': r['duration_ms']
+            }
+            for r in server_results
+        ]
 
         # Converter para lista ordenada
         all_fields = list(all_fields_map.values())
@@ -446,7 +597,7 @@ class MultiConfigManager:
         self._fields_cache = all_fields
 
         successful_count = sum(1 for s in server_status if s['success'])
-        logger.info(f"Extraídos {len(all_fields)} campos únicos - {successful_count}/{len(self.hosts)} servidores com sucesso")
+        logger.info(f"Extraídos {len(all_fields)} campos únicos - {successful_count}/{len(self.hosts)} servidores com sucesso em {overall_duration}ms")
 
         return {
             'fields': all_fields,

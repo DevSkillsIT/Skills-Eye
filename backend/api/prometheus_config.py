@@ -215,7 +215,7 @@ async def get_config_summary():
 @router.get("/fields", response_model=FieldsResponse)
 async def get_available_fields(enrich_with_values: bool = Query(True)):
     """
-    Retorna TODOS os campos metadata extraídos de TODOS os arquivos
+    Retorna TODOS os campos metadata extraídos de TODOS os arquivos de TODOS os servidores
 
     Extrai campos de:
     - prometheus.yml
@@ -223,17 +223,21 @@ async def get_available_fields(enrich_with_values: bool = Query(True)):
     - alertmanager.yml
     - Qualquer outro .yml nas pastas padrão
 
+    Processa os 3 servidores EM PARALELO usando ThreadPoolExecutor.
+
     Estes campos são usados para gerar formulários dinâmicos no frontend.
 
     Args:
         enrich_with_values: Se True, adiciona valores únicos do Consul
 
     Returns:
-        Lista consolidada de campos metadata
+        Lista consolidada de campos metadata de TODOS os servidores
     """
     try:
-        # NOVO - Extrair de TODOS os arquivos COM STATUS de cada servidor
+        # Extrair de TODOS os servidores EM PARALELO COM STATUS de cada servidor
+        logger.info(f"[FIELDS] Extração completa - TODOS os 3 servidores em PARALELO")
         extraction_result = multi_config.extract_all_fields_with_status()
+
         fields = extraction_result['fields']
 
         # Enriquecer com valores do Consul se solicitado
