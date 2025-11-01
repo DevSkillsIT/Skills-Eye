@@ -51,6 +51,8 @@ import type {
   ServiceMeta,
 } from '../services/api';
 import { useFilterFields, useTableFields } from '../hooks/useMetadataFields';
+import { useBatchEnsure } from '../hooks/useReferenceValues';
+import { useServiceTags } from '../hooks/useServiceTags';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -133,6 +135,10 @@ const Exporters: React.FC = () => {
   // TODO: Implementar formulário dinâmico com formFields
   // const { formFields, loading: formFieldsLoading } = useFormFields('exporters');
   const { filterFields, loading: filterFieldsLoading } = useFilterFields('exporters');
+
+  // SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
+  const { batchEnsure } = useBatchEnsure();
+  const { ensureTags } = useServiceTags({ autoLoad: false });
 
   const [nodes, setNodes] = useState<any[]>([]);
   const [searchValue, setSearchValue] = useState('');
@@ -684,6 +690,47 @@ const Exporters: React.FC = () => {
 
   const handleCreateSubmit = async (values: CreateFormValues) => {
     try {
+      // PASSO 1: AUTO-CADASTRO DE VALORES (Retroalimentação)
+      // Antes de criar, garantir que valores novos sejam cadastrados automaticamente
+
+      // 1A) Auto-cadastrar TAGS (se houver)
+      if (values.tags && Array.isArray(values.tags) && values.tags.length > 0) {
+        try {
+          await ensureTags(values.tags);
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar tags:', err);
+          // Não bloqueia o fluxo
+        }
+      }
+
+      // 1B) Auto-cadastrar METADATA FIELDS de exporters
+      // Campos típicos: vendor, account, region, group, name, instance, os
+      const metadataValues: Array<{ fieldName: string; value: string }> = [];
+
+      // Lista de campos que devem ser auto-cadastrados (se tiverem valor)
+      const fieldsToEnsure: Array<keyof CreateFormValues> = ['vendor', 'account', 'region', 'group', 'name', 'instance', 'os'];
+
+      fieldsToEnsure.forEach((fieldName) => {
+        const fieldValue = values[fieldName];
+        if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+          metadataValues.push({
+            fieldName: fieldName as string,
+            value: fieldValue.trim()
+          });
+        }
+      });
+
+      // Executar batch ensure se houver valores
+      if (metadataValues.length > 0) {
+        try {
+          await batchEnsure(metadataValues);
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar metadata fields:', err);
+          // Não bloqueia o fluxo
+        }
+      }
+
+      // PASSO 2: CRIAR EXPORTER (lógica original)
       // Gerar ID no formato: {vendor}/{account}/{region}/{group}@{name}
       const serviceId = `${values.vendor}/${values.account}/${values.region}/${values.group}@${values.name}`;
 

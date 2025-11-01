@@ -48,6 +48,8 @@ import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector'
 import AdvancedSearchPanel, { type SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI } from '../services/api';
+import { useBatchEnsure } from '../hooks/useReferenceValues';
+import { useServiceTags } from '../hooks/useServiceTags';
 import type {
   ConsulServiceRecord,
   ServiceMeta,
@@ -228,6 +230,10 @@ const Services: React.FC = () => {
   const { tableFields, loading: tableFieldsLoading } = useTableFields('services');
   const { formFields, loading: formFieldsLoading } = useFormFields('services');
   const { filterFields, loading: filterFieldsLoading } = useFilterFields('services');
+
+  // SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
+  const { batchEnsure } = useBatchEnsure();
+  const { ensureTags } = useServiceTags({ autoLoad: false });
 
   // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
   const [filters, setFilters] = useState<Record<string, string | undefined>>({});
@@ -697,6 +703,48 @@ const Services: React.FC = () => {
   const handleSubmit = useCallback(
     async (values: ServiceFormValues) => {
       try {
+        // PASSO 1: AUTO-CADASTRO DE VALORES (Retroalimentação)
+        // Antes de salvar, garantir que valores novos sejam cadastrados automaticamente
+
+        // 1A) Auto-cadastrar TAGS (se houver)
+        if (values.tags && Array.isArray(values.tags) && values.tags.length > 0) {
+          try {
+            await ensureTags(values.tags);
+          } catch (err) {
+            console.warn('Erro ao auto-cadastrar tags:', err);
+            // Não bloqueia o fluxo
+          }
+        }
+
+        // 1B) Auto-cadastrar METADATA FIELDS (campos que suportam retroalimentação)
+        const metadataValues: Array<{ fieldName: string; value: string }> = [];
+
+        // Percorrer formFields para identificar quais campos suportam auto-cadastro
+        formFields.forEach((field) => {
+          if (field.available_for_registration) {
+            const fieldValue = (values as any)[field.name];
+
+            // Só cadastrar se valor não for vazio
+            if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+              metadataValues.push({
+                fieldName: field.name,
+                value: fieldValue.trim()
+              });
+            }
+          }
+        });
+
+        // Executar batch ensure se houver valores
+        if (metadataValues.length > 0) {
+          try {
+            await batchEnsure(metadataValues);
+          } catch (err) {
+            console.warn('Erro ao auto-cadastrar metadata fields:', err);
+            // Não bloqueia o fluxo
+          }
+        }
+
+        // PASSO 2: SALVAR SERVIÇO (lógica original)
         const id =
           formMode === 'edit' && currentRecord
             ? currentRecord.id
@@ -735,7 +783,7 @@ const Services: React.FC = () => {
         return false;
       }
     },
-    [currentRecord, formMode, loadMetadataOptions],
+    [currentRecord, formMode, loadMetadataOptions, formFields, batchEnsure, ensureTags],
   );
   // SISTEMA DINÂMICO: Gerar columnMap combinando fixas + metadata
   const columnMap = useMemo<Record<string, ServiceColumn<ServiceTableItem>>>(() => {

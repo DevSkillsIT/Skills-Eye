@@ -53,6 +53,8 @@ import type {
 } from '../services/api';
 import { useSearchParams } from 'react-router-dom';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
+import { useBatchEnsure } from '../hooks/useReferenceValues';
+import { useServiceTags } from '../hooks/useServiceTags';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -169,6 +171,10 @@ const BlackboxTargets: React.FC = () => {
   // TODO: Implementar formulário dinâmico com formFields
   // const { formFields, loading: formFieldsLoading } = useFormFields('blackbox');
   const { filterFields, loading: filterFieldsLoading } = useFilterFields('blackbox');
+
+  // SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
+  const { batchEnsure } = useBatchEnsure();
+  const { ensureTags } = useServiceTags({ autoLoad: false });
 
   // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
   const [filters, setFilters] = useState<Record<string, string | undefined>>({});
@@ -493,6 +499,36 @@ const BlackboxTargets: React.FC = () => {
 
   const handleSubmit = async (values: BlackboxFormValues) => {
     try {
+      // PASSO 1: AUTO-CADASTRO DE VALORES (Retroalimentação)
+      // Antes de salvar, garantir que valores novos sejam cadastrados automaticamente
+
+      // 1A) Auto-cadastrar METADATA FIELDS de blackbox targets
+      const metadataValues: Array<{ fieldName: string; value: string }> = [];
+
+      // Lista de campos que devem ser auto-cadastrados (se tiverem valor)
+      const fieldsToEnsure: Array<keyof BlackboxTargetPayload> = ['module', 'company', 'project', 'env', 'name', 'instance', 'group'];
+
+      fieldsToEnsure.forEach((fieldName) => {
+        const fieldValue = values[fieldName];
+        if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+          metadataValues.push({
+            fieldName: fieldName as string,
+            value: fieldValue.trim()
+          });
+        }
+      });
+
+      // Executar batch ensure se houver valores
+      if (metadataValues.length > 0) {
+        try {
+          await batchEnsure(metadataValues);
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar metadata fields:', err);
+          // Não bloqueia o fluxo
+        }
+      }
+
+      // PASSO 2: SALVAR BLACKBOX TARGET (lógica original)
       const payload: BlackboxTargetPayload = {
         module: values.module,
         company: values.company,
