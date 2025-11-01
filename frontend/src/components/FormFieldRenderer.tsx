@@ -38,7 +38,7 @@ import {
   ProFormDigit
 } from '@ant-design/pro-components';
 import ReferenceValueInput from './ReferenceValueInput';
-import { MetadataFieldDynamic } from '../hooks/useMetadataFields';
+import type { MetadataFieldDynamic } from '../services/api';
 
 export interface FormFieldRendererProps {
   /** Configuração completa do campo */

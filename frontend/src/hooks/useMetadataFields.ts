@@ -12,6 +12,9 @@
 import { useState, useEffect } from 'react';
 import { metadataDynamicAPI, type MetadataFieldDynamic } from '../services/api';
 
+// Re-exportar o tipo para facilitar importações
+export type { MetadataFieldDynamic } from '../services/api';
+
 export interface UseMetadataFieldsOptions {
   context?: 'blackbox' | 'exporters' | 'services' | 'general';
   enabled?: boolean;
