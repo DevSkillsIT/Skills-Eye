@@ -475,6 +475,15 @@ const Installer: React.FC = () => {
     setConnectionMethod((prev) => (prev === desired ? prev : desired));
     if (targetType === 'windows') {
       setResolvedWindowsMethod(null);
+      // Para Windows, definir domínio habilitado por padrão
+      form.setFieldsValue({
+        useDomain: true,
+      });
+    } else {
+      // Para Linux, garantir que domínio esteja desabilitado
+      form.setFieldsValue({
+        useDomain: false,
+      });
     }
     form.setFieldsValue({
       authType: 'password',
@@ -1009,9 +1018,15 @@ const Installer: React.FC = () => {
             hasConfig: hasConfig
           });
           
-          // 🔥 DESMARCAR "Registrar no Consul" automaticamente
-          setAutoRegister(false);
-          message.warning('⚠️ "Registrar no Consul" foi DESMARCADO automaticamente (instalação existente detectada)', 6);
+          // 🔥 DESMARCAR "Registrar no Consul" automaticamente APENAS se IP já existe no Consul
+          if (hasDuplicateConsul) {
+            setAutoRegister(false);
+            message.warning('⚠️ "Registrar no Consul" foi DESMARCADO automaticamente (IP duplicado + instalação existente detectada)', 6);
+          } else {
+            // Se tem instalação existente mas IP não está duplicado, manter auto-registro ATIVO
+            setAutoRegister(true);
+            message.info('ℹ️ Instalação existente detectada. Auto-registro mantido ATIVO (IP não duplicado no Consul)', 6);
+          }
           
           // Mostrar modal APENAS de instalação existente
           setWarningModalTitle('⚙️ Instalação existente detectada no servidor');
@@ -1722,7 +1737,7 @@ EOF"`,
     setInstallRunning(false);
     setSelectedCollectors(['node', 'filesystem', 'systemd']);
     setSelectedVersion('latest');
-    setUseBasicAuth(true);
+    setUseBasicAuth(false);
     setBasicAuthUser('prometheus');
     setBasicAuthPassword('');
     setAutoRegister(true);

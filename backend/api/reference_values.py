@@ -346,6 +346,7 @@ async def list_all_fields():
         {"name": "vendor", "display_name": "Fornecedor", "description": "Fornecedor do serviço ou infraestrutura (AWS, Azure, GCP, etc)"},
         {"name": "fabricante", "display_name": "Fabricante", "description": "Fabricante do hardware/dispositivo (Dell, HP, Cisco, etc)"},
         {"name": "field_category", "display_name": "Categoria de Campo", "description": "Categoria para organizar campos metadata (infrastructure, basic, device, extra, network, security, etc)"},
+        {"name": "service_tag", "display_name": "Tag de Serviço", "description": "Tags dos serviços Consul (array de strings: linux, monitoring, production, etc)"},
     ]
 
     return {

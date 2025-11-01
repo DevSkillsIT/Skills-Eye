@@ -8,7 +8,7 @@
     "Fonte única da verdade para campos metadata"
   ],
   "version": "2.0.0",
-  "last_updated": "2025-10-31T18:40:23.776192Z",
+  "last_updated": "2025-11-01T03:02:29.629800Z",
   "fields": [
     {
       "name": "cservice",
@@ -20,21 +20,11 @@
       "show_in_table": true,
       "show_in_dashboard": false,
       "show_in_form": true,
+      "options": null,
       "order": 1,
-      "category": "infrastructure",
+      "category": "CFTV",
       "editable": true,
-      "enabled": true,
-      "show_in_filter": false,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Serviço Consul",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 200
-      }
+      "validation_regex": null
     },
     {
       "name": "vendor",
