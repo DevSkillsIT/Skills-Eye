@@ -332,7 +332,7 @@ async def list_all_fields():
 
     Retorna lista dos campos metadata com available_for_registration: true.
     """
-    # Campos suportados (obtidos do metadata_fields.json)
+    # Campos suportados (obtidos do metadata_fields.json com available_for_registration: true)
     supported_fields = [
         {"name": "company", "display_name": "Empresa", "description": "Nome da empresa"},
         {"name": "grupo_monitoramento", "display_name": "Grupo Monitoramento", "description": "Grupo de monitoramento (projeto)"},
@@ -343,8 +343,8 @@ async def list_all_fields():
         {"name": "tipo_dispositivo_abrev", "display_name": "Tipo Dispositivo (Abrev)", "description": "Tipo do dispositivo (abreviado)"},
         {"name": "cidade", "display_name": "Cidade", "description": "Cidade onde está localizado"},
         {"name": "provedor", "display_name": "Provedor", "description": "Provedor de serviços (ISP, cloud, etc)"},
-        {"name": "categoria", "display_name": "Categoria", "description": "Categoria para metadata-fields"},
-        {"name": "tag", "display_name": "Tag", "description": "Tag/rótulo para organização"},
+        {"name": "vendor", "display_name": "Fornecedor", "description": "Fornecedor do serviço ou infraestrutura (AWS, Azure, GCP, etc)"},
+        {"name": "fabricante", "display_name": "Fabricante", "description": "Fabricante do hardware/dispositivo (Dell, HP, Cisco, etc)"},
     ]
 
     return {

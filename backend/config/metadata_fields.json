@@ -41,18 +41,11 @@
       "display_name": "Fornecedor",
       "description": "Fornecedor do serviço ou infraestrutura (AWS, Azure, GCP, etc)",
       "source_label": "__meta_consul_service_metadata_vendor",
-      "field_type": "select",
+      "field_type": "string",
       "required": false,
       "show_in_table": true,
       "show_in_dashboard": false,
       "show_in_form": true,
-      "options": [
-        "AWS",
-        "Azure",
-        "GCP",
-        "On-Premise",
-        "Oracle Cloud"
-      ],
       "order": 2,
       "category": "infrastructure",
       "editable": true,
@@ -61,10 +54,13 @@
       "show_in_blackbox": true,
       "show_in_exporters": true,
       "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione fornecedor",
+      "available_for_registration": true,
+      "placeholder": "Fornecedor (AWS, Azure, GCP, etc)",
       "default_value": null,
-      "validation": {}
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
     },
     {
       "name": "region",
@@ -294,20 +290,11 @@
       "display_name": "Fabricante",
       "description": "Fabricante do hardware/dispositivo",
       "source_label": "__meta_consul_service_metadata_fabricante",
-      "field_type": "select",
+      "field_type": "string",
       "required": false,
       "show_in_table": true,
       "show_in_dashboard": false,
       "show_in_form": true,
-      "options": [
-        "Dell",
-        "HP",
-        "Cisco",
-        "Mikrotik",
-        "Ubiquiti",
-        "Lenovo",
-        "Outros"
-      ],
       "order": 14,
       "category": "device",
       "editable": true,
@@ -316,10 +303,13 @@
       "show_in_blackbox": true,
       "show_in_exporters": true,
       "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione fabricante",
+      "available_for_registration": true,
+      "placeholder": "Fabricante (Dell, HP, Cisco, Mikrotik, etc)",
       "default_value": null,
-      "validation": {}
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
     },
     {
       "name": "tipo",
@@ -522,58 +512,6 @@
       "validation": {
         "min_length": 1,
         "max_length": 200
-      }
-    },
-    {
-      "name": "categoria",
-      "display_name": "Categoria",
-      "description": "Categoria para organização na página de metadata-fields",
-      "source_label": "__meta_consul_service_metadata_categoria",
-      "field_type": "string",
-      "required": false,
-      "show_in_table": true,
-      "show_in_dashboard": false,
-      "show_in_form": true,
-      "order": 23,
-      "category": "extra",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Categoria",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 100
-      }
-    },
-    {
-      "name": "tag",
-      "display_name": "Tag",
-      "description": "Tag/rótulo para organização e classificação",
-      "source_label": "__meta_consul_service_metadata_tag",
-      "field_type": "string",
-      "required": false,
-      "show_in_table": true,
-      "show_in_dashboard": false,
-      "show_in_form": true,
-      "order": 24,
-      "category": "extra",
-      "editable": true,
-      "enabled": true,
-      "show_in_filter": true,
-      "show_in_blackbox": true,
-      "show_in_exporters": true,
-      "show_in_services": true,
-      "available_for_registration": true,
-      "placeholder": "Tag",
-      "default_value": null,
-      "validation": {
-        "min_length": 1,
-        "max_length": 50
       }
     }
   ],
