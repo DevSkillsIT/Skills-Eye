@@ -80,7 +80,8 @@
       "Bash(do sleep 3)",
       "Bash(cmd /c \"taskkill /F /IM python.exe 2>nul & timeout /t 2 /nobreak >nul\")",
       "Bash(cmd /c \"cd /d c:\\consul-manager-web\\backend && start python app.py\")",
-      "Bash(cmd /c \"timeout /t 3 /nobreak >nul\")"
+      "Bash(cmd /c \"timeout /t 3 /nobreak >nul\")",
+      "Bash(cmd /c \"timeout /t 5 /nobreak >nul\")"
     ],
     "deny": [],
     "ask": []
