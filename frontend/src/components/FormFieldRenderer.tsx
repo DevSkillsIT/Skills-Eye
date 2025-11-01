@@ -30,7 +30,8 @@
  */
 
 import React from 'react';
-import { Form, Rule } from 'antd';
+import { Form } from 'antd';
+import type { Rule } from 'antd/es/form';
 import {
   ProFormText,
   ProFormSelect,
