@@ -113,21 +113,40 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
   const rules = buildRules();
 
   /**
+   * LISTA DE CAMPOS QUE NUNCA DEVEM USAR AUTOCOMPLETE
+   * Mesmo com available_for_registration=true, estes campos são únicos ou especiais
+   */
+  const EXCLUDE_FROM_AUTOCOMPLETE = [
+    'cservice',           // ID interno do Consul
+    'serviceDisplayName', // Nome de exibição único
+    'name',               // Nome único do serviço
+    'instance',           // IP:porta único
+    'address',            // IP/hostname único
+    'glpi_URL',           // URL única
+    'glpi_url',           // URL única (case variation)
+    'notas',              // Texto longo livre
+    'notes',              // Texto longo livre
+  ];
+
+  /**
    * ESTRATÉGIA DE RENDERIZAÇÃO:
    *
-   * 1. Se campo tem available_for_registration=true e é string → ReferenceValueInput (autocomplete)
+   * 1. Se campo tem available_for_registration=true, é string E não está na blacklist → ReferenceValueInput
    * 2. Se campo é select → ProFormSelect
    * 3. Se campo é text → ProFormTextArea
-   * 4. Se campo é number → ProFormDigit
-   * 5. Caso contrário → ProFormText
+   * 4. Se campo é url → ProFormText com validação
+   * 5. Se campo é number → ProFormDigit
+   * 6. Caso contrário → ProFormText
    */
 
   // CASO 1: Campo com auto-cadastro (ReferenceValueInput com autocomplete)
-  if (
+  const shouldUseAutocomplete =
     !forceStandardInput &&
     field.available_for_registration &&
-    (field.field_type === 'string' || field.field_type === 'url')
-  ) {
+    field.field_type === 'string' &&
+    !EXCLUDE_FROM_AUTOCOMPLETE.includes(field.name);
+
+  if (shouldUseAutocomplete) {
     return (
       <Form.Item
         name={field.name}
