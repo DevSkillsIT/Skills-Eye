@@ -28,6 +28,7 @@ from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
 from api.metadata_dynamic import router as metadata_dynamic_router  # NOVO: Sistema dinâmico
 from api.monitoring_types import router as monitoring_types_router  # NOVO: Configuration-driven types
+from api.reference_values import router as reference_values_router  # NOVO: Sistema de auto-cadastro/retroalimentação
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -178,6 +179,7 @@ app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus
 app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
 app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # NOVO: Campos dinâmicos
 app.include_router(monitoring_types_router, prefix="/api/v1", tags=["monitoring-types"])  # NOVO: Configuration-driven
+app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["reference-values"])  # NOVO: Auto-cadastro
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])

@@ -523,6 +523,58 @@
         "min_length": 1,
         "max_length": 200
       }
+    },
+    {
+      "name": "categoria",
+      "display_name": "Categoria",
+      "description": "Categoria para organização na página de metadata-fields",
+      "source_label": "__meta_consul_service_metadata_categoria",
+      "field_type": "string",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": false,
+      "show_in_form": true,
+      "order": 23,
+      "category": "extra",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Categoria",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "tag",
+      "display_name": "Tag",
+      "description": "Tag/rótulo para organização e classificação",
+      "source_label": "__meta_consul_service_metadata_tag",
+      "field_type": "string",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": false,
+      "show_in_form": true,
+      "order": 24,
+      "category": "extra",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Tag",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 50
+      }
     }
   ],
   "categories": {
