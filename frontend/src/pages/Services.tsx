@@ -10,6 +10,7 @@ import {
   Card,
   Descriptions,
   Drawer,
+  Form,
   Input,
   message,
   Popconfirm,
@@ -50,6 +51,8 @@ import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI } from '../services/api';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
+import ReferenceValueInput from '../components/ReferenceValueInput';
+import TagsInput from '../components/TagsInput';
 import type {
   ConsulServiceRecord,
   ServiceMeta,
@@ -1292,23 +1295,35 @@ const Services: React.FC = () => {
         </div>
 
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
+          <Form.Item
             name="company"
             label="Empresa"
-            placeholder="Organizacao responsavel"
             rules={[{ required: true, message: 'Informe a empresa' }]}
-          />
-          <ProFormText
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="company"
+              placeholder="Selecione ou digite empresa"
+              required
+            />
+          </Form.Item>
+          <Form.Item
             name="grupo_monitoramento"
             label="Grupo Monitoramento"
-            placeholder="Grupo de monitoramento (projeto)"
             rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
-          />
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="grupo_monitoramento"
+              placeholder="Selecione ou digite grupo"
+              required
+            />
+          </Form.Item>
           <ProFormText
             name="tipo_monitoramento"
             label="Tipo Monitoramento"
-            placeholder="Ex: prod, dev, homolog"
             rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
+            placeholder="Ex: prod, dev, homolog"
           />
         </div>
 
@@ -1327,63 +1342,70 @@ const Services: React.FC = () => {
           />
         </div>
 
-        <ProFormSelect
+        <Form.Item
           name="tags"
           label="Tags"
-          mode="tags"
-          placeholder="Adicione tags para classificacao"
-          fieldProps={{
-            tokenSeparators: [','],
-          }}
-        />
+        >
+          <TagsInput
+            placeholder="Selecione ou digite tags"
+          />
+        </Form.Item>
 
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
-            name="localizacao"
-            label="Localizacao"
-            placeholder="Ex: Data center principal"
-          />
-          <ProFormText
-            name="tipo"
-            label="Tipo"
-            placeholder="Categoria do recurso"
-          />
+          <Form.Item name="localizacao" label="Localizacao" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="localizacao"
+              placeholder="Selecione ou digite localização"
+            />
+          </Form.Item>
+          <Form.Item name="tipo" label="Tipo" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="tipo"
+              placeholder="Selecione ou digite tipo"
+            />
+          </Form.Item>
         </div>
 
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
-            name="cod_localidade"
-            label="Codigo local"
-            placeholder="Identificador interno da localidade"
-          />
-          <ProFormText
-            name="cidade"
-            label="Cidade"
-            placeholder="Cidade do recurso"
-          />
-          <ProFormText
-            name="provedor"
-            label="Provedor"
-            placeholder="Provedor do serviço"
-          />
+          <Form.Item name="cod_localidade" label="Codigo local" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="cod_localidade"
+              placeholder="Selecione ou digite código"
+            />
+          </Form.Item>
+          <Form.Item name="cidade" label="Cidade" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="cidade"
+              placeholder="Selecione ou digite cidade"
+            />
+          </Form.Item>
+          <Form.Item name="provedor" label="Provedor" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="provedor"
+              placeholder="Selecione ou digite provedor"
+            />
+          </Form.Item>
         </div>
 
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
-            name="fabricante"
-            label="Fabricante"
-            placeholder="Fabricante do equipamento"
-          />
-          <ProFormText
-            name="modelo"
-            label="Modelo"
-            placeholder="Modelo do equipamento"
-          />
-          <ProFormText
-            name="tipo_dispositivo_abrev"
-            label="Tipo (sigla)"
-            placeholder="Ex: RTR, SRV"
-          />
+          <Form.Item name="fabricante" label="Fabricante" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="fabricante"
+              placeholder="Selecione ou digite fabricante"
+            />
+          </Form.Item>
+          <Form.Item name="modelo" label="Modelo" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="modelo"
+              placeholder="Selecione ou digite modelo"
+            />
+          </Form.Item>
+          <Form.Item name="tipo_dispositivo_abrev" label="Tipo (sigla)" style={{ flex: 1 }}>
+            <ReferenceValueInput
+              fieldName="tipo_dispositivo_abrev"
+              placeholder="Ex: RTR, SRV"
+            />
+          </Form.Item>
         </div>
 
         <ProFormText

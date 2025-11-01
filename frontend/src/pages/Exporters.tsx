@@ -7,6 +7,7 @@ import {
   Descriptions,
   Dropdown,
   Drawer,
+  Form,
   Input,
   message,
   Popconfirm,
@@ -53,6 +54,8 @@ import type {
 import { useFilterFields, useTableFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
+import ReferenceValueInput from '../components/ReferenceValueInput';
+import TagsInput from '../components/TagsInput';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -1428,78 +1431,108 @@ const Exporters: React.FC = () => {
         </div>
 
         {/* Seção: Campos do ID (Grid 2x3) */}
-        <ProFormText
-          colProps={{ span: 12 }}
+        <Form.Item
           name="vendor"
           label="Vendor"
-          placeholder="Ex: Skills, GrupoWink"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
           ]}
           tooltip="Fornecedor ou empresa principal"
-        />
+          style={{ gridColumn: 'span 12' }}
+        >
+          <ReferenceValueInput
+            fieldName="vendor"
+            placeholder="Selecione ou digite vendor (Ex: Skills, GrupoWink)"
+            required
+          />
+        </Form.Item>
 
-        <ProFormText
-          colProps={{ span: 12 }}
+        <Form.Item
           name="account"
           label="Account"
-          placeholder="Ex: Aplicacao, AD, Monit_Print"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
           ]}
           tooltip="Conta ou departamento"
-        />
+          style={{ gridColumn: 'span 12' }}
+        >
+          <ReferenceValueInput
+            fieldName="account"
+            placeholder="Selecione ou digite account (Ex: Aplicacao, AD)"
+            required
+          />
+        </Form.Item>
 
-        <ProFormText
-          colProps={{ span: 12 }}
+        <Form.Item
           name="region"
           label="Region"
-          placeholder="Ex: InfraLocal, Cliente"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
           ]}
           tooltip="Região ou localização"
-        />
+          style={{ gridColumn: 'span 12' }}
+        >
+          <ReferenceValueInput
+            fieldName="region"
+            placeholder="Selecione ou digite region (Ex: InfraLocal, Cliente)"
+            required
+          />
+        </Form.Item>
 
-        <ProFormText
-          colProps={{ span: 12 }}
+        <Form.Item
           name="group"
           label="Group"
-          placeholder="Ex: DTC_Cluster_Local"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
           ]}
           tooltip="Grupo ou cluster"
-        />
+          style={{ gridColumn: 'span 12' }}
+        >
+          <ReferenceValueInput
+            fieldName="group"
+            placeholder="Selecione ou digite group (Ex: DTC_Cluster_Local)"
+            required
+          />
+        </Form.Item>
 
-        <ProFormText
-          colProps={{ span: 24 }}
+        <Form.Item
           name="name"
           label="Name"
-          placeholder="Ex: HUDU_172.16.1.25"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[a-zA-Z0-9_.-]+$/, message: 'Apenas letras, números, _, . e -' },
           ]}
           tooltip="Nome identificador único do exporter"
-        />
+          style={{ gridColumn: 'span 24' }}
+        >
+          <ReferenceValueInput
+            fieldName="name"
+            placeholder="Selecione ou digite name (Ex: HUDU_172.16.1.25)"
+            required
+          />
+        </Form.Item>
 
         {/* Seção: Configuração do Exporter */}
-        <ProFormText
-          colProps={{ span: 16 }}
+        <Form.Item
           name="instance"
           label="Instance"
-          placeholder="Ex: 192.168.1.10:9100"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
           ]}
           tooltip="Endereço no formato IP:PORTA"
-        />
+          style={{ gridColumn: 'span 16' }}
+        >
+          <ReferenceValueInput
+            fieldName="instance"
+            placeholder="Selecione ou digite instance (Ex: 192.168.1.10:9100)"
+            required
+          />
+        </Form.Item>
 
         <ProFormSelect
           colProps={{ span: 8 }}
@@ -1534,17 +1567,16 @@ const Exporters: React.FC = () => {
           tooltip="Porta do exporter"
         />
 
-        <ProFormSelect
-          colProps={{ span: 24 }}
+        <Form.Item
           name="tags"
           label="Tags"
-          mode="tags"
-          placeholder="Adicione tags para classificação (opcional)"
-          fieldProps={{
-            tokenSeparators: [','],
-          }}
           tooltip="Tags devem incluir o vendor e o tipo de OS correspondente"
-        />
+          style={{ gridColumn: 'span 24' }}
+        >
+          <TagsInput
+            placeholder="Selecione ou digite tags"
+          />
+        </Form.Item>
       </ModalForm>
 
       {/* Edit Exporter Modal */}
@@ -1693,17 +1725,22 @@ const Exporters: React.FC = () => {
         />
 
         {/* Seção: Configuração do Exporter */}
-        <ProFormText
-          colProps={{ span: 16 }}
+        <Form.Item
           name="instance"
           label="Instance"
-          placeholder="Ex: 192.168.1.10:9100"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
           ]}
           tooltip="Endereço no formato IP:PORTA"
-        />
+          style={{ gridColumn: 'span 16' }}
+        >
+          <ReferenceValueInput
+            fieldName="instance"
+            placeholder="Selecione ou digite instance (Ex: 192.168.1.10:9100)"
+            required
+          />
+        </Form.Item>
 
         <ProFormSelect
           colProps={{ span: 8 }}

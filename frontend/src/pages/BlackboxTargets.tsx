@@ -5,6 +5,7 @@ import {
   Card,
   Descriptions,
   Drawer,
+  Form,
   Input,
   message,
   Popconfirm,
@@ -55,6 +56,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
+import ReferenceValueInput from '../components/ReferenceValueInput';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -1237,24 +1239,42 @@ const BlackboxTargets: React.FC = () => {
         onFinish={handleSubmit}
       >
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
+          <Form.Item
             name="module"
             label="Modulo"
-            placeholder="Selecione o modulo"
             rules={[{ required: true, message: 'Informe o modulo' }]}
-          />
-          <ProFormText
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="module"
+              placeholder="Selecione ou digite módulo"
+              required
+            />
+          </Form.Item>
+          <Form.Item
             name="company"
             label="Empresa"
-            placeholder="Organizacao responsavel"
             rules={[{ required: true, message: 'Informe a empresa' }]}
-          />
-          <ProFormText
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="company"
+              placeholder="Selecione ou digite empresa"
+              required
+            />
+          </Form.Item>
+          <Form.Item
             name="grupo_monitoramento"
             label="Grupo Monitoramento"
-            placeholder="Grupo de monitoramento (projeto)"
             rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
-          />
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="grupo_monitoramento"
+              placeholder="Selecione ou digite grupo"
+              required
+            />
+          </Form.Item>
         </div>
 
         <div style={FORM_ROW_STYLE}>
@@ -1264,26 +1284,43 @@ const BlackboxTargets: React.FC = () => {
             placeholder="Ex: prod, dev, homolog"
             rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
           />
-          <ProFormText
+          <Form.Item
             name="name"
             label="Nome"
-            placeholder="Nome amigavel do alvo"
             rules={[{ required: true, message: 'Informe o nome' }]}
-          />
-          <ProFormText
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="name"
+              placeholder="Selecione ou digite nome"
+              required
+            />
+          </Form.Item>
+          <Form.Item
             name="instance"
             label="Instancia (URL/IP)"
-            placeholder="Ex: https://www.example.com"
             rules={[{ required: true, message: 'Informe a instancia' }]}
-          />
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="instance"
+              placeholder="Selecione ou digite URL/IP"
+              required
+            />
+          </Form.Item>
         </div>
 
         <div style={FORM_ROW_STYLE}>
-          <ProFormText
+          <Form.Item
             name="group"
             label="Grupo"
-            placeholder="Grupo opcional"
-          />
+            style={{ flex: 1 }}
+          >
+            <ReferenceValueInput
+              fieldName="group"
+              placeholder="Selecione ou digite grupo"
+            />
+          </Form.Item>
           <ProFormText
             name="interval"
             label="Intervalo"
