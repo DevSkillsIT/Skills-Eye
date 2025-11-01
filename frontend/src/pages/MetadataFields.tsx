@@ -311,6 +311,20 @@ const MetadataFieldsPage: React.FC = () => {
 
   const handleCreateField = async (values: any) => {
     try {
+      // PASSO 1: Auto-cadastrar categoria (retroalimentação)
+      if (values.category) {
+        try {
+          await axios.post(`${API_URL}/reference-values/ensure`, {
+            field_name: 'field_category',
+            value: values.category
+          });
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar categoria:', err);
+          // Não bloqueia criação do campo se falhar
+        }
+      }
+
+      // PASSO 2: Criar campo metadata
       const response = await axios.post(`${API_URL}/metadata-fields/`, {
         field: {
           ...values,
@@ -342,6 +356,20 @@ const MetadataFieldsPage: React.FC = () => {
     if (!editingField) return;
 
     try {
+      // PASSO 1: Auto-cadastrar categoria (retroalimentação)
+      if (values.category) {
+        try {
+          await axios.post(`${API_URL}/reference-values/ensure`, {
+            field_name: 'field_category',
+            value: values.category
+          });
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar categoria:', err);
+          // Não bloqueia edição do campo se falhar
+        }
+      }
+
+      // PASSO 2: Atualizar campo metadata
       const response = await axios.put(`${API_URL}/metadata-fields/${editingField.name}`, values);
 
       if (response.data.success) {
@@ -1133,18 +1161,19 @@ const MetadataFieldsPage: React.FC = () => {
           ]}
           rules={[{ required: true }]}
         />
-        <ProFormSelect
+
+        {/* Categoria com auto-cadastro */}
+        <ProFormText
           name="category"
           label="Categoria"
-          options={[
-            { label: 'Infraestrutura', value: 'infrastructure' },
-            { label: 'Básico', value: 'basic' },
-            { label: 'Dispositivo', value: 'device' },
-            { label: 'Extras', value: 'extra' },
-          ]}
           initialValue="extra"
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: 'Informe a categoria' }]}
+          fieldProps={{
+            placeholder: 'infrastructure, basic, device, extra, network, security...'
+          }}
+          tooltip="Digite uma categoria existente (infrastructure, basic, device, extra) ou crie uma nova. Valores novos são cadastrados automaticamente."
         />
+
         <ProFormDigit
           name="order"
           label="Ordem"
@@ -1193,17 +1222,18 @@ const MetadataFieldsPage: React.FC = () => {
           ]}
           rules={[{ required: true }]}
         />
-        <ProFormSelect
+
+        {/* Categoria com auto-cadastro */}
+        <ProFormText
           name="category"
           label="Categoria"
-          options={[
-            { label: 'Infraestrutura', value: 'infrastructure' },
-            { label: 'Básico', value: 'basic' },
-            { label: 'Dispositivo', value: 'device' },
-            { label: 'Extras', value: 'extra' },
-          ]}
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: 'Informe a categoria' }]}
+          fieldProps={{
+            placeholder: 'infrastructure, basic, device, extra, network, security...'
+          }}
+          tooltip="Digite uma categoria existente (infrastructure, basic, device, extra) ou crie uma nova. Valores novos são cadastrados automaticamente."
         />
+
         <ProFormDigit
           name="order"
           label="Ordem"

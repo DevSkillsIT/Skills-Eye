@@ -345,6 +345,7 @@ async def list_all_fields():
         {"name": "provedor", "display_name": "Provedor", "description": "Provedor de serviços (ISP, cloud, etc)"},
         {"name": "vendor", "display_name": "Fornecedor", "description": "Fornecedor do serviço ou infraestrutura (AWS, Azure, GCP, etc)"},
         {"name": "fabricante", "display_name": "Fabricante", "description": "Fabricante do hardware/dispositivo (Dell, HP, Cisco, etc)"},
+        {"name": "field_category", "display_name": "Categoria de Campo", "description": "Categoria para organizar campos metadata (infrastructure, basic, device, extra, network, security, etc)"},
     ]
 
     return {

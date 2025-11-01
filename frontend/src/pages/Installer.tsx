@@ -381,7 +381,7 @@ const Installer: React.FC = () => {
   const [installSuccess, setInstallSuccess] = useState<boolean | null>(null);
   const [selectedCollectors, setSelectedCollectors] = useState<string[]>(['node', 'filesystem', 'systemd']);
   const [selectedVersion, setSelectedVersion] = useState<string>('latest');
-  const [useBasicAuth, setUseBasicAuth] = useState(true);
+  const [useBasicAuth, setUseBasicAuth] = useState(false);
   const [basicAuthUser, setBasicAuthUser] = useState('prometheus');
   const [basicAuthPassword, setBasicAuthPassword] = useState('');
   const [autoRegister, setAutoRegister] = useState(true);
@@ -2248,69 +2248,104 @@ EOF"`,
                 })}
               />
 
-              <Select
-                showSearch
-                loading={loadingNodes}
-                value={selectedNodeAddress}
-                onChange={(value) => setSelectedNodeAddress(value)}
-                style={{ width: '100%' }}
-                placeholder={
-                  loadingNodes ? 'Carregando nós do Consul...' : 'Selecione um nó do Consul'
+              {/* Só mostrar seletor de nó se IP NÃO estiver duplicado no Consul */}
+              {(() => {
+                const hasIPDuplicate = sessionStorage.getItem('consulIPDuplicate') === 'true';
+                const hasExistingInstall = existingInstallation?.detected;
+                
+                // Se IP já existe no Consul: NÃO mostrar seletor nem switch
+                if (hasIPDuplicate) {
+                  return (
+                    <Alert
+                      message="ℹ️ Nó Consul não selecionável"
+                      description="Como o IP/Host já existe no Consul, não é necessário selecionar um nó ou registrar novamente."
+                      type="info"
+                      showIcon
+                      style={{ marginTop: 16 }}
+                    />
+                  );
                 }
-                optionFilterProp="label"
-                filterOption={(input, option) => {
-                  const label = option?.label;
-                  const labelText = typeof label === 'string' ? label : String(label ?? '');
-                  return labelText.toLowerCase().includes(input.toLowerCase());
-                }}
-                options={nodes.map((node) => ({
-                  value: node.addr,
-                  label: `${node.node} (${node.addr})`,
-                }))}
-                disabled={loadingNodes || nodes.length === 0}
-                notFoundContent={loadingNodes ? 'Carregando...' : 'Nenhum nó ativo encontrado'}
-              />
-
-              <Space>
-                <Text>Registrar automaticamente no Consul</Text>
-                <Switch 
-                  checked={autoRegister} 
-                  onChange={(checked) => {
-                    // ⚠️ FLUXO CORRETO: Verificar IP duplicado SOMENTE quando MARCAR o switch
-                    if (checked) {
-                      // Verificar se existe IP duplicado guardado do pre-check
-                      const hasIPDuplicate = sessionStorage.getItem('consulIPDuplicate') === 'true';
-                      const duplicateServices = JSON.parse(sessionStorage.getItem('consulIPServices') || '[]');
-                      
-                      if (hasIPDuplicate && duplicateServices.length > 0) {
-                        // 🚨 Mostrar modal reutilizando layout padrão de alertas
-                        setWarningModalTitle('🚫 IP/Host já existe no Consul');
-                        setWarningModalContent({
-                          duplicateConsul: true,
-                          existingInstall: false,
-                          services: duplicateServices,
-                          portOpen: false,
-                          serviceRunning: false,
-                          hasConfig: false,
-                          targetType: targetType
-                        });
-                        setWarningModalMode('toggle-auto-register');
-                        setWarningModalVisible(true);
-                        // NÃO marcar aqui, esperar confirmação do modal
-                        return;
+                
+                // Se tem instalação existente mas não está no Consul: mostrar seletor E switch (marcado)
+                return (
+                  <>
+                    <Select
+                      showSearch
+                      loading={loadingNodes}
+                      value={selectedNodeAddress}
+                      onChange={(value) => setSelectedNodeAddress(value)}
+                      style={{ width: '100%', marginTop: 16 }}
+                      placeholder={
+                        loadingNodes ? 'Carregando nós do Consul...' : 'Selecione um nó do Consul'
                       }
-                    }
+                      optionFilterProp="label"
+                      filterOption={(input, option) => {
+                        const label = option?.label;
+                        const labelText = typeof label === 'string' ? label : String(label ?? '');
+                        return labelText.toLowerCase().includes(input.toLowerCase());
+                      }}
+                      options={nodes.map((node) => ({
+                        value: node.addr,
+                        label: `${node.node} (${node.addr})`,
+                      }))}
+                      disabled={loadingNodes || nodes.length === 0}
+                      notFoundContent={loadingNodes ? 'Carregando...' : 'Nenhum nó ativo encontrado'}
+                    />
+
+                    <Space style={{ marginTop: 16 }}>
+                      <Text>Registrar automaticamente no Consul</Text>
+                      <Switch 
+                        checked={autoRegister} 
+                        onChange={(checked) => {
+                          // ⚠️ FLUXO CORRETO: Verificar IP duplicado SOMENTE quando MARCAR o switch
+                          if (checked) {
+                            // Verificar se existe IP duplicado guardado do pre-check
+                            const hasIPDuplicate = sessionStorage.getItem('consulIPDuplicate') === 'true';
+                            const duplicateServices = JSON.parse(sessionStorage.getItem('consulIPServices') || '[]');
+                            
+                            if (hasIPDuplicate && duplicateServices.length > 0) {
+                              // 🚨 Mostrar modal reutilizando layout padrão de alertas
+                              setWarningModalTitle('🚫 IP/Host já existe no Consul');
+                              setWarningModalContent({
+                                duplicateConsul: true,
+                                existingInstall: false,
+                                services: duplicateServices,
+                                portOpen: false,
+                                serviceRunning: false,
+                                hasConfig: false,
+                                targetType: targetType
+                              });
+                              setWarningModalMode('toggle-auto-register');
+                              setWarningModalVisible(true);
+                              // NÃO marcar aqui, esperar confirmação do modal
+                              return;
+                            }
+                          }
+                          
+                          // Se chegou aqui, pode marcar/desmarcar normalmente (sem IP duplicado)
+                          setAutoRegister(checked);
+                          if (checked) {
+                            message.success('✅ Registro no Consul ATIVADO', 3);
+                          } else {
+                            message.info('Registro automático DESATIVADO', 3);
+                          }
+                        }} 
+                      />
+                    </Space>
                     
-                    // Se chegou aqui, pode marcar/desmarcar normalmente (sem IP duplicado)
-                    setAutoRegister(checked);
-                    if (checked) {
-                      message.success('✅ Registro no Consul ATIVADO', 3);
-                    } else {
-                      message.info('Registro automático DESATIVADO', 3);
-                    }
-                  }} 
-                />
-              </Space>
+                    {/* Alerta específico para instalação existente */}
+                    {hasExistingInstall && (
+                      <Alert
+                        message="🔄 Cenário de Atualização Detectado"
+                        description="Como há uma instalação existente no servidor, você pode escolher registrar no Consul ou apenas atualizar o exporter mantendo o registro atual."
+                        type="info"
+                        showIcon
+                        style={{ marginTop: 16 }}
+                      />
+                    )}
+                  </>
+                );
+              })()}
             </Space>
           </Card>
         </Col>
