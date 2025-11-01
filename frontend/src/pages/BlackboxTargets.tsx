@@ -57,6 +57,7 @@ import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMeta
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
 import ReferenceValueInput from '../components/ReferenceValueInput';
+import FormFieldRenderer from '../components/FormFieldRenderer';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -1238,99 +1239,35 @@ const BlackboxTargets: React.FC = () => {
         }}
         onFinish={handleSubmit}
       >
+        {/* CAMPOS BLACKBOX ESPECÍFICOS */}
         <div style={FORM_ROW_STYLE}>
-          <Form.Item
-            name="module"
-            label="Modulo"
-            rules={[{ required: true, message: 'Informe o modulo' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="module"
-              placeholder="Selecione ou digite módulo"
-              required
-            />
-          </Form.Item>
-          <Form.Item
-            name="company"
-            label="Empresa"
-            rules={[{ required: true, message: 'Informe a empresa' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="company"
-              placeholder="Selecione ou digite empresa"
-              required
-            />
-          </Form.Item>
-          <Form.Item
-            name="grupo_monitoramento"
-            label="Grupo Monitoramento"
-            rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="grupo_monitoramento"
-              placeholder="Selecione ou digite grupo"
-              required
-            />
-          </Form.Item>
-        </div>
-
-        <div style={FORM_ROW_STYLE}>
-          <ProFormText
-            name="tipo_monitoramento"
-            label="Tipo Monitoramento"
-            placeholder="Ex: prod, dev, homolog"
-            rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
-          />
-          <Form.Item
-            name="name"
-            label="Nome"
-            rules={[{ required: true, message: 'Informe o nome' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="name"
-              placeholder="Selecione ou digite nome"
-              required
-            />
-          </Form.Item>
-          <Form.Item
-            name="instance"
-            label="Instancia (URL/IP)"
-            rules={[{ required: true, message: 'Informe a instancia' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="instance"
-              placeholder="Selecione ou digite URL/IP"
-              required
-            />
-          </Form.Item>
-        </div>
-
-        <div style={FORM_ROW_STYLE}>
-          <Form.Item
-            name="group"
-            label="Grupo"
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="group"
-              placeholder="Selecione ou digite grupo"
-            />
-          </Form.Item>
           <ProFormText
             name="interval"
             label="Intervalo"
             placeholder="Ex: 30s"
+            tooltip="Intervalo entre verificações (ex: 30s, 1m)"
           />
           <ProFormText
             name="timeout"
             label="Timeout"
             placeholder="Ex: 10s"
+            tooltip="Timeout para cada verificação"
           />
+        </div>
+
+        {/* CAMPOS METADATA DINÂMICOS - Carregados do backend */}
+        <div style={FORM_ROW_STYLE}>
+          {formFields
+            .filter(field => !['tags'].includes(field.name)) // Tags não existe em blackbox
+            .map(field => (
+              <FormFieldRenderer
+                key={field.name}
+                field={field}
+                mode={formMode}
+                style={{ flex: 1 }}
+              />
+            ))
+          }
         </div>
 
         <ProFormSwitch

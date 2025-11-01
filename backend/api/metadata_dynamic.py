@@ -34,12 +34,12 @@ class FieldResponse(BaseModel):
     show_in_services: bool
     editable: bool
     available_for_registration: bool
-    options: List[str]
-    default_value: Optional[Any]
-    placeholder: str
+    options: Optional[List[str]] = None
+    default_value: Optional[Any] = None
+    placeholder: str = ""
     order: int
     category: str
-    validation: Dict[str, Any]
+    validation: Dict[str, Any] = {}
 
 
 class FieldsListResponse(BaseModel):
@@ -139,12 +139,12 @@ async def get_dynamic_fields(
                 show_in_services=f.show_in_services,
                 editable=f.editable,
                 available_for_registration=f.available_for_registration,
-                options=f.options,
+                options=f.options if f.options is not None else [],
                 default_value=f.default_value,
-                placeholder=f.placeholder,
+                placeholder=f.placeholder if f.placeholder else "",
                 order=f.order,
                 category=f.category,
-                validation=f.validation,
+                validation=f.validation if f.validation else {},
             )
             for f in fields
         ]

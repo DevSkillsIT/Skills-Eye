@@ -60,6 +60,7 @@ import type {
   ServiceQuery,
 } from '../services/api';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
+import FormFieldRenderer from '../components/FormFieldRenderer';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -1279,147 +1280,55 @@ const Services: React.FC = () => {
           />
         </div>
 
-        <div style={FORM_ROW_STYLE}>
-          <ProFormText
-            name="serviceDisplayName"
-            label="Nome exibido"
-            placeholder="Nome amigavel do serviço"
-            rules={[{ required: true, message: 'Informe o nome do serviço' }]}
-          />
-          <ProFormText
-            name="instance"
-            label="Instancia (IP/URL)"
-            placeholder="Ex: 192.168.0.1 ou https://exemplo.com"
-            rules={[{ required: true, message: 'Informe a instancia' }]}
-          />
-        </div>
-
-        <div style={FORM_ROW_STYLE}>
-          <Form.Item
-            name="company"
-            label="Empresa"
-            rules={[{ required: true, message: 'Informe a empresa' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="company"
-              placeholder="Selecione ou digite empresa"
-              required
-            />
-          </Form.Item>
-          <Form.Item
-            name="grupo_monitoramento"
-            label="Grupo Monitoramento"
-            rules={[{ required: true, message: 'Informe o grupo de monitoramento' }]}
-            style={{ flex: 1 }}
-          >
-            <ReferenceValueInput
-              fieldName="grupo_monitoramento"
-              placeholder="Selecione ou digite grupo"
-              required
-            />
-          </Form.Item>
-          <ProFormText
-            name="tipo_monitoramento"
-            label="Tipo Monitoramento"
-            rules={[{ required: true, message: 'Informe o tipo de monitoramento' }]}
-            placeholder="Ex: prod, dev, homolog"
-          />
-        </div>
-
+        {/* CAMPOS FIXOS ESPECIAIS DO CONSUL */}
         <div style={FORM_ROW_STYLE}>
           <ProFormText
             name="address"
-            label="Endereco"
+            label="Endereco Consul"
             placeholder="Opcional - endereco para verificacao"
+            tooltip="Endereco específico para o serviço no Consul (opcional)"
           />
           <ProFormDigit
             name="port"
-            label="Porta"
+            label="Porta Consul"
             placeholder="Porta do serviço"
+            tooltip="Porta específica para o serviço no Consul (opcional)"
             min={1}
             max={65535}
           />
         </div>
 
+        {/* CAMPOS METADATA DINÂMICOS - Carregados do backend */}
+        <div style={FORM_ROW_STYLE}>
+          {formFields
+            .filter(field => !['tags'].includes(field.name)) // Tags tratado separadamente abaixo
+            .map(field => {
+              // Mapeamento especial: 'name' do backend → 'serviceDisplayName' do formulário
+              const fieldName = field.name === 'name' ? 'serviceDisplayName' : field.name;
+              const modifiedField = { ...field, name: fieldName };
+
+              return (
+                <FormFieldRenderer
+                  key={field.name}
+                  field={modifiedField}
+                  mode={formMode}
+                  style={{ flex: 1 }}
+                />
+              );
+            })
+          }
+        </div>
+
+        {/* TAGS - Componente especial com auto-cadastro */}
         <Form.Item
           name="tags"
           label="Tags"
+          tooltip="Tags para identificação e filtragem no Consul"
         >
           <TagsInput
             placeholder="Selecione ou digite tags"
           />
         </Form.Item>
-
-        <div style={FORM_ROW_STYLE}>
-          <Form.Item name="localizacao" label="Localizacao" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="localizacao"
-              placeholder="Selecione ou digite localização"
-            />
-          </Form.Item>
-          <Form.Item name="tipo" label="Tipo" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="tipo"
-              placeholder="Selecione ou digite tipo"
-            />
-          </Form.Item>
-        </div>
-
-        <div style={FORM_ROW_STYLE}>
-          <Form.Item name="cod_localidade" label="Codigo local" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="cod_localidade"
-              placeholder="Selecione ou digite código"
-            />
-          </Form.Item>
-          <Form.Item name="cidade" label="Cidade" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="cidade"
-              placeholder="Selecione ou digite cidade"
-            />
-          </Form.Item>
-          <Form.Item name="provedor" label="Provedor" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="provedor"
-              placeholder="Selecione ou digite provedor"
-            />
-          </Form.Item>
-        </div>
-
-        <div style={FORM_ROW_STYLE}>
-          <Form.Item name="fabricante" label="Fabricante" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="fabricante"
-              placeholder="Selecione ou digite fabricante"
-            />
-          </Form.Item>
-          <Form.Item name="modelo" label="Modelo" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="modelo"
-              placeholder="Selecione ou digite modelo"
-            />
-          </Form.Item>
-          <Form.Item name="tipo_dispositivo_abrev" label="Tipo (sigla)" style={{ flex: 1 }}>
-            <ReferenceValueInput
-              fieldName="tipo_dispositivo_abrev"
-              placeholder="Ex: RTR, SRV"
-            />
-          </Form.Item>
-        </div>
-
-        <ProFormText
-          name="glpi_url"
-          label="URL GLPI"
-          placeholder="Link para o ativo no GLPI"
-        />
-
-        <ProFormTextArea
-          name="notas"
-          label="Notas"
-          placeholder="Informacoes adicionais sobre o serviço"
-          fieldProps={{ rows: 3 }}
-        />
       </ModalForm>
     </PageContainer>
   );

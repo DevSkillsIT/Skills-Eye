@@ -690,6 +690,32 @@ const MetadataFieldsPage: React.FC = () => {
         ),
     },
     {
+      title: 'Páginas',
+      width: 200,
+      render: (_, record) => (
+        <Space size={4} wrap>
+          {record.show_in_services && (
+            <Tooltip title="Aparece em formulários de Services">
+              <Tag color="blue">Services</Tag>
+            </Tooltip>
+          )}
+          {record.show_in_exporters && (
+            <Tooltip title="Aparece em formulários de Exporters">
+              <Tag color="green">Exporters</Tag>
+            </Tooltip>
+          )}
+          {record.show_in_blackbox && (
+            <Tooltip title="Aparece em formulários de Blackbox">
+              <Tag color="orange">Blackbox</Tag>
+            </Tooltip>
+          )}
+          {!record.show_in_services && !record.show_in_exporters && !record.show_in_blackbox && (
+            <Tag color="default">Nenhuma</Tag>
+          )}
+        </Space>
+      ),
+    },
+    {
       title: 'Obrigatório',
       dataIndex: 'required',
       width: 100,

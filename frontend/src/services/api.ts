@@ -1046,6 +1046,9 @@ export interface MetadataField {
   show_in_form?: boolean;
   show_in_dashboard?: boolean;
   show_in_filters: boolean;
+  show_in_services?: boolean;
+  show_in_exporters?: boolean;
+  show_in_blackbox?: boolean;
   editable: boolean;
   source_label: string;
   description?: string;

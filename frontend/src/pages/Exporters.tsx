@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Descriptions,
   Dropdown,
   Drawer,
@@ -51,11 +50,12 @@ import type {
   ServiceCreatePayload,
   ServiceMeta,
 } from '../services/api';
-import { useFilterFields, useTableFields } from '../hooks/useMetadataFields';
+import { useFilterFields, useTableFields, useFormFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
 import ReferenceValueInput from '../components/ReferenceValueInput';
 import TagsInput from '../components/TagsInput';
+import FormFieldRenderer from '../components/FormFieldRenderer';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -135,8 +135,7 @@ const Exporters: React.FC = () => {
 
   // SISTEMA DINÂMICO: Carregar campos metadata do backend
   const { tableFields } = useTableFields('exporters');
-  // TODO: Implementar formulário dinâmico com formFields
-  // const { formFields, loading: formFieldsLoading } = useFormFields('exporters');
+  const { formFields } = useFormFields('exporters');
   const { filterFields, loading: filterFieldsLoading } = useFilterFields('exporters');
 
   // SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
@@ -197,7 +196,6 @@ const Exporters: React.FC = () => {
   const [serviceNames, setServiceNames] = useState<string[]>([]);
   const [serviceNamesLoading, setServiceNamesLoading] = useState(false);
   const [selectedNodeForModal, setSelectedNodeForModal] = useState<string>('');
-  const [visibleOptionalFields, setVisibleOptionalFields] = useState<string[]>([]);
   const [masterNodeAddr, setMasterNodeAddr] = useState<string>(''); // Armazena o endereço do nó master
   const createFormRef = useRef<{ setFieldsValue: (values: Record<string, unknown>) => void } | null>(null); // Ref para controlar o formulário de criação
 
@@ -1577,6 +1575,19 @@ const Exporters: React.FC = () => {
             placeholder="Selecione ou digite tags"
           />
         </Form.Item>
+
+        {/* CAMPOS METADATA DINÂMICOS ADICIONAIS */}
+        {formFields
+          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'tags'].includes(field.name))
+          .map(field => (
+            <div key={field.name} style={{ gridColumn: 'span 12' }}>
+              <FormFieldRenderer
+                field={field}
+                mode="create"
+              />
+            </div>
+          ))
+        }
       </ModalForm>
 
       {/* Edit Exporter Modal */}
@@ -1755,78 +1766,16 @@ const Exporters: React.FC = () => {
           tooltip="Sistema operacional do host monitorado"
         />
 
-        {/* Seção: Campos Opcionais de Metadata */}
-        <div style={{ gridColumn: '1 / -1', marginTop: 16 }}>
-          <Card size="small" title="Campos Opcionais de Metadata" style={{ marginBottom: 16 }}>
-            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-              <Text type="secondary">
-                Selecione quais campos adicionais deseja preencher:
-              </Text>
-              <Checkbox.Group
-                value={visibleOptionalFields}
-                onChange={(values) => setVisibleOptionalFields(values as string[])}
-                style={{ width: '100%' }}
-              >
-                <Space wrap>
-                  {tableFields
-                    .filter((field: MetadataFieldDynamic) => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name))
-                    .map((field: MetadataFieldDynamic) => (
-                      <Checkbox key={field.name} value={field.name}>
-                        {field.display_name || field.name}
-                      </Checkbox>
-                    ))}
-                </Space>
-              </Checkbox.Group>
-            </Space>
-          </Card>
-        </div>
-
-        {/* Renderizar campos selecionados dinamicamente */}
-        {visibleOptionalFields.includes('company') && (
-          <ProFormText
-            colProps={{ span: 8 }}
-            name="company"
-            label="Empresa"
-            placeholder="Organização"
-            tooltip="Campo adicional de metadata"
-          />
-        )}
-
-        {visibleOptionalFields.includes('grupo_monitoramento') && (
-          <ProFormText
-            colProps={{ span: 8 }}
-            name="grupo_monitoramento"
-            label="Grupo Monitoramento"
-            placeholder="Grupo de monitoramento"
-            tooltip="Campo adicional de metadata"
-          />
-        )}
-
-        {visibleOptionalFields.includes('tipo_monitoramento') && (
-          <ProFormText
-            colProps={{ span: 8 }}
-            name="tipo_monitoramento"
-            label="Tipo Monitoramento"
-            placeholder="prod, dev, etc"
-            tooltip="Campo adicional de metadata"
-          />
-        )}
-
-        {/* Outros campos opcionais baseados em tableFields */}
-        {tableFields
-          .filter((field: MetadataFieldDynamic) =>
-            visibleOptionalFields.includes(field.name) &&
-            !['company', 'grupo_monitoramento', 'tipo_monitoramento', 'vendor', 'account', 'region', 'group', 'name', 'instance', 'os'].includes(field.name)
-          )
-          .map((field: MetadataFieldDynamic) => (
-            <ProFormText
-              key={field.name}
-              colProps={{ span: 8 }}
-              name={field.name}
-              label={field.display_name || field.name}
-              placeholder={field.description || `Digite ${field.display_name || field.name}`}
-              tooltip={field.description}
-            />
+        {/* CAMPOS METADATA DINÂMICOS ADICIONAIS */}
+        {formFields
+          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'tags'].includes(field.name))
+          .map(field => (
+            <div key={field.name} style={{ gridColumn: 'span 12' }}>
+              <FormFieldRenderer
+                field={field}
+                mode="edit"
+              />
+            </div>
           ))
         }
 
