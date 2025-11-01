@@ -278,3 +278,73 @@ async def validate_metadata(
     except Exception as e:
         logger.error(f"Erro ao validar metadata: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class UpdateFieldPagesRequest(BaseModel):
+    """Schema para atualizar visibilidade de páginas de um campo"""
+    show_in_services: bool
+    show_in_exporters: bool
+    show_in_blackbox: bool
+
+
+@router.put("/fields/{field_name}/pages", response_model=Dict[str, Any])
+async def update_field_pages(
+    field_name: str,
+    request: UpdateFieldPagesRequest
+):
+    """
+    Atualiza em quais páginas um campo deve aparecer
+
+    Args:
+        field_name: Nome do campo a atualizar
+        request: Configurações de visibilidade por página
+
+    Returns:
+        {"success": true, "message": "...", "field": {...}}
+    """
+    try:
+        import json
+        from pathlib import Path
+
+        # Caminho do arquivo de configuração
+        config_path = Path(__file__).parent.parent / "config" / "metadata_fields.json"
+
+        # Ler configuração atual
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # Encontrar campo
+        field_found = False
+        for field in config.get('fields', []):
+            if field.get('name') == field_name:
+                # Atualizar visibilidade
+                field['show_in_services'] = request.show_in_services
+                field['show_in_exporters'] = request.show_in_exporters
+                field['show_in_blackbox'] = request.show_in_blackbox
+                field_found = True
+                updated_field = field
+                break
+
+        if not field_found:
+            raise HTTPException(status_code=404, detail=f"Campo '{field_name}' não encontrado")
+
+        # Salvar configuração atualizada
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        # Recarregar cache
+        metadata_loader.reload()
+
+        logger.info(f"Campo '{field_name}' atualizado com sucesso: services={request.show_in_services}, exporters={request.show_in_exporters}, blackbox={request.show_in_blackbox}")
+
+        return {
+            "success": True,
+            "message": f"Campo '{field_name}' atualizado com sucesso",
+            "field": updated_field
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao atualizar campo '{field_name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

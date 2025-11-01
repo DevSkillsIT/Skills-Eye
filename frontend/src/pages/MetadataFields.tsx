@@ -43,6 +43,9 @@ import {
   App,
   Steps,
   List,
+  Checkbox,
+  Popover,
+  message,
 } from 'antd';
 
 const { Text, Paragraph } = Typography;
@@ -64,7 +67,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
-import { metadataFieldsAPI, consulAPI } from '../services/api';
+import { metadataFieldsAPI, consulAPI, metadataDynamicAPI } from '../services/api';
 import type { PreviewFieldChangeResponse } from '../services/api';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
@@ -79,6 +82,9 @@ interface MetadataField {
   show_in_table: boolean;
   show_in_dashboard: boolean;
   show_in_form: boolean;
+  show_in_services?: boolean;
+  show_in_exporters?: boolean;
+  show_in_blackbox?: boolean;
   options?: string[];
   order: number;
   category: string;
@@ -691,29 +697,91 @@ const MetadataFieldsPage: React.FC = () => {
     },
     {
       title: 'Páginas',
-      width: 200,
-      render: (_, record) => (
-        <Space size={4} wrap>
-          {record.show_in_services && (
-            <Tooltip title="Aparece em formulários de Services">
-              <Tag color="blue">Services</Tag>
-            </Tooltip>
-          )}
-          {record.show_in_exporters && (
-            <Tooltip title="Aparece em formulários de Exporters">
-              <Tag color="green">Exporters</Tag>
-            </Tooltip>
-          )}
-          {record.show_in_blackbox && (
-            <Tooltip title="Aparece em formulários de Blackbox">
-              <Tag color="orange">Blackbox</Tag>
-            </Tooltip>
-          )}
-          {!record.show_in_services && !record.show_in_exporters && !record.show_in_blackbox && (
-            <Tag color="default">Nenhuma</Tag>
-          )}
-        </Space>
-      ),
+      width: 250,
+      render: (_, record) => {
+        const handleUpdatePages = async (newPages: {
+          show_in_services: boolean;
+          show_in_exporters: boolean;
+          show_in_blackbox: boolean;
+        }) => {
+          try {
+            await metadataDynamicAPI.updateFieldPages(record.name, newPages);
+            message.success(`Páginas do campo "${record.display_name}" atualizadas!`);
+            // Recarregar campos
+            fetchFields();
+          } catch (error) {
+            console.error('Erro ao atualizar páginas:', error);
+            message.error('Erro ao atualizar páginas do campo');
+          }
+        };
+
+        const content = (
+          <div style={{ padding: '8px 0' }}>
+            <Space direction="vertical" size="small">
+              <Checkbox
+                checked={record.show_in_services ?? false}
+                onChange={(e) => handleUpdatePages({
+                  show_in_services: e.target.checked,
+                  show_in_exporters: record.show_in_exporters ?? false,
+                  show_in_blackbox: record.show_in_blackbox ?? false,
+                })}
+              >
+                <Tag color="blue" style={{ margin: 0 }}>Services</Tag>
+              </Checkbox>
+              <Checkbox
+                checked={record.show_in_exporters ?? false}
+                onChange={(e) => handleUpdatePages({
+                  show_in_services: record.show_in_services ?? false,
+                  show_in_exporters: e.target.checked,
+                  show_in_blackbox: record.show_in_blackbox ?? false,
+                })}
+              >
+                <Tag color="green" style={{ margin: 0 }}>Exporters</Tag>
+              </Checkbox>
+              <Checkbox
+                checked={record.show_in_blackbox ?? false}
+                onChange={(e) => handleUpdatePages({
+                  show_in_services: record.show_in_services ?? false,
+                  show_in_exporters: record.show_in_exporters ?? false,
+                  show_in_blackbox: e.target.checked,
+                })}
+              >
+                <Tag color="orange" style={{ margin: 0 }}>Blackbox</Tag>
+              </Checkbox>
+            </Space>
+          </div>
+        );
+
+        return (
+          <Popover
+            content={content}
+            title="Selecione as páginas"
+            trigger="click"
+            placement="left"
+          >
+            <Space size={4} wrap style={{ cursor: 'pointer' }}>
+              {record.show_in_services && (
+                <Tooltip title="Aparece em formulários de Services">
+                  <Tag color="blue">Services</Tag>
+                </Tooltip>
+              )}
+              {record.show_in_exporters && (
+                <Tooltip title="Aparece em formulários de Exporters">
+                  <Tag color="green">Exporters</Tag>
+                </Tooltip>
+              )}
+              {record.show_in_blackbox && (
+                <Tooltip title="Aparece em formulários de Blackbox">
+                  <Tag color="orange">Blackbox</Tag>
+                </Tooltip>
+              )}
+              {!record.show_in_services && !record.show_in_exporters && !record.show_in_blackbox && (
+                <Tag color="default">Nenhuma</Tag>
+              )}
+            </Space>
+          </Popover>
+        );
+      },
     },
     {
       title: 'Obrigatório',

@@ -1255,6 +1255,16 @@ export const metadataDynamicAPI = {
    */
   validateMetadata: (metadata: Record<string, unknown>, context: string = 'general') =>
     api.post('/metadata-dynamic/validate', metadata, { params: { context } }),
+
+  /**
+   * Atualiza em quais páginas um campo deve aparecer
+   */
+  updateFieldPages: (fieldName: string, pages: {
+    show_in_services: boolean;
+    show_in_exporters: boolean;
+    show_in_blackbox: boolean;
+  }) =>
+    api.put(`/metadata-dynamic/fields/${fieldName}/pages`, pages),
 };
 
 export default api;
