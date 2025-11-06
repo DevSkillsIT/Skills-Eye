@@ -1,6 +1,6 @@
 # 📚 Guia Completo de Workflow Git - Skills Eye
 
-> **Autor:** DevSkillsIT
+> **Autor:** Adriano Fante
 > **Última Atualização:** 06 de Novembro de 2025
 > **Projeto:** Skills Eye (antigo Consul Manager Web)
 
