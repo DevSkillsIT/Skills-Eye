@@ -172,13 +172,15 @@ class BlackboxUpdateRequest(BaseModel):
 
 
 class BlackboxDeleteRequest(BaseModel):
-    """Payload de remoção (não exige instance)"""
-    module: str
-    company: str
-    project: str
-    env: str
-    name: str
-    group: Optional[str] = None
+    """
+    Payload de remoção simplificado.
+    Informações necessárias: service_id + service_name + node_addr + node_name + datacenter
+    """
+    service_id: str              # ID único (ex: icmp/Company/Project/Env@Name)
+    service_name: Optional[str] = None  # Nome do serviço no Consul (ex: blackbox_remote_rmd_ldc) - para Método 2
+    node_addr: Optional[str] = None     # IP do agente (ex: 172.16.1.26) - para Método 1
+    node_name: Optional[str] = None     # Nome do node (ex: glpi-grafana-prometheus.skillsit.com.br) - para Método 2
+    datacenter: Optional[str] = None    # Datacenter (ex: dtc-skills-local) - para Método 2
 
 
 class KVPutRequest(BaseModel):

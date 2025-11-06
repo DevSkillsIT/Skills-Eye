@@ -23,6 +23,7 @@ except ImportError:  # pragma: no cover - optional dependency for XLSX import
 from .consul_manager import ConsulManager
 from .config import Config
 from .kv_manager import KVManager
+from .naming_utils import apply_site_suffix, extract_site_from_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,10 @@ class BlackboxManager:
         meta["group"] = service_meta.get("group") or kv_meta.get("group")
         meta["interval"] = service_meta.get("interval") or kv_meta.get("interval") or "30s"
         meta["timeout"] = service_meta.get("timeout") or kv_meta.get("timeout") or "10s"
+
+        # IMPORTANTE: Incluir datacenter do service_meta (vem do Consul)
+        if "datacenter" in service_meta:
+            meta["datacenter"] = service_meta.get("datacenter")
 
         enabled_raw = kv_meta.get("enabled")
         if enabled_raw is None:
@@ -474,6 +479,14 @@ class BlackboxManager:
             meta["group"] = group
         if labels:
             meta["labels"] = json.dumps(labels, ensure_ascii=False)
+            # Adicionar labels adicionais ao Meta para suportar campos dinâmicos
+            # (company, project, env, site, remote_site, etc)
+            # IMPORTANTE: External labels do Prometheus NÃO devem ser injetados aqui!
+            # External labels são configurados no prometheus.yml e aplicados GLOBALMENTE
+            # pelo próprio Prometheus a todas as métricas coletadas.
+            for label_key, label_value in labels.items():
+                if label_key not in meta:  # Não sobrescrever campos existentes
+                    meta[label_key] = label_value
 
         payload = {
             "id": service_id,
@@ -483,6 +496,29 @@ class BlackboxManager:
         }
         if group:
             payload["tags"].append(group)
+
+        # MULTI-SITE SUPPORT: Adicionar tag automática baseado no campo "site"
+        # Se os labels contêm campo "site", adicionar como tag para filtros no prometheus.yml
+        if labels and "site" in labels:
+            site = labels["site"]
+            if site and site not in payload["tags"]:
+                payload["tags"].append(site)
+                logger.info(f"Adicionada tag automática para site: {site}")
+
+        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opção 2)
+        # Se NAMING_STRATEGY=option2 e site != DEFAULT_SITE, adiciona sufixo _site
+        # Exemplo: blackbox_exporter + site=rio → blackbox_exporter_rio
+        if payload["name"]:
+            original_name = payload["name"]
+            site = extract_site_from_metadata(meta)
+            cluster = meta.get("cluster")
+
+            # Aplicar sufixo baseado na configuração
+            suffixed_name = apply_site_suffix(original_name, site=site, cluster=cluster)
+
+            if suffixed_name != original_name:
+                payload["name"] = suffixed_name
+                logger.info(f"[MULTI-SITE] Blackbox service name alterado: {original_name} → {suffixed_name} (site={site})")
 
         return service_id, payload
 

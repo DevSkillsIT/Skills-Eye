@@ -19,6 +19,7 @@ import {
   Typography,
   List,
 } from 'antd';
+import { useConsulDelete } from '../hooks/useConsulDelete';
 import {
   PlusOutlined,
   DownloadOutlined,
@@ -194,14 +195,18 @@ const BlackboxGroups: React.FC = () => {
     setEditModalVisible(true);
   };
 
-  const handleDelete = async (groupId: string) => {
-    try {
-      await consulAPI.deleteBlackboxGroup(groupId);
-      message.success('Grupo deletado com sucesso');
+  // Hook compartilhado para DELETE com lógica padronizada
+  const { deleteResource } = useConsulDelete({
+    deleteFn: async (payload: any) => consulAPI.deleteBlackboxGroup(payload.group_id),
+    successMessage: 'Grupo deletado com sucesso',
+    errorMessage: 'Erro ao deletar grupo',
+    onSuccess: () => {
       actionRef.current?.reload();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || 'Erro ao deletar grupo');
-    }
+    },
+  });
+
+  const handleDelete = async (groupId: string) => {
+    await deleteResource({ group_id: groupId });
   };
 
   const handleCreateGroup = async (values: GroupFormData) => {

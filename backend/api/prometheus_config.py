@@ -14,6 +14,10 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
+import paramiko
+import os
+from io import StringIO
+from ruamel.yaml import YAML
 
 from core.yaml_config_service import YamlConfigService
 from core.fields_extraction_service import FieldsExtractionService, MetadataField
@@ -213,9 +217,11 @@ async def get_config_summary():
 
 
 @router.get("/fields", response_model=FieldsResponse)
-async def get_available_fields(enrich_with_values: bool = Query(True)):
+async def get_available_fields(enrich_with_values: bool = Query(True), force_refresh: bool = Query(False)):
     """
     Retorna TODOS os campos metadata extraídos de TODOS os arquivos de TODOS os servidores
+
+    **OTIMIZAÇÃO COLD START**: Lê do Consul KV primeiro (INSTANTÂNEO), só extrai via SSH se forçado ou KV vazio
 
     Extrai campos de:
     - prometheus.yml
@@ -229,13 +235,37 @@ async def get_available_fields(enrich_with_values: bool = Query(True)):
 
     Args:
         enrich_with_values: Se True, adiciona valores únicos do Consul
+        force_refresh: Se True, força re-extração via SSH ignorando KV
 
     Returns:
         Lista consolidada de campos metadata de TODOS os servidores
     """
     try:
+        # OTIMIZAÇÃO: Tentar ler do KV primeiro (evita SSH no cold start)
+        if not force_refresh:
+            try:
+                from core.kv_manager import KVManager
+                kv_manager = KVManager()
+
+                kv_data = await kv_manager.get_json('skills/cm/metadata/fields')
+
+                if kv_data and kv_data.get('fields'):
+                    logger.info(f"[FIELDS] Retornando {len(kv_data['fields'])} campos do KV (cache) - EVITANDO SSH")
+                    return FieldsResponse(
+                        success=True,
+                        fields=kv_data['fields'],
+                        total=len(kv_data['fields']),
+                        last_updated=kv_data.get('last_updated', datetime.now().isoformat()),
+                        server_status=kv_data.get('extraction_status', {}).get('server_status', []),
+                        total_servers=kv_data.get('extraction_status', {}).get('total_servers', 0),
+                        successful_servers=kv_data.get('extraction_status', {}).get('successful_servers', 0),
+                        from_cache=True,
+                    )
+            except Exception as e:
+                logger.warning(f"[FIELDS] KV não disponível, extraindo via SSH: {e}")
+
         # Extrair de TODOS os servidores EM PARALELO COM STATUS de cada servidor
-        logger.info(f"[FIELDS] Extração completa - TODOS os 3 servidores em PARALELO")
+        logger.info(f"[FIELDS] Extração completa via SSH - TODOS os 3 servidores em PARALELO")
         extraction_result = multi_config.extract_all_fields_with_status()
 
         fields = extraction_result['fields']
@@ -251,6 +281,34 @@ async def get_available_fields(enrich_with_values: bool = Query(True)):
 
         # Converter para dict
         fields_dict = [field.to_dict() for field in fields]
+
+        # SALVAR AUTOMATICAMENTE NO CONSUL KV
+        # O KV é a fonte de verdade - campos vêm do Prometheus e são salvos no KV
+        try:
+            from core.kv_manager import KVManager
+            kv_manager = KVManager()
+
+            # Salvar no KV: skills/cm/metadata/fields
+            await kv_manager.put_json(
+                key='skills/cm/metadata/fields',
+                value={
+                    'version': '2.0.0',
+                    'last_updated': datetime.now().isoformat(),
+                    'source': 'prometheus_yml_dynamic_extraction',
+                    'total_fields': len(fields_dict),
+                    'fields': fields_dict,
+                    'extraction_status': {
+                        'total_servers': extraction_result.get('total_servers'),
+                        'successful_servers': extraction_result.get('successful_servers'),
+                        'server_status': extraction_result.get('server_status'),
+                    }
+                },
+                metadata={'auto_updated': True, 'source': 'prometheus_config_api'}
+            )
+            logger.info(f"[KV-SAVE] Campos salvos automaticamente no Consul KV: {len(fields_dict)} campos")
+        except Exception as e:
+            logger.warning(f"[KV-SAVE] Não foi possível salvar campos no KV: {e}")
+            # Não bloqueia a resposta se falhar o salvamento
 
         return FieldsResponse(
             success=True,
@@ -2014,4 +2072,264 @@ async def get_prometheus_job_names(
         raise
     except Exception as e:
         logger.error(f"[JOB-NAMES] Erro ao buscar job_names: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ENDPOINTS - CONFIGURAÇÕES GLOBAL, REMOTE_WRITE, ALERTING
+# ============================================================================
+
+@router.get("/test-version")
+async def test_version():
+    """Endpoint de teste para verificar se código foi atualizado"""
+    return {"version": "2.0-SSH-direct", "timestamp": datetime.now().isoformat()}
+
+
+@router.get("/global")
+async def get_global_config(
+    hostname: Optional[str] = Query(None, description="Hostname do servidor Prometheus (opcional)")
+):
+    """
+    Obtém configuração global do prometheus.yml de um servidor específico
+    Inclui external_labels, scrape_interval, evaluation_interval
+
+    Args:
+        hostname: Hostname do servidor (ex: 172.16.1.26). Se não fornecido, usa configuração padrão.
+
+    Returns:
+        Dict com configuração global incluindo external_labels
+
+    Example:
+        GET /prometheus-config/global?hostname=172.16.1.26
+
+        Response:
+        {
+            "success": true,
+            "scrape_interval": "15s",
+            "evaluation_interval": "15s",
+            "external_labels": {
+                "site": "palmas",
+                "datacenter": "genesis-dtc",
+                "cluster": "prometheus"
+            }
+        }
+    """
+    try:
+        # Se hostname fornecido, buscar de servidor específico via SSH
+        if hostname:
+            logger.info(f"[GLOBAL CONFIG] Buscando configuração de {hostname} via SSH")
+
+            # Parse PROMETHEUS_CONFIG_HOSTS do .env para encontrar credenciais do servidor
+            config_hosts_str = os.getenv("PROMETHEUS_CONFIG_HOSTS", "")
+
+            if not config_hosts_str:
+                raise HTTPException(
+                    status_code=500,
+                    detail="PROMETHEUS_CONFIG_HOSTS não configurado no .env"
+                )
+
+            # Format: host:porta/usuario/senha;host2:porta/usuario/senha
+            server_config = None
+            for host_entry in config_hosts_str.split(";"):
+                if hostname in host_entry:
+                    parts = host_entry.split("/")
+                    host_port = parts[0]
+                    host_parts = host_port.split(":")
+                    server_hostname = host_parts[0]
+                    server_port = int(host_parts[1]) if len(host_parts) > 1 else 22
+                    username = parts[1] if len(parts) > 1 else "root"
+                    password = parts[2] if len(parts) > 2 else None
+
+                    if server_hostname == hostname:
+                        server_config = {
+                            "hostname": server_hostname,
+                            "port": server_port,
+                            "username": username,
+                            "password": password
+                        }
+                        break
+
+            if not server_config:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor {hostname} não encontrado em PROMETHEUS_CONFIG_HOSTS"
+                )
+
+            logger.info(f"[GLOBAL CONFIG] Conectando via SSH: {username}@{hostname}:{server_config['port']}")
+
+            # PASSO 1: Conectar via SSH
+            client = paramiko.SSHClient()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            try:
+                if server_config["password"]:
+                    client.connect(
+                        hostname=server_config["hostname"],
+                        port=server_config["port"],
+                        username=server_config["username"],
+                        password=server_config["password"],
+                        timeout=10
+                    )
+                else:
+                    # Tentar com chave SSH
+                    client.connect(
+                        hostname=server_config["hostname"],
+                        port=server_config["port"],
+                        username=server_config["username"],
+                        look_for_keys=True,
+                        timeout=10
+                    )
+
+                logger.info(f"[GLOBAL CONFIG] Conectado com sucesso via SSH")
+
+                # PASSO 2: Ler arquivo prometheus.yml
+                prometheus_path = "/etc/prometheus/prometheus.yml"
+                logger.info(f"[GLOBAL CONFIG] Lendo arquivo {prometheus_path}")
+
+                sftp = client.open_sftp()
+                with sftp.open(prometheus_path, 'r') as f:
+                    content = f.read().decode('utf-8')
+                sftp.close()
+                client.close()
+
+                logger.info(f"[GLOBAL CONFIG] Arquivo lido com sucesso ({len(content)} bytes)")
+
+                # PASSO 3: Parsear YAML
+                yaml = YAML()
+                yaml.preserve_quotes = True
+                config = yaml.load(StringIO(content))
+
+                logger.info(f"[GLOBAL CONFIG] YAML parseado. Keys: {list(config.keys())}")
+
+                # PASSO 4: Extrair seção 'global'
+                global_section = config.get('global', {})
+
+                # PASSO 5: Retornar external_labels e outras configs globais
+                return {
+                    "success": True,
+                    "scrape_interval": global_section.get('scrape_interval', '15s'),
+                    "evaluation_interval": global_section.get('evaluation_interval', '15s'),
+                    "external_labels": global_section.get('external_labels', {}),
+                    "hostname": hostname,
+                    "file_path": prometheus_path
+                }
+
+            except paramiko.AuthenticationException as e:
+                logger.error(f"[GLOBAL CONFIG] Erro de autenticação SSH: {e}")
+                raise HTTPException(status_code=401, detail=f"Falha na autenticação SSH: {e}")
+            except paramiko.SSHException as e:
+                logger.error(f"[GLOBAL CONFIG] Erro SSH: {e}")
+                raise HTTPException(status_code=500, detail=f"Erro SSH: {e}")
+            except FileNotFoundError as e:
+                logger.error(f"[GLOBAL CONFIG] Arquivo não encontrado: {e}")
+                raise HTTPException(status_code=404, detail=f"Arquivo prometheus.yml não encontrado no servidor {hostname}")
+            finally:
+                try:
+                    client.close()
+                except:
+                    pass
+
+        # Se hostname NÃO fornecido, usar serviço padrão (YamlConfigService)
+        else:
+            global_config = yaml_service.get_global_config()
+
+            return {
+                "success": True,
+                "data": global_config
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao obter configuração global: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/remote-write")
+async def get_remote_write_config():
+    """
+    Obtém configuração de remote_write do prometheus.yml
+    Inclui URL, write_relabel_configs, queue_config
+
+    Returns:
+        Lista de configurações remote_write
+    """
+    try:
+        remote_write = yaml_service.get_remote_write_config()
+
+        return {
+            "success": True,
+            "data": remote_write,
+            "total": len(remote_write)
+        }
+
+    except Exception as e:
+        logger.error(f"Erro ao obter configuração remote_write: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/alerting")
+async def get_alerting_config():
+    """
+    Obtém configuração de alerting (alertmanagers)
+
+    Returns:
+        Dict com configuração de alertmanagers
+    """
+    try:
+        alerting = yaml_service.get_alerting_config()
+
+        return {
+            "success": True,
+            "data": alerting
+        }
+
+    except Exception as e:
+        logger.error(f"Erro ao obter configuração alerting: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rule-files")
+async def get_rule_files():
+    """
+    Obtém lista de arquivos de regras configurados
+
+    Returns:
+        Lista de caminhos dos arquivos de regras
+    """
+    try:
+        rule_files = yaml_service.get_rule_files()
+
+        return {
+            "success": True,
+            "data": rule_files,
+            "total": len(rule_files)
+        }
+
+    except Exception as e:
+        logger.error(f"Erro ao obter rule_files: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/server-info")
+async def get_full_server_info():
+    """
+    Obtém informações completas do servidor Prometheus
+    Inclui global, remote_write, alerting, rule_files, jobs
+
+    Útil para dashboard e análise completa da configuração
+
+    Returns:
+        Dict com todas as informações relevantes
+    """
+    try:
+        server_info = yaml_service.get_full_server_info()
+
+        return {
+            "success": True,
+            "data": server_info
+        }
+
+    except Exception as e:
+        logger.error(f"Erro ao obter informações do servidor: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

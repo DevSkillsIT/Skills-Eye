@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Path
 from typing import Dict, List, Optional
 from core.consul_manager import ConsulManager
 from core.config import Config
+from core.naming_utils import apply_site_suffix, extract_site_from_metadata
 from .models import (
     ServiceCreateRequest,
     ServiceUpdateRequest,
@@ -376,6 +377,39 @@ async def create_service(
                 }
             )
 
+        # MULTI-SITE SUPPORT: Adicionar tag automática baseado no campo "site"
+        # Se o metadata contém campo "site", adicionar como tag para filtros no prometheus.yml
+        site = meta.get("site")
+        if site:
+            tags = service_data.get("Tags", service_data.get("tags", []))
+            if not isinstance(tags, list):
+                tags = []
+
+            # Adicionar tag do site se não existir
+            if site not in tags:
+                tags.append(site)
+                logger.info(f"Adicionada tag automática para site: {site}")
+
+            # Garantir que o campo Tags está correto (Consul usa "Tags" com T maiúsculo)
+            service_data["Tags"] = tags
+            if "tags" in service_data:
+                del service_data["tags"]
+
+        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opção 2)
+        # Se NAMING_STRATEGY=option2 e site != DEFAULT_SITE, adiciona sufixo _site
+        # Exemplo: selfnode_exporter + site=rio → selfnode_exporter_rio
+        if "name" in service_data and service_data["name"]:
+            original_name = service_data["name"]
+            site = extract_site_from_metadata(meta)
+            cluster = meta.get("cluster")
+
+            # Aplicar sufixo baseado na configuração
+            suffixed_name = apply_site_suffix(original_name, site=site, cluster=cluster)
+
+            if suffixed_name != original_name:
+                service_data["name"] = suffixed_name
+                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} → {suffixed_name} (site={site})")
+
         # Registrar serviço
         logger.info(f"Registrando novo serviço: {service_data.get('id')}")
         success = await consul.register_service(
@@ -513,6 +547,35 @@ async def update_service(
                     # Usar o nome correto do campo (Uppercase se estiver no mapeamento)
                     consul_key = field_mapping.get(key, key)
                     updated_service[consul_key] = value
+
+        # MULTI-SITE SUPPORT: Atualizar tag automática baseado no campo "site"
+        meta = updated_service.get("Meta", {})
+        site = meta.get("site")
+        if site:
+            tags = updated_service.get("Tags", [])
+            if not isinstance(tags, list):
+                tags = []
+
+            # Adicionar tag do site se não existir
+            if site not in tags:
+                tags.append(site)
+                logger.info(f"Adicionada tag automática para site: {site}")
+
+            updated_service["Tags"] = tags
+
+        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opção 2)
+        # Se NAMING_STRATEGY=option2 e site != DEFAULT_SITE, adiciona sufixo _site
+        if "Name" in updated_service and updated_service["Name"]:
+            original_name = updated_service["Name"]
+            site = extract_site_from_metadata(meta)
+            cluster = meta.get("cluster")
+
+            # Aplicar sufixo baseado na configuração
+            suffixed_name = apply_site_suffix(original_name, site=site, cluster=cluster)
+
+            if suffixed_name != original_name:
+                updated_service["Name"] = suffixed_name
+                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} → {suffixed_name} (site={site})")
 
         # Atualizar serviço
         logger.info(f"Atualizando serviço: {service_id}")

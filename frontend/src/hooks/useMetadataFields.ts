@@ -1,16 +1,22 @@
 /**
  * Hook para buscar campos metadata dinâmicos
  *
- * Sistema Totalmente Dinâmico - Campos carregados do metadata_fields.json
+ * Sistema Totalmente Dinâmico - Campos extraídos do Prometheus
  *
  * Uso:
  *   const { fields, loading, error } = useMetadataFields('blackbox');
  *   const tableFields = fields.filter(f => f.show_in_table);
  *   const formFields = fields.filter(f => f.show_in_form);
+ *
+ * IMPORTANTE: Agora busca 100% do Prometheus (via SSH) + configurações do KV
  */
 
 import { useState, useEffect } from 'react';
-import { metadataDynamicAPI, type MetadataFieldDynamic } from '../services/api';
+import axios from 'axios';
+import type { MetadataFieldDynamic } from '../services/api';
+import { useMetadataFieldsContext } from '../contexts/MetadataFieldsContext';
+
+const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
 // Re-exportar o tipo para facilitar importações
 export type { MetadataFieldDynamic } from '../services/api';
@@ -50,13 +56,90 @@ export function useMetadataFields(
       setLoading(true);
       setError(null);
 
-      const { data } = await metadataDynamicAPI.getFields(filters);
+      // PASSO 1: Buscar campos do Prometheus (extraídos do prometheus.yml)
+      // Timeout de 60s pois faz SSH para múltiplos servidores no cold start
+      const prometheusResponse = await axios.get(`${API_URL}/prometheus-config/fields`, {
+        timeout: 60000,
+      });
 
-      if (data.success) {
-        setFields(data.fields);
-      } else {
-        setError('Erro ao carregar campos');
+      if (!prometheusResponse.data.success) {
+        throw new Error('Erro ao carregar campos do Prometheus');
       }
+
+      const prometheusFields: MetadataFieldDynamic[] = prometheusResponse.data.fields;
+
+      // PASSO 2: Buscar configurações de visibilidade do KV para cada campo
+      const fieldsWithConfig = await Promise.all(
+        prometheusFields.map(async (field: MetadataFieldDynamic) => {
+          try {
+            // Buscar configuração de exibição do KV
+            const configResponse = await axios.get(
+              `${API_URL}/kv/metadata/field-config/${field.name}`
+            );
+
+            if (configResponse.data.success && configResponse.data.config) {
+              // Merge: dados do Prometheus + configuração do KV
+              return {
+                ...field,
+                show_in_services: configResponse.data.config.show_in_services ?? true,
+                show_in_exporters: configResponse.data.config.show_in_exporters ?? true,
+                show_in_blackbox: configResponse.data.config.show_in_blackbox ?? true,
+              };
+            }
+          } catch (error) {
+            // Se não existe config, usar valores padrão (todos true)
+            console.log(`[DEBUG] Usando config padrão para campo "${field.name}"`);
+          }
+
+          // Valores padrão se não houver configuração salva
+          return {
+            ...field,
+            show_in_services: true,
+            show_in_exporters: true,
+            show_in_blackbox: true,
+          };
+        })
+      );
+
+      // PASSO 3: Filtrar por contexto (services, exporters, blackbox)
+      let filteredFields = fieldsWithConfig;
+
+      if (filters.context === 'services') {
+        filteredFields = fieldsWithConfig.filter(f => f.show_in_services !== false);
+      } else if (filters.context === 'exporters') {
+        filteredFields = fieldsWithConfig.filter(f => f.show_in_exporters !== false);
+      } else if (filters.context === 'blackbox') {
+        filteredFields = fieldsWithConfig.filter(f => f.show_in_blackbox !== false);
+      }
+
+      // PASSO 4: Aplicar outros filtros (enabled, show_in_table, etc)
+      if (filters.enabled !== undefined) {
+        filteredFields = filteredFields.filter(f => f.enabled === filters.enabled);
+      }
+
+      if (filters.required !== undefined) {
+        filteredFields = filteredFields.filter(f => f.required === filters.required);
+      }
+
+      if (filters.show_in_table !== undefined) {
+        filteredFields = filteredFields.filter(f => f.show_in_table === filters.show_in_table);
+      }
+
+      if (filters.show_in_form !== undefined) {
+        filteredFields = filteredFields.filter(f => f.show_in_form === filters.show_in_form);
+      }
+
+      if (filters.show_in_filter !== undefined) {
+        filteredFields = filteredFields.filter(
+          f => f.show_in_filter === filters.show_in_filter
+        );
+      }
+
+      if (filters.category) {
+        filteredFields = filteredFields.filter(f => f.category === filters.category);
+      }
+
+      setFields(filteredFields);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
@@ -106,10 +189,19 @@ export function useRequiredFields(): {
     async function loadRequiredFields() {
       try {
         setLoading(true);
-        const { data } = await metadataDynamicAPI.getRequiredFields();
 
-        if (data.success) {
-          setRequiredFields(data.required_fields);
+        // Buscar campos do Prometheus (timeout 60s para cold start)
+        const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
+          timeout: 60000,
+        });
+
+        if (response.data.success) {
+          // Filtrar apenas campos obrigatórios
+          const required = response.data.fields
+            .filter((field: MetadataFieldDynamic) => field.required === true)
+            .map((field: MetadataFieldDynamic) => field.name);
+
+          setRequiredFields(required);
         }
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -128,60 +220,74 @@ export function useRequiredFields(): {
 
 /**
  * Hook para buscar campos para tabela (colunas)
+ * OTIMIZADO: Usa context compartilhado - UMA única requisição
  */
 export function useTableFields(context?: string): {
   tableFields: MetadataFieldDynamic[];
   loading: boolean;
   error: string | null;
 } {
-  const { fields, loading, error } = useMetadataFields({
-    context: context as 'blackbox' | 'exporters' | 'services',
-    enabled: true,
-    show_in_table: true,
-  });
+  const { fields: allFields, loading, error } = useMetadataFieldsContext();
 
-  // Ordenar por order
-  const tableFields = [...fields].sort((a, b) => a.order - b.order);
+  // Filtrar por contexto e show_in_table
+  const tableFields = allFields
+    .filter((f: MetadataFieldDynamic) => {
+      // Filtrar por contexto
+      if (context === 'services') return f.show_in_services !== false;
+      if (context === 'exporters') return f.show_in_exporters !== false;
+      if (context === 'blackbox') return f.show_in_blackbox !== false;
+      return true;
+    })
+    .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
+    .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
 
   return { tableFields, loading, error };
 }
 
 /**
  * Hook para buscar campos para formulário
+ * OTIMIZADO: Usa context compartilhado - UMA única requisição
  */
 export function useFormFields(context?: string): {
   formFields: MetadataFieldDynamic[];
   loading: boolean;
   error: string | null;
 } {
-  const { fields, loading, error } = useMetadataFields({
-    context: context as 'blackbox' | 'exporters' | 'services',
-    enabled: true,
-    show_in_form: true,
-  });
+  const { fields: allFields, loading, error } = useMetadataFieldsContext();
 
-  // Ordenar por order
-  const formFields = [...fields].sort((a, b) => a.order - b.order);
+  const formFields = allFields
+    .filter((f: MetadataFieldDynamic) => {
+      if (context === 'services') return f.show_in_services !== false;
+      if (context === 'exporters') return f.show_in_exporters !== false;
+      if (context === 'blackbox') return f.show_in_blackbox !== false;
+      return true;
+    })
+    .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_form === true)
+    .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
 
   return { formFields, loading, error };
 }
 
 /**
  * Hook para buscar campos para filtros
+ * OTIMIZADO: Usa context compartilhado - UMA única requisição
  */
 export function useFilterFields(context?: string): {
   filterFields: MetadataFieldDynamic[];
   loading: boolean;
   error: string | null;
 } {
-  const { fields, loading, error } = useMetadataFields({
-    context: context as 'blackbox' | 'exporters' | 'services',
-    enabled: true,
-    show_in_filter: true,
-  });
+  const { fields: allFields, loading, error } = useMetadataFieldsContext();
 
-  // Ordenar por order
-  const filterFields = [...fields].sort((a, b) => a.order - b.order);
+  const filterFields = allFields
+    .filter((f: MetadataFieldDynamic) => {
+      if (context === 'services') return f.show_in_services !== false;
+      if (context === 'exporters') return f.show_in_exporters !== false;
+      if (context === 'blackbox') return f.show_in_blackbox !== false;
+      return true;
+    })
+    .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_filter === true)
+    .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
 
   return { filterFields, loading, error };
 }

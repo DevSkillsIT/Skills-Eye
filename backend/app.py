@@ -26,10 +26,12 @@ from api.dashboard import router as dashboard_router
 from api.optimized_endpoints import router as optimized_router
 from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
-from api.metadata_dynamic import router as metadata_dynamic_router  # NOVO: Sistema dinâmico
+# from api.metadata_dynamic import router as metadata_dynamic_router  # REMOVIDO: Usar prometheus_config em vez disso
 from api.monitoring_types import router as monitoring_types_router  # NOVO: Configuration-driven types
+from api.monitoring_types_dynamic import router as monitoring_types_dynamic_router  # NOVO: Tipos extraídos de Prometheus.yml
 from api.reference_values import router as reference_values_router  # NOVO: Sistema de auto-cadastro/retroalimentação
 from api.service_tags import router as service_tags_router  # NOVO: Sistema de tags retroalimentáveis
+from api.settings import router as settings_router  # NOVO: Configurações globais (naming strategy, etc)
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -178,10 +180,12 @@ app.include_router(dashboard_router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
 app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus-config"])
 app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
-app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # NOVO: Campos dinâmicos
+# app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # REMOVIDO: Usar prometheus-config
 app.include_router(monitoring_types_router, prefix="/api/v1", tags=["monitoring-types"])  # NOVO: Configuration-driven
+app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["monitoring-types-dynamic"])  # NOVO: Tipos de Prometheus.yml
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["reference-values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["service-tags"])  # NOVO: Tags retroalimentáveis
+app.include_router(settings_router, prefix="/api/v1", tags=["settings"])  # NOVO: Configurações globais
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])

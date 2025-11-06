@@ -19,6 +19,7 @@ import {
   Upload,
   Select,
 } from 'antd';
+import { useConsulDelete } from '../hooks/useConsulDelete';
 import type { UploadProps } from 'antd';
 import {
   CloudOutlined,
@@ -56,8 +57,9 @@ import { useSearchParams } from 'react-router-dom';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
-import ReferenceValueInput from '../components/ReferenceValueInput';
 import FormFieldRenderer from '../components/FormFieldRenderer';
+import SiteBadge from '../components/SiteBadge';
+import { extractSiteFromMetadata } from '../utils/namingUtils';
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -171,8 +173,7 @@ const BlackboxTargets: React.FC = () => {
 
   // SISTEMA DINÂMICO: Carregar campos metadata do backend
   const { tableFields } = useTableFields('blackbox');
-  // TODO: Implementar formulário dinâmico com formFields
-  // const { formFields, loading: formFieldsLoading } = useFormFields('blackbox');
+  const { formFields } = useFormFields('blackbox');
   const { filterFields, loading: filterFieldsLoading } = useFilterFields('blackbox');
 
   // SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
@@ -574,55 +575,50 @@ const BlackboxTargets: React.FC = () => {
     }
   };
 
-  const handleDelete = async (record: BlackboxTargetRecord) => {
-    try {
-      await consulAPI.deleteBlackboxTarget({
-        module: record.meta?.module || '',
-        company: record.meta?.company || '',
-        project: record.meta?.project || '',
-        env: record.meta?.env || '',
-        name: record.meta?.name || '',
-        group: record.meta?.group || undefined,
-      });
-
-      // Limpar cache após deletar
-      await consulAPI.clearCache('blackbox-targets');
-
-      message.success('Alvo removido com sucesso');
+  // Hook compartilhado para DELETE com lógica padronizada (Método 1 + Método 2 failover)
+  const { deleteResource, deleteBatch } = useConsulDelete({
+    deleteFn: consulAPI.deleteBlackboxTarget,
+    clearCacheFn: consulAPI.clearCache,
+    cacheKey: 'blackbox-targets',
+    successMessage: 'Alvo removido com sucesso',
+    errorMessage: 'Falha ao remover alvo',
+    onSuccess: () => {
       actionRef.current?.reload();
-    } catch (error: any) {
-      const detail =
-        error?.response?.data?.detail ||
-        error?.response?.data?.error ||
-        error?.message ||
-        'Erro desconhecido';
-      message.error(`Falha ao remover alvo: ${detail}`);
-    }
+    },
+  });
+
+  const handleDelete = async (record: BlackboxTargetRecord) => {
+    // Envia apenas dados que JÁ EXISTEM no record - SEM extrair nada "na unha"
+    const payload = {
+      service_id: record.service_id,           // ID único (obrigatório)
+      service_name: record.service,            // Nome do serviço no Consul (para Método 2)
+      node_addr: record.node_addr,             // IP do agente (para Método 1)
+      node_name: record.node,                  // Nome do node (para Método 2)
+      datacenter: record.meta?.datacenter,     // Datacenter (para Método 2)
+    };
+
+    console.log('[DELETE] Payload enviado:', payload);
+    await deleteResource(payload);
   };
 
   const handleBatchDelete = async () => {
     if (!selectedRows.length) {
       return;
     }
-    try {
-      await Promise.all(
-        selectedRows.map((record) =>
-          consulAPI.deleteBlackboxTarget({
-            module: record.meta?.module || '',
-            company: record.meta?.company || '',
-            project: record.meta?.project || '',
-            env: record.meta?.env || '',
-            name: record.meta?.name || '',
-            group: record.meta?.group || undefined,
-          }),
-        ),
-      );
-      message.success('Alvos removidos com sucesso');
+
+    // Envia apenas dados que JÁ EXISTEM no record - SEM extrair nada "na unha"
+    const payloads = selectedRows.map((record) => ({
+      service_id: record.service_id,
+      service_name: record.service,
+      node_addr: record.node_addr,
+      node_name: record.node,
+      datacenter: record.meta?.datacenter,
+    }));
+
+    const success = await deleteBatch(payloads);
+    if (success) {
       setSelectedRowKeys([]);
       setSelectedRows([]);
-      actionRef.current?.reload();
-    } catch (error) {
-      message.error('Falha ao remover um ou mais alvos');
     }
   };
 
@@ -754,12 +750,16 @@ const BlackboxTargets: React.FC = () => {
         dataIndex: 'service',
         width: 220,
         ellipsis: true,
-        render: (_, record) => (
-          <Space size={4}>
-            <InfoCircleOutlined style={{ color: '#1677ff' }} />
-            <span>{record.service}</span>
-          </Space>
-        ),
+        render: (_, record) => {
+          const site = record.meta?.site || extractSiteFromMetadata(record.meta || {});
+          return (
+            <Space size={4}>
+              <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              <span>{record.service}</span>
+              {site && <SiteBadge site={site} size="small" />}
+            </Space>
+          );
+        },
       },
       node: {
         title: 'Nó',

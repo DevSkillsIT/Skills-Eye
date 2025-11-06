@@ -95,6 +95,15 @@ export function useReferenceValues(
   const [error, setError] = useState<string | null>(null);
 
   /**
+   * Limpa estado quando o campo muda (evita exibir valores do campo anterior)
+   */
+  useEffect(() => {
+    setValues([]);
+    setValuesWithMetadata([]);
+    setError(null);
+  }, [fieldName]);
+
+  /**
    * Carrega lista de valores existentes do backend
    */
   const loadValues = useCallback(async () => {

@@ -12,7 +12,6 @@ from fastapi import APIRouter, HTTPException, Body, Query
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, cast, Tuple
 from pathlib import Path
-import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
@@ -154,29 +153,57 @@ class BatchSyncResponse(BaseModel):
 # FUNÇÕES AUXILIARES
 # ============================================================================
 
-def load_fields_config() -> Dict[str, Any]:
-    """Carrega configuração de campos do JSON"""
+async def load_fields_config() -> Dict[str, Any]:
+    """
+    Carrega configuração de campos do Consul KV (extraídos do Prometheus).
+
+    IMPORTANTE: Não usa mais arquivo JSON hardcoded!
+    Campos vêm 100% do Prometheus via extração SSH.
+    """
     try:
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logger.error(f"Arquivo de configuração não encontrado: {CONFIG_FILE}")
-        raise HTTPException(status_code=500, detail="Arquivo de configuração não encontrado")
-    except json.JSONDecodeError as e:
-        logger.error(f"Erro ao parsear JSON: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro ao parsear configuração: {str(e)}")
+        from core.kv_manager import KVManager
+
+        kv = KVManager()
+        fields_data = await kv.get_json('skills/cm/metadata/fields')
+
+        if not fields_data:
+            logger.error("Dados de campos não encontrados no KV. Execute sincronização primeiro.")
+            raise HTTPException(
+                status_code=404,
+                detail="Campos não encontrados. Execute sincronização na página MetadataFields primeiro."
+            )
+
+        return fields_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao carregar campos do Consul KV: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao carregar configuração de campos: {str(e)}"
+        )
 
 
-def save_fields_config(config: Dict[str, Any]) -> bool:
-    """Salva configuração de campos no JSON"""
+async def save_fields_config(config: Dict[str, Any]) -> bool:
+    """
+    Salva configuração de campos no Consul KV.
+
+    IMPORTANTE: Não salva mais em arquivo JSON!
+    Campos são salvos no KV: skills/cm/metadata/fields
+    """
     try:
+        from core.kv_manager import KVManager
+
         # Atualizar timestamp
         config['last_updated'] = datetime.utcnow().isoformat() + 'Z'
 
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        kv = KVManager()
+        success = await kv.put_json('skills/cm/metadata/fields', config)
 
-        logger.info(f"Configuração salva: {CONFIG_FILE}")
+        if not success:
+            raise ValueError("Falha ao salvar no Consul KV")
+
+        logger.info(f"Configuração salva no KV: skills/cm/metadata/fields")
         return True
     except Exception as e:
         logger.error(f"Erro ao salvar configuração: {e}")
@@ -519,13 +546,34 @@ async def get_sync_status(
     try:
         logger.info(f"[SYNC-STATUS] Verificando sync status para servidor: {server_id}")
 
-        # Carregar configuração de campos
+        # Buscar campos do KV (se não existir, retornar erro orientando a fazer sync primeiro)
         try:
-            config = load_fields_config()
+            config = await load_fields_config()
             fields = config.get('fields', [])
-            logger.info(f"[SYNC-STATUS] Carregados {len(fields)} campos do metadata_fields.json")
+            logger.info(f"[SYNC-STATUS] Carregados {len(fields)} campos do KV")
+        except HTTPException as e:
+            # Se retornou 404 (não encontrado), orientar usuário
+            if e.status_code == 404:
+                logger.warning("[SYNC-STATUS] Campos não encontrados no KV - necessário sincronizar primeiro")
+                # Retornar resposta vazia indicando que precisa sincronizar
+                return SyncStatusResponse(
+                    success=True,
+                    server_id=server_id,
+                    server_hostname=server_id.split(':')[0] if ':' in server_id else server_id,
+                    fields=[],
+                    total_synced=0,
+                    total_outdated=0,
+                    total_missing=0,
+                    total_error=0,
+                    prometheus_file_path=None,
+                    checked_at=datetime.now().isoformat(),
+                    message="Campos não carregados. Clique em 'Sincronizar Campos' para extrair do Prometheus primeiro.",
+                    fallback_used=False,
+                )
+            # Outros erros, repassar
+            raise
         except Exception as e:
-            logger.error(f"[SYNC-STATUS] Erro ao carregar metadata_fields.json: {e}")
+            logger.error(f"[SYNC-STATUS] Erro ao carregar campos: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Erro ao carregar configuração de campos: {str(e)}"
@@ -775,6 +823,7 @@ async def get_sync_status(
             total_error=total_error,
             prometheus_file_path=prometheus_file_path,
             checked_at=datetime.now().isoformat(),
+            message=None,
             fallback_used=fallback_used,
         )
 
@@ -807,7 +856,7 @@ async def preview_field_changes(
         logger.info(f"[PREVIEW-CHANGES] Campo: {field_name}, Servidor: {server_id}")
 
         # Carregar campo do JSON
-        config = load_fields_config()
+        config = await load_fields_config()
         field = get_field_by_name(config, field_name)
         if not field:
             raise HTTPException(status_code=404, detail=f"Campo '{field_name}' não encontrado")
@@ -923,7 +972,7 @@ async def batch_sync_fields(request: BatchSyncRequest):
         total_failed = 0
 
         # Carregar configuração de campos
-        config = load_fields_config()
+        config = await load_fields_config()
 
         # Conectar ao servidor
         hostname = request.server_id.split(':')[0] if ':' in request.server_id else request.server_id
@@ -1323,7 +1372,7 @@ async def list_fields(
     - required_only: Apenas campos obrigatórios
     - show_in_table_only: Apenas campos que aparecem em tabelas
     """
-    config = load_fields_config()
+    config = await load_fields_config()
     fields = config.get('fields', [])
 
     # Aplicar filtros
@@ -1352,7 +1401,7 @@ async def list_fields(
 @router.get("/{field_name}")
 async def get_field(field_name: str):
     """Busca campo específico por nome"""
-    config = load_fields_config()
+    config = await load_fields_config()
     field = get_field_by_name(config, field_name)
 
     if not field:
@@ -1371,7 +1420,7 @@ async def create_field(request: AddFieldRequest):
 
     Se sync_prometheus=True, adiciona o campo a todos os jobs do prometheus.yml
     """
-    config = load_fields_config()
+    config = await load_fields_config()
 
     # Verificar se já existe
     if get_field_by_name(config, request.field.name):
@@ -1385,7 +1434,7 @@ async def create_field(request: AddFieldRequest):
     config['fields'].append(new_field)
 
     # Salvar configuração
-    save_fields_config(config)
+    await save_fields_config(config)
 
     # Sincronizar com prometheus.yml se solicitado
     if request.sync_prometheus:
@@ -1422,7 +1471,7 @@ async def create_field(request: AddFieldRequest):
 @router.put("/{field_name}")
 async def update_field(field_name: str, field_data: MetadataFieldModel):
     """Atualiza campo existente"""
-    config = load_fields_config()
+    config = await load_fields_config()
 
     # Buscar campo
     field = get_field_by_name(config, field_name)
@@ -1439,7 +1488,7 @@ async def update_field(field_name: str, field_data: MetadataFieldModel):
             break
 
     # Salvar
-    save_fields_config(config)
+    await save_fields_config(config)
 
     return {
         "success": True,
@@ -1454,7 +1503,7 @@ async def delete_field(
     remove_from_prometheus: bool = Query(False, description="Remover do prometheus.yml")
 ):
     """Deleta campo metadata"""
-    config = load_fields_config()
+    config = await load_fields_config()
 
     # Buscar campo
     field = get_field_by_name(config, field_name)
@@ -1471,8 +1520,7 @@ async def delete_field(
     # Remover do array
     config['fields'] = [f for f in config['fields'] if f['name'] != field_name]
 
-    # Salvar
-    save_fields_config(config)
+    # Salvarawait save_fields_config(config)
 
     result = {
         "success": True,
@@ -1499,7 +1547,7 @@ async def reorder_fields(field_orders: Dict[str, int] = Body(...)):
     Body: {"field_name": order, ...}
     Exemplo: {"company": 1, "env": 2, "project": 3}
     """
-    config = load_fields_config()
+    config = await load_fields_config()
 
     # Atualizar ordem de cada campo
     for field in config['fields']:
@@ -1508,7 +1556,7 @@ async def reorder_fields(field_orders: Dict[str, int] = Body(...)):
             field['order'] = field_orders[field_name]
 
     # Salvar
-    save_fields_config(config)
+    await save_fields_config(config)
 
     return {
         "success": True,
@@ -1649,7 +1697,7 @@ async def sync_field_to_prometheus_endpoint(
 
     Adiciona o relabel_config deste campo a todos os jobs (ou jobs específicos)
     """
-    config = load_fields_config()
+    config = await load_fields_config()
     field = get_field_by_name(config, field_name)
 
     if not field:
@@ -1855,3 +1903,5 @@ async def restart_prometheus(
     except Exception as e:
         logger.error(f"Erro ao reiniciar: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+

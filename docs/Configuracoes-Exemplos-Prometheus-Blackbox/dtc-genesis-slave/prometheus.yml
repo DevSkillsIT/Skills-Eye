@@ -1,0 +1,423 @@
+# ============================================================================
+# PROMETHEUS.YML - SERVIDOR SKILLS DTC (11.144.0.21)
+# ============================================================================
+# Versão: 3.0 - OTIMIZADO E DOCUMENTADO (rev1)
+# Última atualização: 2025-10-30
+# Função: Coletor LOCAL (SKILLS DTC) — envia métricas para Palmas via remote_write
+# ----------------------------------------------------------------------------
+# MUDANÇAS NESTA REV1
+# - datacenter alterado para 'genesis-dtc'
+# - write_relabel_configs.remote_site => 'dtc-remote-skills'
+# - Atualização de rule_files para a nova convenção:
+#   rules_monit_alerts_prometheus.yml, rules_monit_alerts_nodes_lin.yml,
+#   rules_monit_alerts_windows.yml, rules_monit_alerts_global.yml
+# - Mantidas as melhorias de anchors definidas no primeiro job que usa
+# ============================================================================
+
+# ============================================================================
+# CONFIGURAÇÃO GLOBAL
+# ============================================================================
+global:
+  # Intervalo de coleta padrão para todos os jobs (pode ser sobrescrito por job)
+  scrape_interval: 30s
+  # Intervalo de avaliação de regras de alerta
+  evaluation_interval: 45s
+  # Timeout padrão de scrape (10s é seguro para maioria dos casos)
+  scrape_timeout: 10s
+  # Labels externos — identificam a origem no servidor central (Palmas)
+  external_labels:
+    cluster: 'dtc-remote-skills'
+    datacenter: 'genesis-dtc'
+    prometheus_instance: '11.144.0.21'
+    environment: 'production'
+    site: 'dtc'
+
+# ============================================================================
+# CONFIGURAÇÃO DE STORAGE E RETENÇÃO (DOCUMENTAÇÃO)
+# ============================================================================
+# Estas flags vão no service systemd (prometheus.service) ou na linha de comando.
+# Mantidas aqui apenas como referência:
+#
+# --storage.tsdb.path=/var/lib/prometheus/data
+# --storage.tsdb.retention.time=180d  # Retenção: 150 dias
+# --storage.tsdb.retention.size=180GB # Limite: 180GB (ajuste conforme disco)
+# --web.enable-lifecycle               # Permite reload via HTTP POST
+# --web.enable-admin-api               # Habilita API admin
+# --web.config.file=/etc/prometheus/web-config.yml  # Basic Auth (bcrypt)
+# ============================================================================
+
+# ============================================================================
+# REMOTE WRITE — ENVIA MÉTRICAS PARA PALMAS (172.16.1.26)
+# ============================================================================
+remote_write:
+  - url: "http://172.16.1.26:9090/api/v1/write"
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    # Fila de envio ajustada para estabilidade em links com variação de latência
+    queue_config:
+      capacity: 5000
+      max_samples_per_send: 500
+      batch_send_deadline: 5s
+      min_backoff: 30s
+      max_backoff: 5m
+      max_shards: 5
+      # max_samples_per_second: 1000  # REMOVIDO: não suportado pelo Prometheus (campo inexistente em queue_config)
+    remote_timeout: 30s
+    write_relabel_configs:
+      - target_label: remote_site
+        replacement: 'genesis-dtc-skills'
+
+# ============================================================================
+# ALERTMANAGER LOCAL
+# ============================================================================
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+      timeout: 10s
+
+# ============================================================================
+# ARQUIVOS DE REGRAS (MANTER EM SINCRONIA COM O AMBIENTE)
+# ============================================================================
+# rule_files:  # ⚠️ Desabilitado no GENESIS — recording/alert rules centralizadas no Prometheus PALMAS
+#   - "rules_monit_alerts_prometheus.yml"
+#   - "rules_monit_alerts_nodes_lin.yml"
+#   - "rules_monit_alerts_windows.yml"
+#   - "rules_monit_alerts_global.yml"
+
+# ============================================================================
+# POLÍTICA DE REGRAS (GENESIS)
+# ============================================================================
+# Recording rules e alertas executam no PROMETHEUS PALMAS.
+# Este Prometheus do GENESIS não carrega `rule_files` para evitar duplicidade/colisão
+# de séries (ex.: duplicate sample for timestamp).
+# ============================================================================
+
+# ============================================================================
+# SCRAPE CONFIGS — JOBS DE COLETA (GENESIS)
+# ============================================================================
+# Observação sobre anchors: definimos &relabel_exporter_dtc NO PRIMEIRO JOB
+# que usa, e reusamos com *relabel_exporter_dtc nos demais.
+# ============================================================================
+
+scrape_configs:
+
+  # --------------------------------------------------------------------------
+  # JOB 1: PROMETHEUS (SELF-MONITORING)
+  # --------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'localhost:9090'   # Prometheus
+          - 'localhost:9115'   # Blackbox Exporter (se instalado)
+
+  # ========================================================================
+  # JOB 2-8: BLACKBOX EXPORTER - MONITORAMENTO ATIVO (ICMP/HTTP/HTTPS/TCP)
+  # ========================================================================
+  # Usa Consul SD para descobrir targets automaticamente por TAG (module).
+  # Abaixo definimos &relabel_blackbox UMA ÚNICA VEZ e reutilizamos com alias.
+  # ========================================================================
+
+  # ------------------------------------------------------------------------
+  # JOB 2: HTTP 2xx (Sites/APIs que devem retornar 200-303)
+  # ------------------------------------------------------------------------
+  - job_name: 'http_2xx_dtc'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'  # ⚠️ ROTACIONAR EM PRODUÇÃO
+        services: ['blackbox_exporter_dtc']
+        tags: ['http_2xx']
+    relabel_configs: &relabel_blackbox
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_account]
+        target_label: account
+      # CRÍTICO: instance do Consul vira __param_target para o Blackbox
+      - source_labels: [__meta_consul_service_metadata_instance]
+        target_label: __param_target
+      # Labels de negócio (16 campos)
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_tipo_monitoramento]
+        target_label: tipo_monitoramento
+      - source_labels: [__meta_consul_service_metadata_name]
+        target_label: name
+      - source_labels: [__meta_consul_service_metadata_grupo_monitoramento]
+        target_label: grupo_monitoramento
+      - source_labels: [__meta_consul_service_metadata_localizacao]
+        target_label: localizacao
+      - source_labels: [__meta_consul_service_metadata_fabricante]
+        target_label: fabricante
+      - source_labels: [__meta_consul_service_metadata_tipo]
+        target_label: tipo
+      - source_labels: [__meta_consul_service_metadata_modelo]
+        target_label: modelo
+      - source_labels: [__meta_consul_service_metadata_cod_localidade]
+        target_label: cod_localidade
+      - source_labels: [__meta_consul_service_metadata_tipo_dispositivo_abrev]
+        target_label: tipo_dispositivo_abrev
+      - source_labels: [__meta_consul_service_metadata_cidade]
+        target_label: cidade
+      - source_labels: [__meta_consul_service_metadata_notas]
+        target_label: notas
+      - source_labels: [__meta_consul_service_metadata_glpi_url]
+        target_label: glpi_URL
+      - source_labels: [__meta_consul_service_metadata_provedor]
+        target_label: provedor
+      # Target final vira instance (ex: http://site.com, 192.168.1.1)
+      - source_labels: [__param_target]
+        target_label: instance
+      # Endereço do Blackbox Exporter (substitui __address__ do Consul)
+      - source_labels: [__meta_consul_service_metadata_campoextra1]
+        target_label: campoextra1
+      - source_labels: [__meta_consul_service_metadata_campoextra2]
+        target_label: campoextra2
+      - target_label: __address__
+        replacement: 127.0.0.1:9115
+
+  # ------------------------------------------------------------------------
+  # JOB 3: HTTP 4xx (Páginas que devem retornar erro 400-404)
+  # ------------------------------------------------------------------------
+  - job_name: 'http_4xx_dtc'
+    metrics_path: /probe
+    params:
+      module: [http_4xx]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['http_4xx']
+    relabel_configs: *relabel_blackbox
+
+  # ------------------------------------------------------------------------
+  # JOB 4: HTTPS (Sites seguros com validação de certificado)
+  # ------------------------------------------------------------------------
+  - job_name: 'https_dtc'
+    metrics_path: /probe
+    params:
+      module: [https]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['https']
+    relabel_configs: *relabel_blackbox
+
+  # ------------------------------------------------------------------------
+  # JOB 5: HTTP POST (APIs que usam método POST)
+  # ------------------------------------------------------------------------
+  - job_name: 'http_post_2xx_dtc'
+    metrics_path: /probe
+    params:
+      module: [http_post_2xx]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['http_post_2xx']
+    relabel_configs: *relabel_blackbox
+
+  # ------------------------------------------------------------------------
+  # JOB 6: SSH Banner (Verifica se SSH está respondendo)
+  # ------------------------------------------------------------------------
+  - job_name: 'ssh_banner_dtc'
+    metrics_path: /probe
+    params:
+      module: [ssh_banner]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['ssh_banner']
+    relabel_configs: *relabel_blackbox
+
+  # ------------------------------------------------------------------------
+  # JOB 7: TCP Connect (Testa conectividade TCP genérica)
+  # ------------------------------------------------------------------------
+  - job_name: 'tcp_connect_dtc'
+    metrics_path: /probe
+    params:
+      module: [tcp_connect]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['tcp_connect']
+    relabel_configs: *relabel_blackbox
+
+  # ------------------------------------------------------------------------
+  # JOB 8: ICMP (Ping - Monitoramento de conectividade)
+  # ------------------------------------------------------------------------
+  - job_name: 'icmp_dtc'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metrics_path: /probe
+    params:
+      module: [icmp]
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        services: ['blackbox_exporter_dtc']
+        tags: ['icmp']
+    relabel_configs: *relabel_blackbox
+
+  # ========================================================================
+  # JOB 9-10: NODE/WINDOWS EXPORTER - MÉTRICAS DE SISTEMA
+  # ========================================================================
+  # Coleta métricas de CPU, RAM, Disco, Rede dos servidores.
+  # Definimos &relabel_exporter aqui e reutilizamos no job Windows.
+  # ========================================================================
+
+  # ------------------------------------------------------------------------
+  # JOB 9: Node Exporter (Servidores Linux)
+  # ------------------------------------------------------------------------
+  - job_name: node_exporter_dtc
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/.prometheus
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        refresh_interval: 45s
+        services: ['selfnode_exporter_dtc']
+        tags: ['linux']
+    # Template para Node/Windows Exporter via Consul
+    relabel_configs: &relabel_exporter
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_account]
+        target_label: account
+      - source_labels: [__meta_consul_service_metadata_instance]
+        target_label: instance
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_tipo_monitoramento]
+        target_label: tipo_monitoramento
+      - source_labels: [__meta_consul_service_metadata_name]
+        target_label: name
+      - source_labels: [__meta_consul_service_metadata_grupo_monitoramento]
+        target_label: grupo_monitoramento
+      - source_labels: [__meta_consul_service_metadata_localizacao]
+        target_label: localizacao
+      - source_labels: [__meta_consul_service_metadata_fabricante]
+        target_label: fabricante
+      - source_labels: [__meta_consul_service_metadata_tipo]
+        target_label: tipo
+      - source_labels: [__meta_consul_service_metadata_modelo]
+        target_label: modelo
+      - source_labels: [__meta_consul_service_metadata_cod_localidade]
+        target_label: cod_localidade
+      - source_labels: [__meta_consul_service_metadata_tipo_dispositivo_abrev]
+        target_label: tipo_dispositivo_abrev
+      - source_labels: [__meta_consul_service_metadata_cidade]
+        target_label: cidade
+      - source_labels: [__meta_consul_service_metadata_notas]
+        target_label: notas
+      - source_labels: [__meta_consul_service_metadata_glpi_url]
+        target_label: glpi_URL
+      - source_labels: [__meta_consul_service_metadata_provedor]
+        target_label: provedor
+      - source_labels: [__meta_consul_service_metadata_campoextra1]
+        target_label: campoextra1
+      - source_labels: [__meta_consul_service_metadata_campoextra2]
+        target_label: campoextra2
+      # Para exporters, instance DO CONSUL vira __address__ diretamente
+      - source_labels: [instance]
+        target_label: __address__
+
+  # ------------------------------------------------------------------------
+  # JOB 10: Windows Exporter (Servidores Windows)
+  # ------------------------------------------------------------------------
+  - job_name: windows_exporter_dtc
+  #  basic_auth:
+  #    username: prometheus
+  #    password_file: /etc/prometheus/.prometheus
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    consul_sd_configs:
+      - server: 'localhost:8500'
+        token: '8382a112-81e0-cd6d-2b92-8565925a0675'
+        refresh_interval: 45s
+        services: ['selfnode_exporter_dtc']
+        tags: ['windows']
+    relabel_configs: *relabel_exporter
+
+  # --------------------------------------------------------------------------
+  # JOB 4: SNMP EXPORTER (OPCIONAL/LOCAL)
+  # --------------------------------------------------------------------------
+  - job_name: snmp_dtc
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    static_configs:
+      - targets:
+          - '127.0.0.1'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: '127.0.0.1:9116'
+
+  # --------------------------------------------------------------------------
+  # BLACKBOX EXPORTER JOBS (DTC GENESIS) — MANTIDOS COMENTADOS PARA EVITAR DUPLICIDADE
+  # --------------------------------------------------------------------------
+  # NOTA IMPORTANTE: Para Blackbox (quando habilitar), manter o fluxo:
+  #   __meta_consul_service_metadata_instance -> __param_target  # CRÍTICO
+  #   __param_target -> instance
+  #   __address__ -> 127.0.0.1:9115 (ou endereço do exporter remoto)
+  # - job_name: 'icmp_dtc_remote'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [icmp]
+  #   static_configs:
+  #     - targets: ['8.8.8.8']
+  #   relabel_configs:
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: 127.0.0.1:9115
+
+# ============================================================================
+# VALIDAÇÃO PRÉ-DEPLOYMENT E TROUBLESHOOTING
+# ============================================================================
+# 1) Validar sintaxe:
+#    promtool check config /etc/prometheus/prometheus.yml
+#
+# 2) Recarregar sem restart:
+#    systemctl reload prometheus
+#
+# 3) Verificar remote_write (DTC Genesis → Palmas):
+#    curl http://localhost:9090/metrics | grep prometheus_remote_storage
+#
+# 4) No Palmas, checar recebimento do DTC GENESIS:
+#    curl -u prometheus:'SENHA GRANDE QUE FICA NO ARQUIVO' -G \
+#      'http://172.16.1.26:9090/api/v1/query' \
+#      --data-urlencode 'query={remote_site="genesis-dtc-skills"}' | jq
+#
+# 5) Monitorar logs:
+#    journalctl -u prometheus -f | grep -Ei 'remote_write|error|warn'
+#
+# 6) Segurança (recomendado): habilitar web-config.yml com bcrypt e permissões 600.
+#    Em seguida, remova senhas inline e mantenha password_file com 600.
+# ============================================================================

@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Select, Badge, Spin, message } from 'antd';
+import { Select, Badge, Spin, App } from 'antd';
 import { CloudServerOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -37,6 +37,7 @@ export const ServerSelector: React.FC<ServerSelectorProps> = ({
   placeholder = 'Selecionar servidor',
   disabled = false,
 }) => {
+  const { message } = App.useApp();
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedServer, setSelectedServer] = useState<string | undefined>(value);

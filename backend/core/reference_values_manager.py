@@ -245,7 +245,8 @@ class ReferenceValuesManager:
         Returns:
             Lista de valores ordenados alfabeticamente
         """
-        prefix = f"{self.PREFIX}/{field_name}"
+        # IMPORTANTE: Adicionar "/" no final para evitar que "tipo" pegue "tipo_monitoramento"
+        prefix = f"{self.PREFIX}/{field_name}/"
         tree = await self.kv.get_tree(prefix, unwrap_metadata=True)
 
         values = []

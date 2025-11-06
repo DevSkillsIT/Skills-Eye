@@ -7,7 +7,7 @@ Substitui TODOS os campos hardcoded no frontend!
 
 from fastapi import APIRouter, Query, HTTPException
 from typing import List, Dict, Any, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import logging
 
 from core.metadata_loader import metadata_loader
@@ -41,6 +41,14 @@ class FieldResponse(BaseModel):
     category: str
     validation: Dict[str, Any] = {}
 
+    @field_validator('order', mode='before')
+    @classmethod
+    def convert_order_to_int(cls, v):
+        """Converte order para int se vier como float (ex: 3.1 -> 3)"""
+        if isinstance(v, float):
+            return int(v)
+        return v
+
 
 class FieldsListResponse(BaseModel):
     """Resposta da lista de campos"""
@@ -54,7 +62,7 @@ class FieldsListResponse(BaseModel):
 @router.get("/fields", response_model=FieldsListResponse)
 async def get_dynamic_fields(
     context: Optional[str] = Query(None, description="Contexto: 'blackbox', 'exporters', 'services', 'general'"),
-    enabled: Optional[bool] = Query(True, description="Apenas campos ativos"),
+    enabled: Optional[bool] = Query(None, description="Apenas campos ativos (padrão: todos)"),
     required: Optional[bool] = Query(None, description="Filtrar por obrigatório"),
     show_in_table: Optional[bool] = Query(None),
     show_in_form: Optional[bool] = Query(None),
@@ -347,4 +355,85 @@ async def update_field_pages(
         raise
     except Exception as e:
         logger.error(f"Erro ao atualizar campo '{field_name}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug/reload")
+async def debug_reload_metadata():
+    """
+    ENDPOINT DE DEBUG - Force reload do metadata_fields.json
+
+    Returns:
+        Informações sobre o reload
+    """
+    try:
+        # Forçar reload
+        metadata_loader.reload()
+
+        # Carregar campos
+        all_fields = metadata_loader.get_all_fields(reload=True)
+
+        # Buscar campos multi-site
+        multi_site_fields = [f for f in all_fields if f.name in ['cluster', 'datacenter', 'environment', 'site']]
+
+        return {
+            "success": True,
+            "message": "Metadata recarregado com sucesso",
+            "total_fields": len(all_fields),
+            "json_path": str(metadata_loader.json_path),
+            "file_exists": metadata_loader.json_path.exists(),
+            "multi_site_fields": [f.name for f in multi_site_fields],
+            "sample_fields": [f.name for f in all_fields[:10]]
+        }
+    except Exception as e:
+        logger.error(f"Erro no debug reload: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug/test-filters")
+async def debug_test_filters(context: Optional[str] = Query(None)):
+    """
+    ENDPOINT DE DEBUG - Testa filtros com detalhes
+
+    Returns:
+        Informações detalhadas sobre aplicação de filtros
+    """
+    try:
+        # Forçar reload
+        all_fields = metadata_loader.get_all_fields(reload=True)
+
+        # Preparar filtros exatamente como o endpoint /fields faz
+        filters = {}
+        if context == 'services':
+            filters['show_in_services'] = True
+        elif context == 'blackbox':
+            filters['show_in_blackbox'] = True
+        elif context == 'exporters':
+            filters['show_in_exporters'] = True
+
+        # Aplicar filtros
+        filtered_fields = metadata_loader.get_fields(**filters)
+
+        # Detalhes dos campos
+        all_field_details = [{
+            'name': f.name,
+            'enabled': f.enabled,
+            'show_in_services': f.show_in_services,
+            'show_in_blackbox': f.show_in_blackbox,
+            'show_in_exporters': f.show_in_exporters,
+        } for f in all_fields[:5]]
+
+        filtered_field_names = [f.name for f in filtered_fields]
+
+        return {
+            "success": True,
+            "total_all_fields": len(all_fields),
+            "total_filtered_fields": len(filtered_fields),
+            "filters_applied": filters,
+            "sample_all_fields": all_field_details,
+            "filtered_field_names": filtered_field_names[:10],
+            "context": context
+        }
+    except Exception as e:
+        logger.error(f"Erro no debug test-filters: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -2,6 +2,7 @@
 FastAPI router for blackbox target management with enhanced features.
 Includes group management, bulk operations, and KV-based configuration.
 """
+import logging
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, Body
 from fastapi.responses import PlainTextResponse
 from typing import Optional, List, Dict, Any
@@ -13,6 +14,8 @@ from .models import (
     BlackboxTarget,
     BlackboxUpdateRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -125,20 +128,129 @@ async def update_target(request: BlackboxUpdateRequest):
 
 @router.delete("/", include_in_schema=True)
 async def delete_target(request: BlackboxDeleteRequest):
-    manager = BlackboxManager()
-    success, detail = await manager.delete_target(
-        request.module,
-        request.company,
-        request.project,
-        request.env,
-        request.name,
-        user="system",
-    )
+    """
+    Remove um target do Consul usando service_id diretamente.
 
-    if success:
-        return {"success": True, "message": "Blackbox target removed", "service_id": detail}
+    Estratégia:
+    1. Se node_addr fornecido → tenta /agent/service/deregister no agente
+    2. Se falhar ou não fornecido → usa /catalog/deregister (força remoção)
+    """
+    logger.info(f"[DELETE] service_id='{request.service_id}', node_addr='{request.node_addr}', datacenter='{request.datacenter}'")
 
-    raise HTTPException(status_code=500, detail=detail)
+    from core.consul_manager import ConsulManager
+    from core.kv_manager import KVManager
+
+    consul = ConsulManager()
+    kv = KVManager(consul)
+
+    try:
+        # ========================================================================
+        # MÉTODO 1: /agent/service/deregister (RECOMENDADO)
+        # ========================================================================
+        if request.node_addr:
+            logger.info(f"[DELETE MÉTODO 1] Tentando /agent/service/deregister no agente {request.node_addr}...")
+            logger.info(f"[DELETE MÉTODO 1] URL: http://{request.node_addr}:8500/v1/agent/service/deregister/{request.service_id} (URL-encoded)")
+
+            success = await consul.deregister_service(request.service_id, request.node_addr)
+
+            if success:
+                logger.info(f"[DELETE MÉTODO 1] ✅ SUCESSO! Removido via agent no {request.node_addr}")
+                # Limpar KV também
+                await kv.delete_blackbox_target(request.service_id)
+                await kv.log_audit_event(
+                    action="DELETE",
+                    resource_type="blackbox_target",
+                    resource_id=request.service_id,
+                    user="web-user",
+                    details={"method": "agent", "node": request.node_addr}
+                )
+                return {"success": True, "message": "✅ Método 1: Removido via agent", "service_id": request.service_id}
+            else:
+                logger.warning(f"[DELETE MÉTODO 1] ❌ FALHOU! Agent deregister não funcionou no {request.node_addr}")
+                logger.info(f"[DELETE FAILOVER] Iniciando Método 2 (catalog deregister)...")
+        else:
+            logger.info(f"[DELETE] node_addr não fornecido, pulando Método 1")
+
+        # ========================================================================
+        # MÉTODO 2: /catalog/deregister (FALLBACK - força remoção)
+        # ========================================================================
+        logger.info(f"[DELETE MÉTODO 2] Usando /catalog/deregister (fallback)...")
+
+        # Passo 2.1: Usar dados fornecidos pelo frontend (sem extrair nada "na unha")
+        import urllib.parse
+        from httpx import AsyncClient
+
+        node_name = request.node_name
+        datacenter = request.datacenter  # Usa o que vier do frontend (None se não fornecido)
+
+        # catalog/deregister EXIGE Node + Datacenter. Se faltar algum, buscar via service_name
+        if not node_name or not datacenter:
+            if not request.service_name:
+                logger.error(f"[DELETE MÉTODO 2] ❌ ERRO: Faltam dados! Precisa de (node_name + datacenter) OU service_name")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Método 2 requer (node_name + datacenter) OU service_name para buscar os dados"
+                )
+
+            # Buscar node via /health/service usando service_name fornecido
+            url = f"{consul.base_url}/health/service/{urllib.parse.quote(request.service_name)}"
+            headers = {"X-Consul-Token": consul.token} if consul.token else {}
+
+            logger.info(f"[DELETE MÉTODO 2] Passo 1: Buscando node via GET {url} (service_name='{request.service_name}', dc={datacenter or 'default'})")
+
+            async with AsyncClient() as client:
+                # Se datacenter não fornecido, Consul usa o datacenter padrão do agente
+                params = {"dc": datacenter} if datacenter else None
+                resp = await client.get(url, headers=headers, params=params)
+                resp.raise_for_status()
+                health_data = resp.json()
+
+                # Encontrar o registro com esse service_id
+                for entry in health_data:
+                    if entry.get("Service", {}).get("ID") == request.service_id:
+                        node_name = entry.get("Node", {}).get("Node")
+                        datacenter = entry.get("Node", {}).get("Datacenter")  # Pega do Consul
+                        logger.info(f"[DELETE MÉTODO 2] Encontrado: Node='{node_name}', Datacenter='{datacenter}'")
+                        break
+
+                if not node_name:
+                    logger.error(f"[DELETE MÉTODO 2] ❌ Service ID '{request.service_id}' NÃO encontrado no serviço '{request.service_name}'!")
+                    raise HTTPException(status_code=404, detail=f"Service ID '{request.service_id}' não encontrado")
+        else:
+            logger.info(f"[DELETE MÉTODO 2] Usando dados fornecidos: node_name='{node_name}', datacenter='{datacenter or 'default'}')")
+
+            # Passo 2.2: Fazer PUT /catalog/deregister
+            catalog_url = f"{consul.base_url}/catalog/deregister"
+            payload = {
+                "Datacenter": datacenter,
+                "Node": node_name,
+                "ServiceID": request.service_id
+            }
+            logger.info(f"[DELETE MÉTODO 2] Passo 2: Enviando PUT {catalog_url}")
+            logger.info(f"[DELETE MÉTODO 2] Payload: {payload}")
+
+            resp2 = await client.put(catalog_url, json=payload, headers=headers)
+            resp2.raise_for_status()
+
+            logger.info(f"[DELETE MÉTODO 2] ✅ SUCESSO! Removido via catalog")
+
+            # Limpar KV também
+            await kv.delete_blackbox_target(request.service_id)
+            await kv.log_audit_event(
+                action="DELETE",
+                resource_type="blackbox_target",
+                resource_id=request.service_id,
+                user="web-user",
+                details={"method": "catalog", "node": node_name, "datacenter": datacenter}
+            )
+
+            return {"success": True, "message": "✅ Método 2: Removido via catalog (fallback)", "service_id": request.service_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[DELETE] Exceção: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/import", include_in_schema=True)

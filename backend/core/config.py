@@ -46,32 +46,70 @@ class Config:
     ]
 
     # ========================================================================
-    # CAMPOS METADATA - AGORA DINAMICOS!
+    # CAMPOS METADATA - AGORA 100% DINÂMICOS DO PROMETHEUS
     # ========================================================================
-    # Carregados do metadata_fields.json via metadata_loader
-    # Não mais hardcoded aqui!
+    # Campos são extraídos do prometheus.yml via SSH e salvos no Consul KV
+    # Não mais usa JSON hardcoded - tudo vem do Prometheus!
     # ========================================================================
 
     @staticmethod
     def get_meta_fields() -> List[str]:
-        """Retorna todos os campos metadata (dinâmico do JSON)"""
-        from core.metadata_loader import metadata_loader
-        return metadata_loader.get_field_names(enabled=True)
+        """
+        Retorna todos os campos metadata extraídos do Prometheus.
+
+        NOTA: Agora busca do Consul KV (skills/cm/metadata/fields)
+        Os campos são extraídos dinamicamente do prometheus.yml via SSH
+        """
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            # Buscar do KV (dados extraídos do Prometheus)
+            import asyncio
+            fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+
+            if fields_data and 'fields' in fields_data:
+                return [field['name'] for field in fields_data['fields']]
+
+            # Fallback: retornar lista vazia se KV não disponível
+            return []
+        except Exception:
+            # Se falhar, retornar lista vazia (campos serão carregados sob demanda)
+            return []
 
     @staticmethod
     def get_required_fields() -> List[str]:
-        """Retorna campos obrigatórios (dinâmico do JSON)"""
-        from core.metadata_loader import metadata_loader
-        return metadata_loader.get_required_fields()
+        """
+        Retorna campos obrigatórios extraídos do Prometheus.
+
+        NOTA: Campos obrigatórios agora são definidos pelo flag 'required' no KV
+        """
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            import asyncio
+            fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+
+            if fields_data and 'fields' in fields_data:
+                return [
+                    field['name']
+                    for field in fields_data['fields']
+                    if field.get('required', False)
+                ]
+
+            return []
+        except Exception:
+            return []
 
     # Propriedades para compatibilidade com código legado
     # (deprecated - usar get_meta_fields() e get_required_fields())
     @property
     def META_FIELDS(self) -> List[str]:
-        """DEPRECATED: Use Config.get_meta_fields()"""
+        """DEPRECATED: Use Config.get_meta_fields() - Agora busca do Prometheus/KV"""
         return Config.get_meta_fields()
 
     @property
     def REQUIRED_FIELDS(self) -> List[str]:
-        """DEPRECATED: Use Config.get_required_fields()"""
+        """DEPRECATED: Use Config.get_required_fields() - Agora busca do Prometheus/KV"""
         return Config.get_required_fields()

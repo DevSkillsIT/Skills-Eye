@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Input, message, Popconfirm, Tag } from 'antd';
+import { useConsulDelete } from '../hooks/useConsulDelete';
+import { Button, Drawer, Input, App, Popconfirm, Tag } from 'antd';
 import { PageContainer, ProTable, ModalForm, ProFormText, ProFormTextArea } from '@ant-design/pro-components';
 import { EyeOutlined, ReloadOutlined, SaveOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { consulAPI } from '../services/api';
@@ -16,6 +17,7 @@ const DEFAULT_PREFIX = 'skills/cm/';
 type TableColumn<T> = import('@ant-design/pro-components').ProColumns<T>;
 
 const KvBrowser: React.FC = () => {
+  const { message } = App.useApp();
   const [prefix, setPrefix] = useState<string>(DEFAULT_PREFIX);
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<KVEntry[]>([]);
@@ -23,6 +25,16 @@ const KvBrowser: React.FC = () => {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorKey, setEditorKey] = useState<string>('');
   const [editorValue, setEditorValue] = useState<string>('');
+
+  // Hook para DELETE de chaves KV
+  const { deleteResource } = useConsulDelete({
+    deleteFn: async (payload: any) => consulAPI.deleteKV(payload.kv_key),
+    successMessage: 'Chave removida com sucesso',
+    errorMessage: 'Erro ao remover chave',
+    onSuccess: () => {
+      fetchTree(prefix);
+    },
+  });
 
   const fetchTree = useCallback(async (currentPrefix: string) => {
     setLoading(true);
@@ -98,15 +110,12 @@ const KvBrowser: React.FC = () => {
     }
   };
 
+  /**
+   * Deleta uma chave KV usando o hook useConsulDelete
+   * Usa APENAS dados do record - ZERO valores hardcoded
+   */
   const handleDelete = async (key: string) => {
-    try {
-      await consulAPI.deleteKV(key);
-      message.success('Chave removida com sucesso');
-      fetchTree(prefix);
-    } catch (error: any) {
-      const detail = error?.response?.data?.detail || error?.message || 'Erro ao remover chave';
-      message.error(detail);
-    }
+    await deleteResource({ service_id: key, kv_key: key } as any);
   };
 
   const columns = useMemo<TableColumn<KVEntry>[]>(
@@ -224,7 +233,7 @@ const KvBrowser: React.FC = () => {
         initialValues={{ key: editorKey, value: editorValue }}
         onFinish={handleSave}
         modalProps={{
-          destroyOnClose: true,
+          destroyOnHidden: true,
           onCancel: () => setEditorOpen(false),
         }}
       >
@@ -248,3 +257,4 @@ const KvBrowser: React.FC = () => {
 };
 
 export default KvBrowser;
+

@@ -380,7 +380,8 @@ class MultiConfigManager:
             'files_count': result['files_count'],
             'fields_count': result['fields_count'],
             'error': result.get('error'),
-            'duration_ms': result['duration_ms']
+            'duration_ms': result['duration_ms'],
+            'external_labels': result.get('external_labels', {})
         }]
 
         successful_count = 1 if result['success'] else 0
@@ -434,6 +435,7 @@ class MultiConfigManager:
             'error': None,
             'duration_ms': 0,
             'fields_map': {},  # Campos extraídos deste servidor
+            'external_labels': {},  # External labels do prometheus.yml
         }
 
         try:
@@ -451,6 +453,14 @@ class MultiConfigManager:
                 try:
                     # Ler configuração
                     config = self.read_config_file(config_file)
+
+                    # Extrair external_labels do prometheus.yml (seção global)
+                    if 'global' in config and 'prometheus' in config_file.filename.lower():
+                        global_section = config.get('global', {})
+                        external_labels = global_section.get('external_labels', {})
+                        if external_labels:
+                            host_status['external_labels'] = external_labels
+                            logger.info(f"External labels extraídos de {host.hostname}: {len(external_labels)} labels")
 
                     # Extrair jobs (prometheus) ou scrape_configs (outros)
                     jobs = []
@@ -521,6 +531,7 @@ class MultiConfigManager:
                         'from_cache': True,
                         'files_count': 0,
                         'fields_count': 0,
+                        'external_labels': {}  # Cache não tem external_labels
                     }
                     for host in self.hosts
                 ],
@@ -584,7 +595,8 @@ class MultiConfigManager:
                 'files_count': r['files_count'],
                 'fields_count': r['fields_count'],
                 'error': r.get('error'),
-                'duration_ms': r['duration_ms']
+                'duration_ms': r['duration_ms'],
+                'external_labels': r.get('external_labels', {})  # ADICIONAR external_labels
             }
             for r in server_results
         ]

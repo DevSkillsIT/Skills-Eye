@@ -1,0 +1,86 @@
+modules:
+  # Monitoramento ICMP (Ping)
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento HTTP com resposta esperada de 2xx, 301, 302
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200, 301, 302, 303]
+      method: GET
+      no_follow_redirects: false
+      fail_if_ssl: false
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento HTTP com resposta esperada de 4xx (exemplo: 404)
+  http_4xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [400, 401, 403, 404]
+      method: GET
+      no_follow_redirects: false
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento HTTPS
+  https:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [200, 301, 302]
+      fail_if_ssl: true
+      tls_config:
+        insecure_skip_verify: false
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento HTTP com método POST
+  http_post_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: POST
+      valid_status_codes: [200]
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento de conexões TCP
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: "ip4"
+
+  # Monitoramento de banner SSH
+  ssh_banner:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      query_response:
+      - expect: "^SSH-2.0-"
+
+  # Monitoramento de banner POP3 com TLS
+  pop3s_banner:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      query_response:
+      - expect: "^+OK"
+      tls: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # Monitoramento de banner IRC
+  irc_banner:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      query_response:
+      - send: "NICK prober"
+      - send: "USER prober prober prober :prober"
+      - expect: "PING :([^ ]+)"
+        send: "PONG ${1}"
+      - expect: "^:[^ ]+ 001"

@@ -3,7 +3,7 @@
  * Mostra serviços agrupados com estatísticas, similar ao /consul/services do TenSunS
  */
 import React, { useRef, useState } from 'react';
-import { Button, Card, Space, Statistic, Tag, Tooltip, message } from 'antd';
+import { Button, Card, Space, Statistic, Tag, Tooltip, App } from 'antd';
 import {
   CloudOutlined,
   CheckCircleOutlined,
@@ -28,6 +28,7 @@ interface ServiceGroupItem {
 }
 
 const ServiceGroups: React.FC = () => {
+  const { message } = App.useApp();
   const actionRef = useRef<ActionType>();
   const navigate = useNavigate();
   const [summary, setSummary] = useState({ total: 0, totalInstances: 0, healthy: 0, unhealthy: 0 });

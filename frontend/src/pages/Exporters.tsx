@@ -1,3 +1,4 @@
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -16,6 +17,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import { useConsulDelete } from '../hooks/useConsulDelete';
 import type { MenuProps } from 'antd';
 import {
   ClearOutlined,
@@ -53,9 +55,10 @@ import type {
 import { useFilterFields, useTableFields, useFormFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
-import ReferenceValueInput from '../components/ReferenceValueInput';
 import TagsInput from '../components/TagsInput';
 import FormFieldRenderer from '../components/FormFieldRenderer';
+import SiteBadge from '../components/SiteBadge';
+import { extractSiteFromMetadata } from '../utils/namingUtils';
 
 const { Search } = Input;
 const { Text } = Typography;
@@ -532,42 +535,41 @@ const Exporters: React.FC = () => {
     message.success('Dados exportados com sucesso');
   };
 
-  const handleBatchDelete = async () => {
-    try {
-      const deleteTasks = selectedRows.map((row) =>
-        consulAPI.deregisterService({
-          node_addr: row.nodeAddr || row.node,
-          service_id: row.id,
-        })
-      );
-
-      await Promise.all(deleteTasks);
-      message.success(`${selectedRows.length} exporter(s) removido(s) com sucesso`);
-      setSelectedRows([]);
+  // Hook compartilhado para DELETE com lógica padronizada
+  const { deleteResource, deleteBatch } = useConsulDelete({
+    deleteFn: consulAPI.deregisterService,
+    clearCacheFn: consulAPI.clearCache,
+    cacheKey: 'exporters',
+    successMessage: 'Exporter removido com sucesso',
+    errorMessage: 'Falha ao remover exporter',
+    onSuccess: () => {
       actionRef.current?.reload();
-    } catch (error) {
-      console.error('Erro ao remover exporters:', error);
-      message.error('Falha ao remover alguns exporters');
+    },
+  });
+
+  const handleBatchDelete = async () => {
+    if (!selectedRows.length) return;
+
+    const payloads = selectedRows.map((row) => ({
+      service_id: row.id,
+      node_addr: row.nodeAddr || row.node,
+    }));
+
+    const success = await deleteBatch(payloads);
+    if (success) {
+      setSelectedRows([]);
     }
   };
 
-  const handleDeleteExporter = useCallback(async (record: ExporterTableItem) => {
-    try {
-      await consulAPI.deregisterService({
-        node_addr: record.nodeAddr || record.node,
+  const handleDeleteExporter = useCallback(
+    async (record: ExporterTableItem) => {
+      await deleteResource({
         service_id: record.id,
+        node_addr: record.nodeAddr || record.node,
       });
-
-      // Limpar cache após deletar
-      await consulAPI.clearCache('exporters');
-
-      message.success('Exporter removido com sucesso');
-      actionRef.current?.reload();
-    } catch (error) {
-      console.error('Erro ao remover exporter:', error);
-      message.error('Falha ao remover exporter');
-    }
-  }, []);
+    },
+    [deleteResource]
+  );
 
   const handleEditExporter = useCallback((record: ExporterTableItem) => {
     setEditingExporter(record);
@@ -801,8 +803,17 @@ const Exporters: React.FC = () => {
         title: 'Servico',
         dataIndex: 'service',
         key: 'service',
-        width: 200,
-        render: (_, record) => <Text strong>{record.service}</Text>,
+        width: 260,
+        render: (_, record) => {
+          const siteFromMeta = typeof record.meta?.site === 'string' ? record.meta.site : undefined;
+          const site = siteFromMeta || extractSiteFromMetadata(record.meta || {});
+          return (
+            <Space size={4}>
+              <Text strong>{record.service}</Text>
+              {site && <SiteBadge site={site} size="small" />}
+            </Space>
+          );
+        },
         sorter: (a, b) => a.service.localeCompare(b.service),
       },
       id: {
@@ -1428,109 +1439,33 @@ const Exporters: React.FC = () => {
           />
         </div>
 
-        {/* Seção: Campos do ID (Grid 2x3) */}
-        <Form.Item
-          name="vendor"
-          label="Vendor"
-          rules={[
-            { required: true, message: 'Campo obrigatório' },
-            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
-          ]}
-          tooltip="Fornecedor ou empresa principal"
-          style={{ gridColumn: 'span 12' }}
-        >
-          <ReferenceValueInput
-            fieldName="vendor"
-            placeholder="Selecione ou digite vendor (Ex: Skills, GrupoWink)"
-            required
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="account"
-          label="Account"
-          rules={[
-            { required: true, message: 'Campo obrigatório' },
-            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
-          ]}
-          tooltip="Conta ou departamento"
-          style={{ gridColumn: 'span 12' }}
-        >
-          <ReferenceValueInput
-            fieldName="account"
-            placeholder="Selecione ou digite account (Ex: Aplicacao, AD)"
-            required
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="region"
-          label="Region"
-          rules={[
-            { required: true, message: 'Campo obrigatório' },
-            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
-          ]}
-          tooltip="Região ou localização"
-          style={{ gridColumn: 'span 12' }}
-        >
-          <ReferenceValueInput
-            fieldName="region"
-            placeholder="Selecione ou digite region (Ex: InfraLocal, Cliente)"
-            required
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="group"
-          label="Group"
-          rules={[
-            { required: true, message: 'Campo obrigatório' },
-            { pattern: /^[a-zA-Z0-9_-]+$/, message: 'Apenas letras, números, _ e -' },
-          ]}
-          tooltip="Grupo ou cluster"
-          style={{ gridColumn: 'span 12' }}
-        >
-          <ReferenceValueInput
-            fieldName="group"
-            placeholder="Selecione ou digite group (Ex: DTC_Cluster_Local)"
-            required
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="name"
-          label="Name"
-          rules={[
-            { required: true, message: 'Campo obrigatório' },
-            { pattern: /^[a-zA-Z0-9_.-]+$/, message: 'Apenas letras, números, _, . e -' },
-          ]}
-          tooltip="Nome identificador único do exporter"
-          style={{ gridColumn: 'span 24' }}
-        >
-          <ReferenceValueInput
-            fieldName="name"
-            placeholder="Selecione ou digite name (Ex: HUDU_172.16.1.25)"
-            required
-          />
-        </Form.Item>
+        {/* Seção: Campos do ID (Grid 2x3) - SISTEMA DINÂMICO usando FormFieldRenderer */}
+        {/* IMPORTANTE: Renderizar vendor, account, region, group, name usando FormFieldRenderer */}
+        {/* Isso garante que labels usam display_name do metadata e evita timeouts */}
+        {formFields
+          .filter(field => ['vendor', 'account', 'region', 'group', 'name'].includes(field.name))
+          .map(field => (
+            <div key={field.name} style={{ gridColumn: field.name === 'name' ? 'span 24' : 'span 12' }}>
+              <FormFieldRenderer
+                field={field}
+                mode="create"
+              />
+            </div>
+          ))
+        }
 
         {/* Seção: Configuração do Exporter */}
-        <Form.Item
+        <ProFormText
+          colProps={{ span: 16 }}
           name="instance"
           label="Instance"
+          placeholder="Ex: 192.168.1.10:9100"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
           ]}
           tooltip="Endereço no formato IP:PORTA"
-          style={{ gridColumn: 'span 16' }}
-        >
-          <ReferenceValueInput
-            fieldName="instance"
-            placeholder="Selecione ou digite instance (Ex: 192.168.1.10:9100)"
-            required
-          />
-        </Form.Item>
+        />
 
         <ProFormSelect
           colProps={{ span: 8 }}
@@ -1577,8 +1512,9 @@ const Exporters: React.FC = () => {
         </Form.Item>
 
         {/* CAMPOS METADATA DINÂMICOS ADICIONAIS */}
+        {/* Renderiza TODOS os outros campos que não foram tratados nas seções acima */}
         {formFields
-          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'tags'].includes(field.name))
+          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'os', 'address', 'port', 'tags'].includes(field.name))
           .map(field => (
             <div key={field.name} style={{ gridColumn: 'span 12' }}>
               <FormFieldRenderer
@@ -1592,6 +1528,7 @@ const Exporters: React.FC = () => {
 
       {/* Edit Exporter Modal */}
       <ModalForm<EditFormValues>
+        key={editingExporter?.id || 'edit-exporter-modal'}
         title="Editar Exporter"
         width={900}
         layout="horizontal"
@@ -1600,7 +1537,12 @@ const Exporters: React.FC = () => {
           gutter: [16, 0],
         }}
         open={editModalOpen}
-        onOpenChange={setEditModalOpen}
+        onOpenChange={(visible) => {
+          setEditModalOpen(visible);
+          if (!visible) {
+            setEditingExporter(null);
+          }
+        }}
         initialValues={editingExporter ? {
           node_addr: editingExporter.nodeAddr || editingExporter.node,
           vendor: editingExporter.meta?.vendor,
@@ -1736,22 +1678,17 @@ const Exporters: React.FC = () => {
         />
 
         {/* Seção: Configuração do Exporter */}
-        <Form.Item
+        <ProFormText
+          colProps={{ span: 16 }}
           name="instance"
           label="Instance"
+          placeholder="Ex: 192.168.1.10:9100"
           rules={[
             { required: true, message: 'Campo obrigatório' },
             { pattern: /^[\w.-]+:\d+$/, message: 'Formato inválido. Use: IP:PORTA' },
           ]}
           tooltip="Endereço no formato IP:PORTA"
-          style={{ gridColumn: 'span 16' }}
-        >
-          <ReferenceValueInput
-            fieldName="instance"
-            placeholder="Selecione ou digite instance (Ex: 192.168.1.10:9100)"
-            required
-          />
-        </Form.Item>
+        />
 
         <ProFormSelect
           colProps={{ span: 8 }}
@@ -1767,8 +1704,9 @@ const Exporters: React.FC = () => {
         />
 
         {/* CAMPOS METADATA DINÂMICOS ADICIONAIS */}
+        {/* Renderiza TODOS os outros campos que não foram tratados nas seções acima */}
         {formFields
-          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'tags'].includes(field.name))
+          .filter(field => !['vendor', 'account', 'region', 'group', 'name', 'instance', 'os', 'address', 'port', 'tags'].includes(field.name))
           .map(field => (
             <div key={field.name} style={{ gridColumn: 'span 12' }}>
               <FormFieldRenderer

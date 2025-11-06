@@ -538,8 +538,8 @@ const api = axios.create({
 // ============================================================================
 
 export const consulAPI = {
-  // Nodes
-  getNodes: () => api.get('/nodes'),
+  // Nodes (timeout aumentado para 45s devido a cold start do backend)
+  getNodes: () => api.get('/nodes', { timeout: 45000 }),
   getNodeServices: (nodeAddr: string) => api.get(`/nodes/${nodeAddr}/services`),
   getNodeServiceNames: (nodeAddr: string) =>
     api.get<{ success: boolean; node: string; data: string[]; total: number }>(`/nodes/${nodeAddr}/service-names`),
@@ -571,7 +571,7 @@ export const consulAPI = {
   getServiceCatalogNames: () => api.get<{ success: boolean; data: string[]; total: number }>('/services/catalog/names'),
 
   createService: (serviceData: ServiceCreatePayload) =>
-    api.post('/services', serviceData),
+    api.post('/services/', serviceData),
 
   updateService: (serviceId: string, payload: ServiceUpdatePayload) =>
     api.put(`/services/${encodeURIComponent(serviceId)}`, payload),
@@ -595,16 +595,21 @@ export const consulAPI = {
     api.get<BlackboxListResponse>('/blackbox', { params: filters }),
 
   createBlackboxTarget: (payload: BlackboxTargetPayload) =>
-    api.post('/blackbox', payload),
+    api.post('/blackbox/', payload),
 
   createBlackboxTargetEnhanced: (payload: BlackboxTargetEnhanced, user = 'web-user') =>
     api.post('/blackbox/enhanced', payload, { params: { user } }),
 
   updateBlackboxTarget: (current: BlackboxTargetPayload, replacement: BlackboxTargetPayload) =>
-    api.put('/blackbox', { current, replacement }),
+    api.put('/blackbox/', { current, replacement }),
 
-  deleteBlackboxTarget: (payload: Omit<BlackboxTargetPayload, 'instance'>) =>
-    api.delete('/blackbox', { data: payload }),
+  deleteBlackboxTarget: (payload: {
+    service_id: string;
+    service_name?: string;
+    node_addr?: string;
+    node_name?: string;
+    datacenter?: string;
+  }) => api.delete('/blackbox/', { data: payload }),
 
   importBlackboxTargets: (file: File) => {
     const formData = new FormData();
@@ -647,7 +652,7 @@ export const consulAPI = {
 
   // Service Presets
   createPreset: (preset: ServicePreset, user = 'web-user') =>
-    api.post('/presets', preset, { params: { user } }),
+    api.post('/presets/', preset, { params: { user } }),
 
   listPresets: (category?: string) =>
     api.get<PresetListResponse>('/presets', { params: { category } }),
@@ -1216,10 +1221,17 @@ export interface RequiredFieldsResponse {
   total: number;
 }
 
+// ============================================================================
+// DEPRECATED - SISTEMA HARDCODED JSON REMOVIDO
+// ============================================================================
+// Campos agora vêm 100% do Prometheus via /prometheus-config/fields
+// Configurações de visibilidade salvas em /kv/metadata/field-config/{name}
+// Use hooks: useMetadataFields, useTableFields, useFormFields, useFilterFields
+// ============================================================================
+/*
 export const metadataDynamicAPI = {
-  /**
-   * Busca campos dinâmicos com filtros
-   */
+  // REMOVIDO: Endpoint /metadata-dynamic não existe mais
+  // Use: GET /prometheus-config/fields
   getFields: (params?: {
     context?: 'blackbox' | 'exporters' | 'services' | 'general';
     enabled?: boolean;
@@ -1230,35 +1242,25 @@ export const metadataDynamicAPI = {
     category?: string;
   }) => api.get<MetadataFieldsResponse>('/metadata-dynamic/fields', { params }),
 
-  /**
-   * Busca apenas nomes dos campos (mais leve)
-   */
+  // REMOVIDO: Use GET /prometheus-config/fields
   getFieldNames: (params?: {
     context?: string;
     enabled?: boolean;
     required?: boolean;
   }) => api.get<FieldNamesResponse>('/metadata-dynamic/fields/names', { params }),
 
-  /**
-   * Busca campos obrigatórios
-   */
+  // REMOVIDO: Use GET /prometheus-config/fields com filtro required=true
   getRequiredFields: () =>
     api.get<RequiredFieldsResponse>('/metadata-dynamic/fields/required'),
 
-  /**
-   * Recarrega cache do metadata_fields.json
-   */
+  // REMOVIDO: Não há mais cache JSON
   reloadCache: () => api.post('/metadata-dynamic/reload'),
 
-  /**
-   * Valida metadata
-   */
+  // REMOVIDO: Validação agora dinâmica do Prometheus
   validateMetadata: (metadata: Record<string, unknown>, context: string = 'general') =>
     api.post('/metadata-dynamic/validate', metadata, { params: { context } }),
 
-  /**
-   * Atualiza em quais páginas um campo deve aparecer
-   */
+  // REMOVIDO: Use PUT /kv/metadata/field-config/{name}
   updateFieldPages: (fieldName: string, pages: {
     show_in_services: boolean;
     show_in_exporters: boolean;
@@ -1266,6 +1268,7 @@ export const metadataDynamicAPI = {
   }) =>
     api.put(`/metadata-dynamic/fields/${fieldName}/pages`, pages),
 };
+*/
 
 export default api;
 

@@ -126,6 +126,8 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
     'glpi_url',           // URL única (case variation)
     'notas',              // Texto longo livre
     'notes',              // Texto longo livre
+    'tipo',               // Tipo - valores muito específicos por dispositivo
+    'modelo',             // Modelo - valores muito específicos por dispositivo
   ];
 
   /**

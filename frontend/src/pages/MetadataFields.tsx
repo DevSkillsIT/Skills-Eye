@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 /**
- * Página de Gerenciamento de Campos Metadata
+ * Página de Gerenciamento de Campos Metadata (SOMENTE LEITURA)
  *
  * Permite:
- * - Adicionar novo campo metadata
- * - Editar campos existentes
- * - Sincronizar com prometheus.yml
- * - Replicar para servidores slaves
+ * - Visualizar campos metadata extraídos do prometheus.yml
+ * - Ver status de sincronização entre servidores
+ * - Sincronizar campos (extrai do Prometheus via SSH e atualiza KV)
+ * - Replicar configurações do Master para Slaves
  * - Reiniciar serviços Prometheus
+ *
+ * IMPORTANTE: Campos vêm 100% do prometheus.yml (dinâmico)
+ * Para adicionar/remover campos: edite prometheus.yml via PrometheusConfig
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -28,7 +31,6 @@ import {
   Space,
   Tag,
   Badge,
-  Popconfirm,
   Select,
   Tooltip,
   Modal,
@@ -43,16 +45,13 @@ import {
   App,
   Steps,
   List,
-  Checkbox,
-  Popover,
   message,
+  Tabs,
 } from 'antd';
 
 const { Text, Paragraph } = Typography;
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
+  // PlusOutlined, EditOutlined, DeleteOutlined removidos - página agora é SOMENTE LEITURA
   SyncOutlined,
   CloudSyncOutlined,
   ReloadOutlined,
@@ -66,9 +65,13 @@ import {
   FileTextOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
+import { Checkbox, Popover } from 'antd';
 import axios from 'axios';
-import { metadataFieldsAPI, consulAPI, metadataDynamicAPI } from '../services/api';
+import { metadataFieldsAPI, consulAPI } from '../services/api';
+// metadataDynamicAPI removido - campos vêm 100% do Prometheus agora
 import type { PreviewFieldChangeResponse } from '../services/api';
+import ReferenceValueInput from '../components/ReferenceValueInput';
+import { Form } from 'antd';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
@@ -113,6 +116,22 @@ const MetadataFieldsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);
   const [serverJustChanged, setServerJustChanged] = useState(false);
+  const [activeTab, setActiveTab] = useState<string>('meta-fields');  // Aba ativa
+  const [externalLabels, setExternalLabels] = useState<Record<string, string>>({});  // External labels do servidor
+  const [loadingExternalLabels, setLoadingExternalLabels] = useState(false);
+
+  // Hook para DELETE de campos metadata - REMOVIDO (página agora é SOMENTE LEITURA)
+  // const { deleteResource: deleteFieldResource } = useConsulDelete({
+  //   deleteFn: async (payload: any) => {
+  //     const response = await axios.delete(`${API_URL}/metadata-fields/${payload.field_name}`);
+  //     return response.data;
+  //   },
+  //   successMessage: 'Campo deletado com sucesso',
+  //   errorMessage: 'Erro ao deletar campo',
+  //   onSuccess: () => {
+  //     fetchFields();
+  //   },
+  // });
   const [serverHasNoPrometheus, setServerHasNoPrometheus] = useState(false);  // ← NOVO: Detecta servidor sem Prometheus
   const [serverPrometheusMessage, setServerPrometheusMessage] = useState('');  // ← NOVO: Mensagem do servidor
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -150,11 +169,48 @@ const MetadataFieldsPage: React.FC = () => {
   const fetchFields = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/metadata-fields/`, {
-        timeout: 30000, // 30 segundos (pode precisar consultar múltiplos arquivos)
+      // PASSO 1: BUSCAR CAMPOS DINAMICAMENTE DO PROMETHEUS.YML VIA SSH
+      // Não usa arquivo JSON hardcoded - extrai dos relabel_configs do Prometheus
+      const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
+        timeout: 30000, // 30 segundos (lê prometheus.yml via SSH de múltiplos servidores)
       });
+
       if (response.data.success) {
-        setFields(response.data.fields);
+        const prometheusFields = response.data.fields;
+
+        // PASSO 2: BUSCAR CONFIGURAÇÕES DE EXIBIÇÃO POR PÁGINA DO CONSUL KV
+        // Para cada campo, buscar sua configuração de show_in_services/exporters/blackbox
+        const fieldsWithConfig = await Promise.all(
+          prometheusFields.map(async (field: MetadataField) => {
+            try {
+              // Buscar configuração do campo no KV
+              const configResponse = await axios.get(`${API_URL}/kv/metadata/field-config/${field.name}`);
+
+              if (configResponse.data.success && configResponse.data.config) {
+                // Merge: dados do Prometheus + configuração do KV
+                return {
+                  ...field,
+                  show_in_services: configResponse.data.config.show_in_services ?? true,
+                  show_in_exporters: configResponse.data.config.show_in_exporters ?? true,
+                  show_in_blackbox: configResponse.data.config.show_in_blackbox ?? true,
+                };
+              }
+            } catch (error) {
+              // Se não existe config no KV, usar valores padrão (todos true)
+              console.log(`[DEBUG] Usando config padrão para campo "${field.name}"`);
+            }
+
+            // Valores padrão se não houver configuração salva
+            return {
+              ...field,
+              show_in_services: true,
+              show_in_exporters: true,
+              show_in_blackbox: true,
+            };
+          })
+        );
+
+        setFields(fieldsWithConfig);
       }
     } catch (error: any) {
       if (error.code === 'ECONNABORTED') {
@@ -164,6 +220,39 @@ const MetadataFieldsPage: React.FC = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchExternalLabels = async (serverId: string) => {
+    if (!serverId) {
+      setExternalLabels({});
+      return;
+    }
+
+    setLoadingExternalLabels(true);
+    try {
+      // Buscar servidor para pegar hostname
+      const server = servers.find(s => s.id === serverId);
+      if (!server) {
+        setExternalLabels({});
+        return;
+      }
+
+      // REUTILIZAR endpoint /prometheus-config/global
+      const response = await axios.get(`${API_URL}/prometheus-config/global`, {
+        params: { hostname: server.hostname },
+        timeout: 15000,
+      });
+
+      const labels = response.data?.external_labels || {};
+      console.log('[DEBUG] External labels carregados:', labels);
+      console.log('[DEBUG] Keys:', Object.keys(labels));
+      setExternalLabels(labels);
+    } catch (error: any) {
+      console.error('Erro ao buscar external_labels:', error);
+      setExternalLabels({});
+    } finally {
+      setLoadingExternalLabels(false);
     }
   };
 
@@ -302,9 +391,26 @@ const MetadataFieldsPage: React.FC = () => {
       setServerHasNoPrometheus(false);
       setServerPrometheusMessage('');
 
-      // Carregar novos dados
-      fetchFields();
-      fetchSyncStatus(selectedServer);
+      // IMPORTANTE: Buscar external_labels PRIMEIRO, DEPOIS os campos
+      // Isso garante que o filtro funcione corretamente
+      const loadData = async () => {
+        console.log('[DEBUG] Iniciando carregamento de dados...');
+
+        // PASSO 1: Buscar external_labels ANTES (necessário para filtrar campos)
+        console.log('[DEBUG] Buscando external_labels...');
+        await fetchExternalLabels(selectedServer);
+        console.log('[DEBUG] External_labels carregados, agora buscando campos...');
+
+        // PASSO 2: Buscar campos e sync status EM PARALELO
+        await Promise.all([
+          fetchFields(),
+          fetchSyncStatus(selectedServer),
+        ]);
+
+        console.log('[DEBUG] Todos os dados carregados!');
+      };
+
+      loadData();
     }
   }, [selectedServer]);
 
@@ -390,18 +496,13 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteField = async (fieldName: string) => {
-    try {
-      const response = await axios.delete(`${API_URL}/metadata-fields/${fieldName}`);
-
-      if (response.data.success) {
-        message.success(`Campo deletado com sucesso!`);
-        fetchFields();
-      }
-    } catch (error: any) {
-      message.error('Erro ao deletar campo: ' + (error.response?.data?.detail || error.message));
-    }
-  };
+  /**
+   * FUNÇÃO REMOVIDA - Página agora é SOMENTE LEITURA
+   * Para remover campos: edite prometheus.yml via PrometheusConfig
+   */
+  // const handleDeleteField = async (fieldName: string) => {
+  //   await deleteFieldResource({ service_id: fieldName } as any);
+  // };
 
   const handleReplicateToSlaves = async () => {
     const hide = message.loading('Replicando configurações...', 0);
@@ -699,19 +800,24 @@ const MetadataFieldsPage: React.FC = () => {
       title: 'Páginas',
       width: 250,
       render: (_, record) => {
-        const handleUpdatePages = async (newPages: {
+        const handleUpdateFieldConfig = async (newPages: {
           show_in_services: boolean;
           show_in_exporters: boolean;
           show_in_blackbox: boolean;
         }) => {
           try {
-            await metadataDynamicAPI.updateFieldPages(record.name, newPages);
-            message.success(`Páginas do campo "${record.display_name}" atualizadas!`);
+            // Salvar configuração no Consul KV
+            await axios.put(`${API_URL}/kv/metadata/field-config/${record.name}`, {
+              show_in_services: newPages.show_in_services,
+              show_in_exporters: newPages.show_in_exporters,
+              show_in_blackbox: newPages.show_in_blackbox,
+            });
+            message.success(`Configuração do campo "${record.display_name}" atualizada!`);
             // Recarregar campos
             fetchFields();
           } catch (error) {
-            console.error('Erro ao atualizar páginas:', error);
-            message.error('Erro ao atualizar páginas do campo');
+            console.error('Erro ao atualizar configuração:', error);
+            message.error('Erro ao atualizar configuração do campo');
           }
         };
 
@@ -719,30 +825,30 @@ const MetadataFieldsPage: React.FC = () => {
           <div style={{ padding: '8px 0' }}>
             <Space direction="vertical" size="small">
               <Checkbox
-                checked={record.show_in_services ?? false}
-                onChange={(e) => handleUpdatePages({
+                checked={record.show_in_services ?? true}
+                onChange={(e) => handleUpdateFieldConfig({
                   show_in_services: e.target.checked,
-                  show_in_exporters: record.show_in_exporters ?? false,
-                  show_in_blackbox: record.show_in_blackbox ?? false,
+                  show_in_exporters: record.show_in_exporters ?? true,
+                  show_in_blackbox: record.show_in_blackbox ?? true,
                 })}
               >
                 <Tag color="blue" style={{ margin: 0 }}>Services</Tag>
               </Checkbox>
               <Checkbox
-                checked={record.show_in_exporters ?? false}
-                onChange={(e) => handleUpdatePages({
-                  show_in_services: record.show_in_services ?? false,
+                checked={record.show_in_exporters ?? true}
+                onChange={(e) => handleUpdateFieldConfig({
+                  show_in_services: record.show_in_services ?? true,
                   show_in_exporters: e.target.checked,
-                  show_in_blackbox: record.show_in_blackbox ?? false,
+                  show_in_blackbox: record.show_in_blackbox ?? true,
                 })}
               >
                 <Tag color="green" style={{ margin: 0 }}>Exporters</Tag>
               </Checkbox>
               <Checkbox
-                checked={record.show_in_blackbox ?? false}
-                onChange={(e) => handleUpdatePages({
-                  show_in_services: record.show_in_services ?? false,
-                  show_in_exporters: record.show_in_exporters ?? false,
+                checked={record.show_in_blackbox ?? true}
+                onChange={(e) => handleUpdateFieldConfig({
+                  show_in_services: record.show_in_services ?? true,
+                  show_in_exporters: record.show_in_exporters ?? true,
                   show_in_blackbox: e.target.checked,
                 })}
               >
@@ -755,28 +861,25 @@ const MetadataFieldsPage: React.FC = () => {
         return (
           <Popover
             content={content}
-            title="Selecione as páginas"
+            title="Configurar visibilidade"
             trigger="click"
             placement="left"
           >
             <Space size={4} wrap style={{ cursor: 'pointer' }}>
-              {record.show_in_services && (
+              {record.show_in_services !== false && (
                 <Tooltip title="Aparece em formulários de Services">
                   <Tag color="blue">Services</Tag>
                 </Tooltip>
               )}
-              {record.show_in_exporters && (
+              {record.show_in_exporters !== false && (
                 <Tooltip title="Aparece em formulários de Exporters">
                   <Tag color="green">Exporters</Tag>
                 </Tooltip>
               )}
-              {record.show_in_blackbox && (
+              {record.show_in_blackbox !== false && (
                 <Tooltip title="Aparece em formulários de Blackbox">
                   <Tag color="orange">Blackbox</Tag>
                 </Tooltip>
-              )}
-              {!record.show_in_services && !record.show_in_exporters && !record.show_in_blackbox && (
-                <Tag color="default">Nenhuma</Tag>
               )}
             </Space>
           </Popover>
@@ -870,7 +973,7 @@ const MetadataFieldsPage: React.FC = () => {
               onClick={() => handleViewField(record)}
             />
           </Tooltip>
-          <Tooltip title="Preview de Mudanças (FASE 2)">
+          <Tooltip title="Preview de Mudanças">
             <Button
               type="link"
               size="small"
@@ -879,29 +982,8 @@ const MetadataFieldsPage: React.FC = () => {
               disabled={!selectedServer || record.sync_status === 'error'}
             />
           </Tooltip>
-          <Tooltip title="Editar">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setEditingField(record);
-                setEditModalVisible(true);
-              }}
-            />
-          </Tooltip>
-          {!record.required && (
-            <Popconfirm
-              title="Tem certeza que deseja deletar este campo?"
-              onConfirm={() => handleDeleteField(record.name)}
-              okText="Sim"
-              cancelText="Não"
-            >
-              <Tooltip title="Deletar">
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-              </Tooltip>
-            </Popconfirm>
-          )}
+          {/* BOTÕES EDIT/DELETE REMOVIDOS - Página agora é SOMENTE LEITURA */}
+          {/* Para editar campos: use PrometheusConfig para editar prometheus.yml */}
         </Space>
       ),
     },
@@ -1087,21 +1169,8 @@ const MetadataFieldsPage: React.FC = () => {
             </Space>
           </Col>
 
-          {/* Coluna 2: Botão Adicionar Campo */}
-          <Col xs={12} lg={4}>
-            <Space direction="vertical" size={4} style={{ width: '100%' }}>
-              <Text strong style={{ fontSize: 13, opacity: 0 }}>.</Text>
-              <Button
-                type="primary"
-                size="large"
-                block
-                icon={<PlusOutlined />}
-                onClick={() => setCreateModalVisible(true)}
-              >
-                Adicionar Campo
-              </Button>
-            </Space>
-          </Col>
+          {/* BOTÃO "Adicionar Campo" REMOVIDO - Página agora é SOMENTE LEITURA */}
+          {/* Para adicionar campos: edite prometheus.yml via PrometheusConfig */}
 
           {/* Coluna 3: Botão Replicar */}
           <Col xs={12} lg={4}>
@@ -1150,13 +1219,33 @@ const MetadataFieldsPage: React.FC = () => {
         </Row>
       </Card>
 
-      {/* Tabela de Campos */}
+      {/* ABAS: Campos de Meta vs External Labels */}
       <ProCard>
-        <ProTable<MetadataField>
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: 'meta-fields',
+              label: (
+                <span>
+                  <FileTextOutlined /> Campos de Meta (Relabel Configs)
+                </span>
+              ),
+              children: (
+                <ProTable<MetadataField>
           columns={columns}
-          dataSource={fields}
+          dataSource={fields.filter((field) => {
+            // FILTRAR: Remover external_labels desta aba
+            // External labels são campos globais do servidor (global.external_labels)
+            // São extraídos do prometheus.yml via SSH e armazenados em externalLabels state
+            const isExternalLabel = Object.keys(externalLabels).includes(field.name);
+
+            // Retornar FALSE se for external_label (remove da lista de campos de meta)
+            return !isExternalLabel;
+          })}
           rowKey="name"
-          loading={loading || loadingSyncStatus}
+          loading={loading || loadingSyncStatus || loadingExternalLabels}
           search={false}
           options={{
             reload: () => {
@@ -1174,7 +1263,14 @@ const MetadataFieldsPage: React.FC = () => {
           }}
           scroll={{ x: 1600 }}
           toolBarRender={() => {
-            const outdatedCount = fields.filter(
+            // IMPORTANTE: Filtrar external_labels ANTES de contar outdated
+            // External labels NÃO devem ser contados aqui (são globais do servidor)
+            const metaFieldsOnly = fields.filter((field) => {
+              const isExternalLabel = Object.keys(externalLabels).includes(field.name);
+              return !isExternalLabel; // Manter apenas campos de meta (relabel_configs)
+            });
+
+            const outdatedCount = metaFieldsOnly.filter(
               (f) => f.sync_status === 'outdated' || f.sync_status === 'missing'
             ).length;
 
@@ -1228,6 +1324,66 @@ const MetadataFieldsPage: React.FC = () => {
             return toolbarItems;
           }}
         />
+              ),
+            },
+            {
+              key: 'external-labels',
+              label: (
+                <span>
+                  <CloudServerOutlined /> External Labels (Global do Servidor)
+                </span>
+              ),
+              children: (
+                <Card>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="External Labels - Identificam o Servidor Prometheus"
+                    description={
+                      <div>
+                        <p><strong>O que são:</strong> Labels globais configurados no <code>global.external_labels</code> do prometheus.yml</p>
+                        <p><strong>Aplicados por:</strong> Próprio Prometheus automaticamente a TODAS as métricas coletadas</p>
+                        <p><strong>Finalidade:</strong> Identificar qual servidor Prometheus coletou a métrica (ex: site=palmas, datacenter=genesis-dtc)</p>
+                        <p><strong>IMPORTANTE:</strong> NÃO são campos para cadastrar em serviços! São apenas para VISUALIZAÇÃO.</p>
+                      </div>
+                    }
+                    style={{ marginBottom: 16 }}
+                  />
+
+                  {loadingExternalLabels ? (
+                    <div style={{ textAlign: 'center', padding: 40 }}>
+                      <LoadingOutlined style={{ fontSize: 24 }} spin />
+                      <p>Carregando external labels...</p>
+                    </div>
+                  ) : Object.keys(externalLabels).length === 0 ? (
+                    <Alert
+                      type="warning"
+                      message="Nenhum External Label Configurado"
+                      description={
+                        selectedServer
+                          ? "Este servidor não possui external_labels configurados no prometheus.yml"
+                          : "Selecione um servidor acima para ver os external labels"
+                      }
+                    />
+                  ) : (
+                    <Descriptions
+                      bordered
+                      column={1}
+                      size="small"
+                      title={`External Labels do Servidor (${servers.find(s => s.id === selectedServer)?.display_name || 'Desconhecido'})`}
+                    >
+                      {Object.entries(externalLabels).map(([key, value]) => (
+                        <Descriptions.Item key={key} label={<Text strong>{key}</Text>}>
+                          <Tag color="blue">{value}</Tag>
+                        </Descriptions.Item>
+                      ))}
+                    </Descriptions>
+                  )}
+                </Card>
+              ),
+            },
+          ]}
+        />
       </ProCard>
 
       {/* Modal Criar Campo */}
@@ -1238,6 +1394,7 @@ const MetadataFieldsPage: React.FC = () => {
         onFinish={handleCreateField}
         modalProps={{
           width: 600,
+          destroyOnHidden: true,
         }}
       >
         <ProFormText
@@ -1273,17 +1430,20 @@ const MetadataFieldsPage: React.FC = () => {
           rules={[{ required: true }]}
         />
 
-        {/* Categoria com auto-cadastro */}
-        <ProFormText
+        {/* Categoria com auto-cadastro via ReferenceValueInput */}
+        <Form.Item
           name="category"
           label="Categoria"
           initialValue="extra"
           rules={[{ required: true, message: 'Informe a categoria' }]}
-          fieldProps={{
-            placeholder: 'infrastructure, basic, device, extra, network, security...'
-          }}
-          tooltip="Digite uma categoria existente (infrastructure, basic, device, extra) ou crie uma nova. Valores novos são cadastrados automaticamente."
-        />
+          tooltip="Digite uma categoria existente ou crie uma nova. Valores novos são cadastrados automaticamente."
+        >
+          <ReferenceValueInput
+            fieldName="field_category"
+            placeholder="infrastructure, basic, device, extra, network, security..."
+            required
+          />
+        </Form.Item>
 
         <ProFormDigit
           name="order"
@@ -1302,6 +1462,7 @@ const MetadataFieldsPage: React.FC = () => {
 
       {/* Modal Editar Campo */}
       <ModalForm
+        key={editingField?.name || 'edit-field-modal'}
         title={`Editar Campo: ${editingField?.display_name}`}
         open={editModalVisible}
         onOpenChange={(visible) => {
@@ -1312,6 +1473,7 @@ const MetadataFieldsPage: React.FC = () => {
         initialValues={editingField || {}}
         modalProps={{
           width: 600,
+          destroyOnHidden: true,
         }}
       >
         <ProFormText name="name" label="Nome Técnico" disabled />
@@ -1334,16 +1496,19 @@ const MetadataFieldsPage: React.FC = () => {
           rules={[{ required: true }]}
         />
 
-        {/* Categoria com auto-cadastro */}
-        <ProFormText
+        {/* Categoria com auto-cadastro via ReferenceValueInput */}
+        <Form.Item
           name="category"
           label="Categoria"
           rules={[{ required: true, message: 'Informe a categoria' }]}
-          fieldProps={{
-            placeholder: 'infrastructure, basic, device, extra, network, security...'
-          }}
-          tooltip="Digite uma categoria existente (infrastructure, basic, device, extra) ou crie uma nova. Valores novos são cadastrados automaticamente."
-        />
+          tooltip="Digite uma categoria existente ou crie uma nova. Valores novos são cadastrados automaticamente."
+        >
+          <ReferenceValueInput
+            fieldName="field_category"
+            placeholder="infrastructure, basic, device, extra, network, security..."
+            required
+          />
+        </Form.Item>
 
         <ProFormDigit
           name="order"

@@ -31,7 +31,20 @@ def retry_with_backoff(max_retries=3, base_delay=1, max_delay=10):
             while retries < max_retries:
                 try:
                     return await func(*args, **kwargs)
-                except (httpx.RequestError, httpx.HTTPError, ConnectionError) as e:
+                except httpx.HTTPStatusError as e:
+                    # NÃO fazer retry em erros 4xx (Bad Request, Not Found, etc)
+                    # Esses são erros permanentes do cliente, não vão resolver com retry
+                    if 400 <= e.response.status_code < 500:
+                        raise  # Re-lança imediatamente sem retry
+                    # Erros 5xx (servidor) podem ser temporários - faz retry
+                    retries += 1
+                    if retries >= max_retries:
+                        raise
+                    print(f"Tentativa {retries} falhou: {e}")
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, max_delay)
+                except (httpx.RequestError, ConnectionError) as e:
+                    # Erros de rede/conexão - faz retry
                     retries += 1
                     if retries >= max_retries:
                         raise
@@ -79,7 +92,7 @@ class ConsulManager:
         if raw_id is None:
             raise ValueError("Service id can not be null")
 
-        candidate = re.sub(r'[[ \]`~!\\#$^&*=|"{}\':;?\t\n]', '_', raw_id.strip())
+        candidate = re.sub(r'[\[\] `~!\\#$^&*=|"{}\':;?\t\n]', '_', raw_id.strip())
 
         if '//' in candidate or candidate.startswith('/') or candidate.endswith('/'):
             raise ValueError("Service id can not start/end with '/' or contain '//'")
@@ -509,6 +522,14 @@ class ConsulManager:
                 return json.loads(decoded)
             except json.JSONDecodeError:
                 return decoded
+        except httpx.HTTPStatusError as exc:
+            # 404 é NORMAL quando chave não existe - não é erro!
+            if exc.response.status_code == 404:
+                logger.debug("KV key not found: %s (this is normal if never created)", key)
+                return None
+            # Outros erros HTTP são reais
+            logger.error("Failed to fetch KV %s: HTTP %s", key, exc.response.status_code)
+            return None
         except Exception as exc:
             logger.error("Failed to fetch KV %s: %s", key, exc)
             return None
@@ -642,6 +663,21 @@ class ConsulManager:
                 try:
                     temp_consul = ConsulManager(host=node_addr, token=self.token)
                     services = await temp_consul.get_services()
+
+                    # Buscar datacenter do node via /catalog/node/{node_name}
+                    try:
+                        node_info = await self._request("GET", f"/catalog/node/{quote(node_name, safe='')}")
+                        node_data = node_info.json()
+                        datacenter = node_data.get("Node", {}).get("Datacenter")
+
+                        # Adicionar datacenter em cada service desse node
+                        if datacenter:
+                            for service_id, service_data in services.items():
+                                if "Meta" in service_data and isinstance(service_data["Meta"], dict):
+                                    service_data["Meta"]["datacenter"] = datacenter
+                    except Exception as dc_err:
+                        print(f"Erro ao obter datacenter do nó {node_name}: {dc_err}")
+
                     all_services[node_name] = services
                 except Exception as e:
                     print(f"Erro ao obter serviços do nó {node_name}: {e}")

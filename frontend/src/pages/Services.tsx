@@ -21,6 +21,7 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
+import { useConsulDelete } from '../hooks/useConsulDelete';
 import {
   ClearOutlined,
   CloudOutlined,
@@ -51,7 +52,6 @@ import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI } from '../services/api';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
-import ReferenceValueInput from '../components/ReferenceValueInput';
 import TagsInput from '../components/TagsInput';
 import type {
   ConsulServiceRecord,
@@ -61,6 +61,8 @@ import type {
 } from '../services/api';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 import FormFieldRenderer from '../components/FormFieldRenderer';
+import SiteBadge from '../components/SiteBadge';
+import { extractSiteFromMetadata } from '../utils/namingUtils';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -647,62 +649,57 @@ const Services: React.FC = () => {
     setFormOpen(true);
   }, []);
 
+  // Hook compartilhado para DELETE com lógica padronizada
+  const { deleteResource, deleteBatch } = useConsulDelete({
+    deleteFn: async (payload: any) => {
+      // Adapter para API de Services (usa serviceId + params)
+      const nodeAddrParam =
+        payload.node_addr ||
+        (selectedNode && selectedNode !== ALL_NODES && selectedNode !== DEFAULT_NODE
+          ? selectedNode
+          : undefined);
+
+      const params =
+        nodeAddrParam && nodeAddrParam !== ''
+          ? { node_addr: nodeAddrParam }
+          : undefined;
+
+      return consulAPI.deleteService(payload.service_id, params);
+    },
+    successMessage: 'Serviço removido com sucesso',
+    errorMessage: 'Falha ao remover serviço',
+    onSuccess: async () => {
+      await loadMetadataOptions();
+      actionRef.current?.reload();
+    },
+  });
+
   const handleDelete = useCallback(
     async (record: ServiceTableItem) => {
-      try {
-        const nodeAddrParam =
-          selectedNode && selectedNode !== ALL_NODES && selectedNode !== DEFAULT_NODE
-            ? selectedNode
-            : record.nodeAddr;
-
-        const params =
-          nodeAddrParam && nodeAddrParam !== ''
-            ? { node_addr: nodeAddrParam }
-            : undefined;
-
-        await consulAPI.deleteService(record.id, params);
-      message.success('Serviço removido com sucesso');
-        await loadMetadataOptions();
-        actionRef.current?.reload();
-      } catch (error: any) {
-        const detail =
-          error?.response?.data?.detail ||
-          error?.response?.data?.error ||
-          error?.message;
-      message.error(`Falha ao remover serviço: ${detail}`);
-      }
+      await deleteResource({
+        service_id: record.id,
+        node_addr: record.nodeAddr,
+      });
     },
-    [loadMetadataOptions, selectedNode],
+    [deleteResource],
   );
 
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) {
       return;
     }
-    try {
-      await Promise.all(
-        selectedRows.map((record) => {
-          const nodeAddrParam =
-            record.nodeAddr ||
-            (selectedNode !== ALL_NODES && selectedNode !== DEFAULT_NODE
-              ? selectedNode
-              : undefined);
-          const params =
-            nodeAddrParam && nodeAddrParam !== ''
-              ? { node_addr: nodeAddrParam }
-              : undefined;
-          return consulAPI.deleteService(record.id, params);
-        }),
-      );
-      message.success('Serviços removidos com sucesso');
+
+    const payloads = selectedRows.map((record) => ({
+      service_id: record.id,
+      node_addr: record.nodeAddr,
+    }));
+
+    const success = await deleteBatch(payloads);
+    if (success) {
       setSelectedRowKeys([]);
       setSelectedRows([]);
-      await loadMetadataOptions();
-      actionRef.current?.reload();
-    } catch (error) {
-      message.error('Falha ao remover um ou mais serviços');
     }
-  }, [loadMetadataOptions, selectedNode, selectedRows]);
+  }, [deleteBatch, selectedRows]);
 
   const handleSubmit = useCallback(
     async (values: ServiceFormValues) => {
@@ -802,14 +799,20 @@ const Services: React.FC = () => {
       service: {
         title: 'Serviço Consul',
         dataIndex: 'service',
-        width: 210,
+        width: 260,
         ellipsis: true,
-        render: (_, record) => (
-          <Space size={4}>
-            <InfoCircleOutlined style={{ color: '#1677ff' }} />
-            <Text>{record.service}</Text>
-          </Space>
-        ),
+        render: (_, record) => {
+          // Extrair site dos metadata para exibir badge
+          const site = record.meta?.site || extractSiteFromMetadata(record.meta || {});
+
+          return (
+            <Space size={4}>
+              <InfoCircleOutlined style={{ color: '#1677ff' }} />
+              <Text>{record.service}</Text>
+              {site && <SiteBadge site={site} size="small" />}
+            </Space>
+          );
+        },
       },
       id: {
         title: 'ID',

@@ -549,3 +549,112 @@ class YamlConfigService:
 
         with open(log_file, 'w') as f:
             json.dump(logs, f, indent=2)
+
+    def get_global_config(self) -> Dict[str, Any]:
+        """
+        Extrai configuração global incluindo external_labels
+
+        Returns:
+            Dict com configuração global (external_labels, scrape_interval, etc)
+        """
+        config = self.read_config()
+        global_config = config.get('global', {})
+
+        result = {
+            'scrape_interval': global_config.get('scrape_interval'),
+            'scrape_timeout': global_config.get('scrape_timeout'),
+            'evaluation_interval': global_config.get('evaluation_interval'),
+            'external_labels': global_config.get('external_labels', {}),
+            'query_log_file': global_config.get('query_log_file')
+        }
+
+        # Limpar campos None
+        result = {k: v for k, v in result.items() if v is not None}
+
+        logger.info(f"Configuração global extraída: {len(result.get('external_labels', {}))} external_labels")
+        return result
+
+    def get_remote_write_config(self) -> List[Dict[str, Any]]:
+        """
+        Extrai configuração de remote_write
+
+        Returns:
+            Lista de configurações remote_write com write_relabel_configs
+        """
+        config = self.read_config()
+        remote_write = config.get('remote_write', [])
+
+        results = []
+        for idx, rw in enumerate(remote_write):
+            rw_data = {
+                'index': idx,
+                'url': rw.get('url'),
+                'remote_timeout': rw.get('remote_timeout'),
+                'write_relabel_configs': rw.get('write_relabel_configs', []),
+                'queue_config': rw.get('queue_config', {}),
+                'basic_auth': bool(rw.get('basic_auth')),  # Não expor senha
+                'bearer_token': bool(rw.get('bearer_token')),
+                'bearer_token_file': rw.get('bearer_token_file'),
+                'tls_config': bool(rw.get('tls_config')),
+                'proxy_url': rw.get('proxy_url'),
+                'headers': rw.get('headers', {})
+            }
+
+            # Limpar campos None/False/vazios
+            rw_data = {k: v for k, v in rw_data.items() if v not in [None, False, {}, []]}
+            results.append(rw_data)
+
+        logger.info(f"Extraídas {len(results)} configurações remote_write")
+        return results
+
+    def get_alerting_config(self) -> Dict[str, Any]:
+        """
+        Extrai configuração de alerting (alertmanagers)
+
+        Returns:
+            Dict com configuração de alertmanagers
+        """
+        config = self.read_config()
+        alerting = config.get('alerting', {})
+
+        result = {
+            'alertmanagers': alerting.get('alertmanagers', [])
+        }
+
+        logger.info(f"Configuração alerting extraída: {len(result.get('alertmanagers', []))} alertmanagers")
+        return result
+
+    def get_rule_files(self) -> List[str]:
+        """
+        Extrai lista de arquivos de regras configurados
+
+        Returns:
+            Lista de caminhos dos arquivos de regras
+        """
+        config = self.read_config()
+        rule_files = config.get('rule_files', [])
+
+        logger.info(f"Extraídos {len(rule_files)} arquivos de regras")
+        return rule_files
+
+    def get_full_server_info(self) -> Dict[str, Any]:
+        """
+        Extrai informações completas do servidor Prometheus
+        Inclui global, remote_write, alerting, rule_files, jobs
+
+        Returns:
+            Dict com todas as informações relevantes
+        """
+        config = self.read_config()
+
+        result = {
+            'global': self.get_global_config(),
+            'remote_write': self.get_remote_write_config(),
+            'alerting': self.get_alerting_config(),
+            'rule_files': self.get_rule_files(),
+            'scrape_configs_count': len(config.get('scrape_configs', [])),
+            'jobs': self.get_all_jobs()
+        }
+
+        logger.info("Informações completas do servidor extraídas")
+        return result

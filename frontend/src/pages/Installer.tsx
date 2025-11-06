@@ -296,9 +296,273 @@ const COLLECTOR_OPTIONS: CollectorOption[] = [
     targets: ['linux'],
   },
   {
-    value: 'wmi',
-    label: 'WMI collectors (Windows)',
-    description: 'Grupos padrão do windows_exporter (CPU, memória, discos, serviços).',
+    value: 'ad',
+    label: 'Active Directory Domain Services',
+    description: 'Métricas de serviços de domínio do Active Directory.',
+    targets: ['windows'],
+  },
+  {
+    value: 'adcs',
+    label: 'Active Directory Certificate Services',
+    description: 'Métricas de serviços de certificados do Active Directory.',
+    targets: ['windows'],
+  },
+  {
+    value: 'adfs',
+    label: 'Active Directory Federation Services',
+    description: 'Métricas de serviços de federação do Active Directory.',
+    targets: ['windows'],
+  },
+  {
+    value: 'cache',
+    label: 'Cache metrics',
+    description: 'Métricas de cache do sistema.',
+    targets: ['windows'],
+  },
+  {
+    value: 'cpu',
+    label: 'CPU usage',
+    description: 'Uso de CPU e estatísticas detalhadas.',
+    targets: ['windows'],
+  },
+  {
+    value: 'cpu_info',
+    label: 'CPU Information',
+    description: 'Informações detalhadas sobre CPUs.',
+    targets: ['windows'],
+  },
+  {
+    value: 'container',
+    label: 'Container metrics',
+    description: 'Métricas de containers Windows.',
+    targets: ['windows'],
+  },
+  {
+    value: 'diskdrive',
+    label: 'Diskdrive metrics',
+    description: 'Métricas de drives de disco.',
+    targets: ['windows'],
+  },
+  {
+    value: 'dfsr',
+    label: 'DFSR metrics',
+    description: 'Métricas do Distributed File System Replication.',
+    targets: ['windows'],
+  },
+  {
+    value: 'dhcp',
+    label: 'DHCP Server',
+    description: 'Métricas do servidor DHCP.',
+    targets: ['windows'],
+  },
+  {
+    value: 'dns',
+    label: 'DNS Server',
+    description: 'Métricas do servidor DNS.',
+    targets: ['windows'],
+  },
+  {
+    value: 'exchange',
+    label: 'Exchange metrics',
+    description: 'Métricas do Microsoft Exchange.',
+    targets: ['windows'],
+  },
+  {
+    value: 'filetime',
+    label: 'FileTime metrics',
+    description: 'Métricas de tempo de arquivo.',
+    targets: ['windows'],
+  },
+  {
+    value: 'fsrmquota',
+    label: 'FSRM Quotas',
+    description: 'Quotas do File Server Resource Manager.',
+    targets: ['windows'],
+  },
+  {
+    value: 'gpu',
+    label: 'GPU metrics',
+    description: 'Métricas de GPUs.',
+    targets: ['windows'],
+  },
+  {
+    value: 'hyperv',
+    label: 'Hyper-V hosts',
+    description: 'Métricas de hosts Hyper-V.',
+    targets: ['windows'],
+  },
+  {
+    value: 'iis',
+    label: 'IIS sites and applications',
+    description: 'Métricas de sites e aplicações IIS.',
+    targets: ['windows'],
+  },
+  {
+    value: 'license',
+    label: 'Windows license status',
+    description: 'Status da licença Windows.',
+    targets: ['windows'],
+  },
+  {
+    value: 'logical_disk',
+    label: 'Logical disks, disk I/O',
+    description: 'Discos lógicos e I/O de disco.',
+    targets: ['windows'],
+  },
+  {
+    value: 'memory',
+    label: 'Memory usage metrics',
+    description: 'Métricas de uso de memória.',
+    targets: ['windows'],
+  },
+  {
+    value: 'mscluster',
+    label: 'MSCluster metrics',
+    description: 'Métricas do Microsoft Cluster.',
+    targets: ['windows'],
+  },
+  {
+    value: 'msmq',
+    label: 'MSMQ queues',
+    description: 'Filas do Microsoft Message Queuing.',
+    targets: ['windows'],
+  },
+  {
+    value: 'mssql',
+    label: 'SQL Server Performance Objects',
+    description: 'Objetos de performance do SQL Server.',
+    targets: ['windows'],
+  },
+  {
+    value: 'netframework',
+    label: '.NET Framework metrics',
+    description: 'Métricas do .NET Framework.',
+    targets: ['windows'],
+  },
+  {
+    value: 'net',
+    label: 'Network interface I/O',
+    description: 'I/O de interfaces de rede.',
+    targets: ['windows'],
+  },
+  {
+    value: 'os',
+    label: 'OS metrics',
+    description: 'Métricas do sistema operacional (memória, processos, usuários).',
+    targets: ['windows'],
+  },
+  {
+    value: 'pagefile',
+    label: 'Pagefile metrics',
+    description: 'Métricas de arquivo de paginação.',
+    targets: ['windows'],
+  },
+  {
+    value: 'performancecounter',
+    label: 'Custom performance counter',
+    description: 'Contadores de performance customizados.',
+    targets: ['windows'],
+  },
+  {
+    value: 'physical_disk',
+    label: 'Physical disk metrics',
+    description: 'Métricas de discos físicos.',
+    targets: ['windows'],
+  },
+  {
+    value: 'printer',
+    label: 'Printer metrics',
+    description: 'Métricas de impressoras.',
+    targets: ['windows'],
+  },
+  {
+    value: 'process',
+    label: 'Per-process metrics',
+    description: 'Métricas por processo.',
+    targets: ['windows'],
+  },
+  {
+    value: 'remote_fx',
+    label: 'RemoteFX protocol (RDP)',
+    description: 'Métricas do protocolo RemoteFX (RDP).',
+    targets: ['windows'],
+  },
+  {
+    value: 'scheduled_task',
+    label: 'Scheduled Tasks metrics',
+    description: 'Métricas de tarefas agendadas.',
+    targets: ['windows'],
+  },
+  {
+    value: 'service',
+    label: 'Service state metrics',
+    description: 'Métricas de estado de serviços.',
+    targets: ['windows'],
+  },
+  {
+    value: 'smb',
+    label: 'SMB Server',
+    description: 'Métricas do servidor SMB.',
+    targets: ['windows'],
+  },
+  {
+    value: 'smbclient',
+    label: 'SMB Client',
+    description: 'Métricas do cliente SMB.',
+    targets: ['windows'],
+  },
+  {
+    value: 'smtp',
+    label: 'IIS SMTP Server',
+    description: 'Métricas do servidor SMTP IIS.',
+    targets: ['windows'],
+  },
+  {
+    value: 'system',
+    label: 'System calls',
+    description: 'Chamadas do sistema.',
+    targets: ['windows'],
+  },
+  {
+    value: 'tcp',
+    label: 'TCP connections',
+    description: 'Conexões TCP.',
+    targets: ['windows'],
+  },
+  {
+    value: 'terminal_services',
+    label: 'Terminal services (RDS)',
+    description: 'Serviços de terminal (RDS).',
+    targets: ['windows'],
+  },
+  {
+    value: 'textfile',
+    label: 'Read prometheus metrics from text file',
+    description: 'Lê métricas do Prometheus de arquivos de texto.',
+    targets: ['windows'],
+  },
+  {
+    value: 'time',
+    label: 'Windows Time Service',
+    description: 'Serviço de tempo do Windows.',
+    targets: ['windows'],
+  },
+  {
+    value: 'udp',
+    label: 'UDP connections',
+    description: 'Conexões UDP.',
+    targets: ['windows'],
+  },
+  {
+    value: 'update',
+    label: 'Windows Update Service',
+    description: 'Serviço de atualização do Windows.',
+    targets: ['windows'],
+  },
+  {
+    value: 'vmware',
+    label: 'VMware Guest agent',
+    description: 'Contadores de performance do agente convidado VMware.',
     targets: ['windows'],
   },
 ];
@@ -491,6 +755,12 @@ const Installer: React.FC = () => {
       keyPath: undefined,
     });
   }, [targetType, form]);
+
+  useEffect(() => {
+    // Definir Basic Auth baseado no sistema operacional
+    // Linux: habilitado por padrão, Windows: desabilitado por padrão
+    setUseBasicAuth(targetType === 'linux');
+  }, [targetType]);
 
   useEffect(() => {
     const isWindowsFallback = targetType === 'windows' && connectionMethod === 'fallback';
@@ -1394,7 +1664,7 @@ EOF"`,
       const extraCollectors = selectedCollectors
         .filter((collector) => collector !== 'wmi')
         .map((collector) => collector.replace(/_/g, ''));
-      const enabledCollectors = ['cpu', 'logical_disk', 'os', 'system'].concat(extraCollectors);
+      const enabledCollectors = ['cpu', 'cpu_info', 'logical_disk', 'memory', 'net', 'process', 'service', 'system'].concat(extraCollectors);
       if (selectedVersion === 'latest') {
         plan.push(
           '[WINRM] Detectar release: $Version = (Invoke-RestMethod -Uri "https://api.github.com/repos/prometheus-community/windows_exporter/releases/latest").tag_name',
@@ -1406,13 +1676,22 @@ EOF"`,
         `[WINRM] Validar WinRM: Test-WSMan -ComputerName ${host} -Port ${port} -Authentication Default`,
       );
       plan.push(
+        `[WINRM] Cleanup - Parar servico existente: Stop-Service -Name windows_exporter -ErrorAction SilentlyContinue`,
+      );
+      plan.push(
+        `[WINRM] Cleanup - Remover servico antigo: SC delete windows_exporter -ErrorAction SilentlyContinue`,
+      );
+      plan.push(
+        `[WINRM] Cleanup - Remover arquivos antigos: Remove-Item -Path 'C:\\Program Files\\windows_exporter' -Recurse -Force -ErrorAction SilentlyContinue`,
+      );
+      plan.push(
         `[WINRM] Garantir diretorio temporario: New-Item -ItemType Directory -Path 'C:\\Temp' -Force`,
       );
       plan.push(
         `[WINRM] Baixar instalador: Invoke-WebRequest -Uri "https://github.com/prometheus-community/windows_exporter/releases/download/${selectedVersion === 'latest' ? '$Version' : selectedVersion}/windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi" -OutFile "C:\\Temp\\windows_exporter.msi"`,
       );
       plan.push(
-        `[WINRM] Instalar via msiexec: Start-Process msiexec.exe -Wait -ArgumentList '/i C:\\Temp\\windows_exporter.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} LISTEN_PORT=${exporterPort} /qn'`,
+        `[WINRM] Instalar via msiexec: Start-Process msiexec.exe -Wait -ArgumentList '/i C:\\Temp\\windows_exporter.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} TEXTFILE_DIR="C:\\custom_metrics" /quiet'`,
       );
       plan.push(
         `[WINRM] Garantir inicializacao automatica: Set-Service -Name windows_exporter -StartupType Automatic`,
@@ -1427,7 +1706,7 @@ EOF"`,
       const extraCollectors = selectedCollectors
         .filter((collector) => collector !== 'wmi')
         .map((collector) => collector.replace(/_/g, ''));
-      const enabledCollectors = ['cpu', 'logical_disk', 'os', 'system'].concat(extraCollectors);
+      const enabledCollectors = ['cpu', 'cpu_info', 'logical_disk', 'memory', 'net', 'process', 'service', 'system'].concat(extraCollectors);
       if (selectedVersion === 'latest') {
         plan.push(
           '[WIN-SSH] Detectar release: $Version = (Invoke-RestMethod -Uri "https://api.github.com/repos/prometheus-community/windows_exporter/releases/latest").tag_name',
@@ -1439,10 +1718,19 @@ EOF"`,
         `[WIN-SSH] Criar diretorio temporario: ${sshPrefix} "powershell.exe -Command \\"New-Item -ItemType Directory -Path 'C:/Temp' -Force\\""`,
       );
       plan.push(
+        `[WIN-SSH] Cleanup - Parar servico existente: ${sshPrefix} "powershell.exe -Command \\"Stop-Service -Name windows_exporter -ErrorAction SilentlyContinue\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Cleanup - Remover servico antigo: ${sshPrefix} "powershell.exe -Command \\"SC delete windows_exporter\\""`,
+      );
+      plan.push(
+        `[WIN-SSH] Cleanup - Remover arquivos antigos: ${sshPrefix} "powershell.exe -Command \\"Remove-Item -Path 'C:/Program Files/windows_exporter' -Recurse -Force -ErrorAction SilentlyContinue\\""`,
+      );
+      plan.push(
         `[WIN-SSH] Copiar instalador via SCP: scp -P ${port} windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi ${username}@${host}:"C:/Temp/"`,
       );
       plan.push(
-        `[WIN-SSH] Instalar exporter: ${sshPrefix} "powershell.exe -Command \\"Start-Process msiexec.exe -ArgumentList '/i C:\\\\Temp\\\\windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} LISTEN_PORT=${exporterPort} /qn' -Wait\\""`,
+        `[WIN-SSH] Instalar exporter: ${sshPrefix} "powershell.exe -Command \\"Start-Process msiexec.exe -ArgumentList '/i C:\\\\Temp\\\\windows_exporter-${selectedVersion === 'latest' ? '$Version' : selectedVersion}-amd64.msi ENABLED_COLLECTORS=${enabledCollectors.join(',')} TEXTFILE_DIR=\\"C:\\\\custom_metrics\\" /quiet' -Wait\\""`,
       );
       plan.push(
         `[WIN-SSH] Abrir firewall: ${sshPrefix} "powershell.exe -Command \\"New-NetFirewallRule -DisplayName 'windows_exporter ${exporterPort}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${exporterPort}\\""`,
@@ -1803,7 +2091,7 @@ EOF"`,
       if (filtered.length > 0) {
         return filtered;
       }
-      return targetType === 'windows' ? ['wmi'] : ['node'];
+      return targetType === 'windows' ? ['cpu', 'cpu_info', 'logical_disk', 'memory', 'net', 'process', 'service', 'system', 'diskdrive', 'license', 'os', 'physical_disk', 'printer'] : ['node'];
     });
   }, [availableCollectorOptions, targetType]);
 
@@ -2115,33 +2403,34 @@ EOF"`,
                         label="Chave privada SSH"
                         rules={[{ required: !privateKeyFile, message: 'Faça upload da chave ou informe o caminho' }]}
                       >
-                        <Input 
-                          placeholder={keyPathPlaceholder} 
-                          allowClear
-                          value={privateKeyFile || undefined}
-                          disabled={!!privateKeyFile}
-                          addonAfter={
-                            <Upload
-                              beforeUpload={(file) => {
-                                const reader = new FileReader();
-                                reader.onload = () => {
-                                  // TODO: Enviar para backend e receber caminho
-                                  setPrivateKeyFile(`/tmp/${file.name}`);
-                                  form.setFieldsValue({ keyPath: `/tmp/${file.name}` });
-                                  message.success(`Chave ${file.name} carregada`);
-                                };
-                                reader.readAsText(file);
-                                return false; // Prevenir upload automático
-                              }}
-                              showUploadList={false}
-                              maxCount={1}
-                            >
-                              <Button icon={<UploadOutlined />} size="small">
-                                Upload
-                              </Button>
-                            </Upload>
-                          }
-                        />
+                        <Space.Compact style={{ width: '100%' }}>
+                          <Input
+                            placeholder={keyPathPlaceholder}
+                            allowClear
+                            value={privateKeyFile || undefined}
+                            disabled={!!privateKeyFile}
+                            style={{ flex: 1 }}
+                          />
+                          <Upload
+                            beforeUpload={(file) => {
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                // TODO: Enviar para backend e receber caminho
+                                setPrivateKeyFile(`/tmp/${file.name}`);
+                                form.setFieldsValue({ keyPath: `/tmp/${file.name}` });
+                                message.success(`Chave ${file.name} carregada`);
+                              };
+                              reader.readAsText(file);
+                              return false; // Prevenir upload automático
+                            }}
+                            showUploadList={false}
+                            maxCount={1}
+                          >
+                            <Button icon={<UploadOutlined />}>
+                              Upload
+                            </Button>
+                          </Upload>
+                        </Space.Compact>
                       </Form.Item>
                     </Col>
                   </Row>
@@ -2271,13 +2560,86 @@ EOF"`,
                 // Se IP já existe no Consul: NÃO mostrar seletor nem switch
                 if (hasIPDuplicate) {
                   return (
-                    <Alert
-                      message="ℹ️ Nó Consul não selecionável"
-                      description="Como o IP/Host já existe no Consul, não é necessário selecionar um nó ou registrar novamente."
-                      type="info"
-                      showIcon
-                      style={{ marginTop: 16 }}
-                    />
+                    <>
+                      <Alert
+                        message="ℹ️ Nó Consul não selecionável"
+                        description="Como o IP/Host já existe no Consul, não é necessário selecionar um nó ou registrar novamente."
+                        type="info"
+                        showIcon
+                        style={{ marginTop: 16 }}
+                      />
+                      
+                      {/* Basic Auth para Windows - logo após o alerta de IP duplicado */}
+                      {targetType === 'windows' && (
+                        <Card 
+                          title="Autenticação Basic Auth (Windows Exporter)" 
+                          size="small" 
+                          variant="borderless" 
+                          style={{ background: '#fafafa', marginTop: 16 }}
+                        >
+                          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                            <Alert
+                              message="Segurança das Métricas"
+                              description="Basic Auth protege o endpoint /metrics do Windows Exporter na porta 9182. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
+                              type="info"
+                              showIcon
+                            />
+                            <Space style={{ width: '100%' }}>
+                              <Text strong>Habilitar Basic Auth:</Text>
+                              <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
+                            </Space>
+                            
+                            {useBasicAuth && (
+                              <Row gutter={16}>
+                                <Col xs={24} md={12}>
+                                  <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                    <Text>Usuário:</Text>
+                                    <Input
+                                      value={basicAuthUser}
+                                      onChange={(e) => setBasicAuthUser(e.target.value)}
+                                      placeholder="prometheus"
+                                      disabled={!useBasicAuth}
+                                    />
+                                  </Space>
+                                </Col>
+                                <Col xs={24} md={12}>
+                                  <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                    <Text>Senha:</Text>
+                                    <Input.Password
+                                      value={basicAuthPassword}
+                                      onChange={(e) => setBasicAuthPassword(e.target.value)}
+                                      placeholder="Senha forte para acesso às métricas"
+                                      disabled={!useBasicAuth}
+                                    />
+                                  </Space>
+                                </Col>
+                              </Row>
+                            )}
+                          </Space>
+                        </Card>
+                      )}
+
+                      {/* Aviso de instalação existente para Windows - logo após Basic Auth */}
+                      {existingInstallation?.detected && (
+                        <Alert
+                          message="Instalação Existente Detectada"
+                          description={
+                            <Space direction="vertical" size="small">
+                              <Text>Foi detectada uma instalação existente do exporter neste host:</Text>
+                              {existingInstallation.portOpen && <Text>• Porta 9182 está em uso</Text>}
+                              {existingInstallation.serviceRunning && <Text>• Serviço está em execução</Text>}
+                              {existingInstallation.hasConfig && <Text>• Configurações existentes encontradas</Text>}
+                              <Text strong style={{ marginTop: 8, display: 'block' }}>
+                                Prosseguir irá sobrescrever a instalação atual. Use esta opção se deseja atualizar configurações (ex: adicionar Basic Auth).
+                              </Text>
+                            </Space>
+                          }
+                          type="warning"
+                          showIcon
+                          style={{ marginTop: 16 }}
+                        />
+                      )}
+                    </>
                   );
                 }
                 
@@ -2358,6 +2720,77 @@ EOF"`,
                         style={{ marginTop: 16 }}
                       />
                     )}
+                    
+                    {/* Basic Auth para Windows - logo após os alertas */}
+                    {targetType === 'windows' && (
+                      <Card 
+                        title="Autenticação Basic Auth (Windows Exporter)" 
+                        size="small" 
+                        variant="borderless" 
+                        style={{ background: '#fafafa', marginTop: 16 }}
+                      >
+                        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                          <Alert
+                            message="Segurança das Métricas"
+                            description="Basic Auth protege o endpoint /metrics do Windows Exporter na porta 9182. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
+                            type="info"
+                            showIcon
+                          />
+                          <Space style={{ width: '100%' }}>
+                            <Text strong>Habilitar Basic Auth:</Text>
+                            <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
+                          </Space>
+                          
+                          {useBasicAuth && (
+                            <Row gutter={16}>
+                              <Col xs={24} md={12}>
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text>Usuário:</Text>
+                                  <Input
+                                    value={basicAuthUser}
+                                    onChange={(e) => setBasicAuthUser(e.target.value)}
+                                    placeholder="prometheus"
+                                    disabled={!useBasicAuth}
+                                  />
+                                </Space>
+                              </Col>
+                              <Col xs={24} md={12}>
+                                <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                                  <Text>Senha:</Text>
+                                  <Input.Password
+                                    value={basicAuthPassword}
+                                    onChange={(e) => setBasicAuthPassword(e.target.value)}
+                                    placeholder="Senha forte para acesso às métricas"
+                                    disabled={!useBasicAuth}
+                                  />
+                                </Space>
+                              </Col>
+                            </Row>
+                          )}
+                        </Space>
+                      </Card>
+                    )}
+
+                    {/* Aviso de instalação existente para Windows - logo após Basic Auth */}
+                    {existingInstallation?.detected && (
+                      <Alert
+                        message="Instalação Existente Detectada"
+                        description={
+                          <Space direction="vertical" size="small">
+                            <Text>Foi detectada uma instalação existente do exporter neste host:</Text>
+                            {existingInstallation.portOpen && <Text>• Porta 9182 está em uso</Text>}
+                            {existingInstallation.serviceRunning && <Text>• Serviço está em execução</Text>}
+                            {existingInstallation.hasConfig && <Text>• Configurações existentes encontradas</Text>}
+                            <Text strong style={{ marginTop: 8, display: 'block' }}>
+                              Prosseguir irá sobrescrever a instalação atual. Use esta opção se deseja atualizar configurações (ex: adicionar Basic Auth).
+                            </Text>
+                          </Space>
+                        }
+                        type="warning"
+                        showIcon
+                        style={{ marginTop: 16 }}
+                      />
+                    )}
                   </>
                 );
               })()}
@@ -2400,81 +2833,6 @@ EOF"`,
           </Card>
         </Col>
       </Row>
-
-      <Row gutter={16}>
-        <Col xs={24}>
-          <Card 
-            title={`Autenticação Basic Auth (${targetType === 'linux' ? 'Node Exporter' : 'Windows Exporter'})`} 
-            size="small" 
-            variant="borderless" 
-            style={{ background: '#fafafa' }}
-          >
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Alert
-                message="Segurança das Métricas"
-                description={
-                  targetType === 'linux' 
-                    ? "Basic Auth protege o endpoint /metrics do Node Exporter. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
-                    : "Basic Auth protege o endpoint /metrics do Windows Exporter na porta 9182. O Prometheus será configurado automaticamente no Consul com as credenciais fornecidas."
-                }
-                type="info"
-                showIcon
-              />
-              <Space style={{ width: '100%' }}>
-                <Text strong>Habilitar Basic Auth:</Text>
-                <Switch checked={useBasicAuth} onChange={setUseBasicAuth} />
-              </Space>
-              
-              {useBasicAuth && (
-                <Row gutter={16}>
-                  <Col xs={24} md={12}>
-                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                      <Text>Usuário:</Text>
-                      <Input
-                        value={basicAuthUser}
-                        onChange={(e) => setBasicAuthUser(e.target.value)}
-                        placeholder="prometheus"
-                        disabled={!useBasicAuth}
-                      />
-                    </Space>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                      <Text>Senha:</Text>
-                      <Input.Password
-                        value={basicAuthPassword}
-                        onChange={(e) => setBasicAuthPassword(e.target.value)}
-                        placeholder="Senha forte para acesso às métricas"
-                        disabled={!useBasicAuth}
-                      />
-                    </Space>
-                  </Col>
-                </Row>
-              )}
-            </Space>
-          </Card>
-        </Col>
-      </Row>
-
-      {existingInstallation?.detected && (
-        <Alert
-          message="Instalação Existente Detectada"
-          description={
-            <Space direction="vertical" size="small">
-              <Text>Foi detectada uma instalação existente do exporter neste host:</Text>
-              {existingInstallation.portOpen && <Text>• Porta {targetType === 'windows' ? '9182' : '9100'} está em uso</Text>}
-              {existingInstallation.serviceRunning && <Text>• Serviço está em execução</Text>}
-              {existingInstallation.hasConfig && <Text>• Configurações existentes encontradas</Text>}
-              <Text strong style={{ marginTop: 8, display: 'block' }}>
-                Prosseguir irá sobrescrever a instalação atual. Use esta opção se deseja atualizar configurações (ex: adicionar Basic Auth).
-              </Text>
-            </Space>
-          }
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
 
       <Space>
         <Button onClick={() => setCurrentStep(0)}>Voltar</Button>

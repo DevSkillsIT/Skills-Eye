@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Select, Badge, Spin, message } from 'antd';
+import { Select, Badge, Spin, App } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -42,6 +42,7 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
   disabled = false,
   showAllNodesOption = false,
 }) => {
+  const { message } = App.useApp();
   const [nodes, setNodes] = useState<ConsulNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | undefined>(value);
@@ -60,7 +61,7 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
       const response = await axios.get<{ success: boolean; data: ConsulNode[]; main_server: string }>(
         `${API_URL}/nodes`,
         {
-          timeout: 5000, // 5 segundos
+          timeout: 60000, // 60 segundos - backend precisa tempo no cold start + cache de 30s
         }
       );
 
@@ -90,7 +91,17 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
       }
     } catch (error: any) {
       console.error('Erro ao carregar nós do Consul:', error);
-      message.error('Erro ao carregar nós do Consul');
+
+      // Mensagem de erro mais detalhada
+      if (error.code === 'ECONNABORTED') {
+        message.error('Timeout ao carregar nós - verifique se o backend está respondendo');
+      } else if (error.response) {
+        message.error(`Erro ao carregar nós: ${error.response.status} - ${error.response.statusText}`);
+      } else if (error.request) {
+        message.error('Erro ao carregar nós - backend não está respondendo');
+      } else {
+        message.error('Erro ao carregar nós do Consul');
+      }
     } finally {
       setLoading(false);
     }

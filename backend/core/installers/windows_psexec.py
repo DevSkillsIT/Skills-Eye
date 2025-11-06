@@ -644,6 +644,9 @@ basic_auth_users:
 
         url = f"https://github.com/prometheus-community/windows_exporter/releases/download/v{version}/windows_exporter-{version}-amd64.msi"
 
+        # DEBUG: Antes do download
+        await self.log("🔍 [DEBUG] Antes do download - URL preparada", "info")
+
         # Etapa 1 - Download do instalador
         await self.log("Baixando instalador do windows_exporter...", "info")
         download_cmd = (
@@ -673,49 +676,168 @@ basic_auth_users:
             )
         await self.log("Instalador baixado com sucesso em %TEMP%\\windows_exporter.msi", "info")
 
+        # DEBUG: Após download, antes da instalação
+        await self.log("🔍 [DEBUG] Download concluído, iniciando instalação", "info")
+
         await self.progress(30, 100, "Executando instalação/atualização...")
 
-        # Etapa 2 - Executar MSIEXEC com flags de reinstalação forçada
-        await self.log("Executando msiexec (modo: install/upgrade)...", "info")
-        install_cmd = (
+        # DEBUG: Confirmar que chegou na etapa 2
+        await self.log("🔍 [DEBUG] Iniciando etapa 2 - verificação de instalação existente", "info")
+
+        # Etapa 2 - Verificar instalação existente e decidir estratégia
+        await self.log("Verificando instalação existente do windows_exporter...", "info")
+        
+        check_installed_cmd = (
             "$ErrorActionPreference = 'Stop';"
-            "Write-Host 'INSTALL_START';"
-            "$installer = Join-Path $env:TEMP 'windows_exporter.msi';"
-            f"$collectors = '{collectors_str}';"
-            "$logPath = Join-Path $env:TEMP 'windows_exporter_install.log';"
-            "if (-not (Test-Path $installer)) { Write-Host 'INSTALLER_NOT_FOUND'; exit 2 };"
-            # REINSTALL=ALL REINSTALLMODE=vomus força sobrescrita completa
-            "$arguments = \"/i `\"$installer`\" ENABLED_COLLECTORS=$collectors REINSTALL=ALL REINSTALLMODE=vomus /quiet /norestart /log `\"$logPath`\"\";"
-            "Write-Host \"MSIEXEC_CMD: msiexec.exe $arguments\";"
-            "$process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait -NoNewWindow;"
-            "$exitCode = $process.ExitCode;"
-            "Write-Host \"MSIEXEC_EXITCODE:$exitCode\";"
-            "if ($exitCode -eq 0) { Write-Host 'INSTALL_SUCCESS'; }"
-            "elseif ($exitCode -eq 1603) { Write-Host 'INSTALL_FAILED_1603'; }"
-            "elseif ($exitCode -eq 1618) { Write-Host 'INSTALL_IN_PROGRESS'; }"
-            "else { Write-Host \"INSTALL_FAILED:$exitCode\"; };"
-            "if (Test-Path $logPath) { Get-Content $logPath -Tail 15 | ForEach-Object { Write-Host \"LOG: $_\" }; };"
-            "exit $exitCode;"
+            "Write-Host 'CHECK_INSTALLED_START';"
+            "$productCode = '{13C1979E-FEE4-4895-A029-B7814AAA1E0E}';"  # Windows Exporter MSI Product Code
+            "$installed = Get-WmiObject -Class Win32_Product -Filter \"IdentifyingNumber='$productCode'\" -ErrorAction SilentlyContinue;"
+            "if ($installed) {"
+            "    Write-Host \"PRODUCT_INSTALLED: $($installed.Name) v$($installed.Version)\";"
+            f"    $currentVersion = '{version}';"
+            "    if ([version]$installed.Version -lt [version]$currentVersion) {"
+            "        Write-Host 'STRATEGY: UNINSTALL_THEN_INSTALL';"
+            "        Write-Host \"VERSION_COMPARISON: $($installed.Version) < $currentVersion\";"
+            "    } elseif ([version]$installed.Version -eq [version]$currentVersion) {"
+            "        Write-Host 'STRATEGY: MODIFY_EXISTING';"
+            "        Write-Host \"VERSION_COMPARISON: $($installed.Version) = $currentVersion\";"
+            "    } else {"
+            "        Write-Host 'STRATEGY: DOWNGRADE_EXISTING';"
+            "        Write-Host \"VERSION_COMPARISON: $($installed.Version) > $currentVersion\";"
+            "    };"
+            "} else {"
+            "    Write-Host 'PRODUCT_NOT_INSTALLED';"
+            "    Write-Host 'STRATEGY: FRESH_INSTALL';"
+            "};"
         )
+        
+        exit_code, output, error = await self.execute_command(check_installed_cmd, powershell=True)
+        
+        strategy = "FRESH_INSTALL"
+        current_installed_version = None
+        
+        if output:
+            for line in output.splitlines():
+                if "PRODUCT_INSTALLED:" in line:
+                    await self.log(f"✅ {line}", "info")
+                    # Extrair versão do log
+                    version_match = line.split("v")[-1] if "v" in line else None
+                    if version_match:
+                        current_installed_version = version_match
+                elif "PRODUCT_NOT_INSTALLED" in line:
+                    await self.log("ℹ️ Produto não instalado - fará instalação completa", "info")
+                elif "STRATEGY:" in line:
+                    strategy = line.split(":")[1]
+                    await self.log(f"📋 Estratégia: {strategy}", "info")
+                elif "VERSION_COMPARISON:" in line:
+                    await self.log(f"🔄 {line}", "info")
+        
+        # Etapa 3 - Executar estratégia apropriada
+        if strategy == "UNINSTALL_THEN_INSTALL":
+            await self.log("🔄 Desinstalando versão antiga antes de instalar nova...", "info")
+            
+            uninstall_cmd = (
+                "$ErrorActionPreference = 'Stop';"
+                "Write-Host 'UNINSTALL_START';"
+                "$productCode = '{13C1979E-FEE4-4895-A029-B7814AAA1E0E}';"
+                "$uninstallLog = Join-Path $env:TEMP 'windows_exporter_uninstall.log';"
+                "$arguments = @('/x', $productCode, '/quiet', '/norestart', '/log', $uninstallLog);"
+                "Write-Host \"MSIEXEC_CMD: msiexec.exe $arguments\";"
+                "$process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait -NoNewWindow;"
+                "$exitCode = $process.ExitCode;"
+                "Write-Host \"MSIEXEC_EXITCODE:$exitCode\";"
+                "if ($exitCode -eq 0) { Write-Host 'UNINSTALL_SUCCESS'; }"
+                "elseif ($exitCode -eq 1605) { Write-Host 'UNINSTALL_NOT_INSTALLED'; }"  # Produto não instalado
+                "else { Write-Host \"UNINSTALL_FAILED:$exitCode\"; };"
+                "if (Test-Path $uninstallLog) { Get-Content $uninstallLog -Tail 10 | ForEach-Object { Write-Host \"LOG: $_\" }; };"
+                "exit $exitCode;"
+            )
+            
+            exit_code, output, error = await self.execute_command(uninstall_cmd, powershell=True)
+            
+            if output:
+                for line in output.splitlines():
+                    if "UNINSTALL_SUCCESS" in line:
+                        await self.log("✅ Desinstalação da versão antiga concluída", "success")
+                    elif "UNINSTALL_NOT_INSTALLED" in line:
+                        await self.log("ℹ️ Produto não estava instalado", "info")
+                    elif "UNINSTALL_FAILED" in line:
+                        await self.log(f"⚠️ Desinstalação falhou: {line}", "warning")
+                    elif line.startswith("LOG:"):
+                        await self.log(f"  {line}", "info")
+                    elif "MSIEXEC_CMD" in line or "MSIEXEC_EXITCODE" in line:
+                        await self.log(f"  {line}", "info")
+            
+            # Se desinstalação falhou mas produto não existe, continua
+            if exit_code != 0 and "UNINSTALL_NOT_INSTALLED" not in (output or ""):
+                await self.log("⚠️ Desinstalação falhou, tentando instalar mesmo assim", "warning")
+        
+        # Etapa 4 - Instalar/modificar conforme estratégia
+        await self.log(f"Executando {'modificação' if strategy == 'MODIFY_EXISTING' else 'instalação'}...", "info")
+        
+        if strategy == "MODIFY_EXISTING":
+            # Produto instalado com mesma versão - modificar propriedades
+            install_cmd = (
+                "$ErrorActionPreference = 'Stop';"
+                "Write-Host 'MODIFY_START';"
+                "$installer = Join-Path $env:TEMP 'windows_exporter.msi';"
+                f"$collectors = '{collectors_str}';"
+                "$logPath = Join-Path $env:TEMP 'windows_exporter_modify.log';"
+                "if (-not (Test-Path $installer)) { Write-Host 'INSTALLER_NOT_FOUND'; exit 2 };"
+                "$arguments = \"/c `\"$installer`\" ENABLED_COLLECTORS=$collectors /quiet /norestart /log `\"$logPath`\"\";"
+                "Write-Host \"MSIEXEC_CMD: msiexec.exe $arguments\";"
+                "$process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait -NoNewWindow;"
+                "$exitCode = $process.ExitCode;"
+                "Write-Host \"MSIEXEC_EXITCODE:$exitCode\";"
+                "if ($exitCode -eq 0) { Write-Host 'MODIFY_SUCCESS'; }"
+                "elseif ($exitCode -eq 1603) { Write-Host 'MODIFY_FAILED_1603'; }"
+                "elseif ($exitCode -eq 1618) { Write-Host 'MODIFY_IN_PROGRESS'; }"
+                "else { Write-Host \"MODIFY_FAILED:$exitCode\"; };"
+                "if (Test-Path $logPath) { Get-Content $logPath -Tail 15 | ForEach-Object { Write-Host \"LOG: $_\" }; };"
+                "exit $exitCode;"
+            )
+        else:
+            # Instalação nova ou após desinstalação
+            install_cmd = (
+                "$ErrorActionPreference = 'Stop';"
+                "Write-Host 'INSTALL_START';"
+                "$installer = Join-Path $env:TEMP 'windows_exporter.msi';"
+                f"$collectors = '{collectors_str}';"
+                "$logPath = Join-Path $env:TEMP 'windows_exporter_install.log';"
+                "if (-not (Test-Path $installer)) { Write-Host 'INSTALLER_NOT_FOUND'; exit 2 };"
+                "$arguments = \"/i `\"$installer`\" ENABLED_COLLECTORS=$collectors /quiet /norestart /log `\"$logPath`\"\";"
+                "Write-Host \"MSIEXEC_CMD: msiexec.exe $arguments\";"
+                "$process = Start-Process msiexec.exe -ArgumentList $arguments -PassThru -Wait -NoNewWindow;"
+                "$exitCode = $process.ExitCode;"
+                "Write-Host \"MSIEXEC_EXITCODE:$exitCode\";"
+                "if ($exitCode -eq 0) { Write-Host 'INSTALL_SUCCESS'; }"
+                "elseif ($exitCode -eq 1603) { Write-Host 'INSTALL_FAILED_1603'; }"
+                "elseif ($exitCode -eq 1618) { Write-Host 'INSTALL_IN_PROGRESS'; }"
+                "else { Write-Host \"INSTALL_FAILED:$exitCode\"; };"
+                "if (Test-Path $logPath) { Get-Content $logPath -Tail 15 | ForEach-Object { Write-Host \"LOG: $_\" }; };"
+                "exit $exitCode;"
+            )
 
         exit_code, output, error = await self.execute_command(install_cmd, powershell=True)
         
         print(f"[DEBUG 1] execute_command retornou: exit_code={exit_code}, output_len={len(output) if output else 0}")
         await self.log(f"🔍 [DEBUG 1] execute_command retornou: exit_code={exit_code}, output_len={len(output) if output else 0}", "info")
         
-        # Log instalação
+        # Log instalação/modificação
         if output:
             print(f"[DEBUG 2] Processando {len(output.splitlines())} linhas de output")
             await self.log(f"🔍 [DEBUG 2] Processando {len(output.splitlines())} linhas de output", "info")
             for line in output.splitlines():
                 if line.strip():
-                    if "INSTALL_SUCCESS" in line:
-                        await self.log("✅ Windows Exporter instalado com sucesso", "success")
-                    elif "INSTALL_FAILED" in line or "MSIEXEC_EXITCODE:1603" in line:
+                    if "MODIFY_SUCCESS" in line or "INSTALL_SUCCESS" in line:
+                        await self.log("✅ Windows Exporter instalado/modificado com sucesso", "success")
+                    elif "MODIFY_FAILED" in line or "INSTALL_FAILED" in line or "MSIEXEC_EXITCODE:1603" in line:
                         await self.log(f"❌ {line}", "error")
                     elif line.startswith("LOG:"):
                         await self.log(f"  {line}", "info")
                     elif "MSIEXEC_CMD" in line or "MSIEXEC_EXITCODE" in line:
+                        await self.log(f"  {line}", "info")
+                    elif "PRODUCT_INSTALLED:" in line or "PRODUCT_NOT_INSTALLED" in line or "STRATEGY:" in line or "VERSION_COMPARISON:" in line:
                         await self.log(f"  {line}", "info")
         
         print(f"[DEBUG 3] Saiu do loop de output")
@@ -937,7 +1059,8 @@ basic_auth_users:
             )
 
         await self.progress(90, 100, "Finalizando...")
-        await self.log(f"Windows Exporter v{version} instalado com sucesso!", "success")
+        operation_type = "modificado" if strategy == "MODIFY_EXISTING" else "instalado"
+        await self.log(f"Windows Exporter v{version} {operation_type} com sucesso!", "success")
         return True
 
     def _classify_install_failure(self, combined_text: str) -> Tuple[str, str, str]:

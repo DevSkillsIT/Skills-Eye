@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
+import { loadNamingConfig } from './utils/namingUtils';
+import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -14,7 +16,6 @@ import {
   AppstoreAddOutlined,
   FolderOutlined,
   HistoryOutlined,
-  FileTextOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 import Dashboard from './pages/Dashboard';
@@ -30,10 +31,19 @@ import BlackboxGroups from './pages/BlackboxGroups';
 import AuditLog from './pages/AuditLog';
 import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
-import TestMonitoringTypes from './pages/TestMonitoringTypes';
+import MonitoringTypes from './pages/MonitoringTypes';
+import ReferenceValues from './pages/ReferenceValues';
+import Settings from './pages/Settings';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
+
+  // Carregar configuração de naming multi-site do backend
+  useEffect(() => {
+    loadNamingConfig().catch((error) => {
+      console.warn('[App] Erro ao carregar naming config:', error);
+    });
+  }, []);
 
   const menuItems = [
     {
@@ -102,9 +112,19 @@ const App: React.FC = () => {
       icon: <ToolOutlined />,
     },
     {
-      path: '/test-monitoring',
-      name: '🧪 TESTE: Config-Driven',
-      icon: <FileTextOutlined />,
+      path: '/monitoring-types',
+      name: 'Tipos de Monitoramento',
+      icon: <DatabaseOutlined />,
+    },
+    {
+      path: '/reference-values',
+      name: 'Valores de Referência',
+      icon: <DatabaseOutlined />,
+    },
+    {
+      path: '/settings',
+      name: 'Configurações',
+      icon: <SettingOutlined />,
     },
   ];
 
@@ -117,6 +137,7 @@ const App: React.FC = () => {
         }}
       >
         <AntdApp>
+        <MetadataFieldsProvider>
         <ProLayout
           title="Consul Manager"
           fixedHeader
@@ -151,9 +172,12 @@ const App: React.FC = () => {
             <Route path="/metadata-fields" element={<MetadataFields />} />
             <Route path="/audit-log" element={<AuditLog />} />
             <Route path="/installer" element={<Installer />} />
-            <Route path="/test-monitoring" element={<TestMonitoringTypes />} />
+            <Route path="/monitoring-types" element={<MonitoringTypes />} />
+            <Route path="/reference-values" element={<ReferenceValues />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </ProLayout>
+        </MetadataFieldsProvider>
         </AntdApp>
       </ConfigProvider>
     </BrowserRouter>

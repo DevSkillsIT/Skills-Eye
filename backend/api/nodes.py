@@ -2,37 +2,66 @@
 API endpoints para gerenciamento de nós
 """
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict
+from typing import List, Dict, Optional
 from core.consul_manager import ConsulManager
 from core.config import Config
+import asyncio
+import time
 
 router = APIRouter()
+
+# Cache simples para evitar timeouts no cold start
+_nodes_cache: Optional[Dict] = None
+_nodes_cache_time: float = 0
+NODES_CACHE_TTL = 30  # 30 segundos
 
 @router.get("/", include_in_schema=True)
 @router.get("")
 async def get_nodes():
-    """Retorna todos os nós do cluster"""
+    """Retorna todos os nós do cluster com cache de 30s"""
+    global _nodes_cache, _nodes_cache_time
+
+    # Verificar se cache está válido
+    current_time = time.time()
+    if _nodes_cache and (current_time - _nodes_cache_time) < NODES_CACHE_TTL:
+        return _nodes_cache
+
     try:
         consul = ConsulManager()
         members = await consul.get_members()
 
-        # Enriquecer com informações adicionais
-        for member in members:
-            # Testar conectividade
+        # OTIMIZAÇÃO: Enriquecer em paralelo usando asyncio.gather para evitar timeouts
+        async def get_service_count(member: dict) -> dict:
+            """Conta serviços de um nó específico com timeout de 5s"""
             member["services_count"] = 0
             try:
                 temp_consul = ConsulManager(host=member["addr"])
-                services = await temp_consul.get_services()
+                # Timeout individual de 5s por nó (aumentado de 3s)
+                services = await asyncio.wait_for(
+                    temp_consul.get_services(),
+                    timeout=5.0
+                )
                 member["services_count"] = len(services)
-            except:
+            except Exception as e:
+                # Silencioso - se falhar, deixa services_count = 0
                 pass
+            return member
 
-        return {
+        # Executar todas as requisições em paralelo
+        enriched_members = await asyncio.gather(*[get_service_count(m) for m in members])
+
+        result = {
             "success": True,
-            "data": members,
-            "total": len(members),
+            "data": enriched_members,
+            "total": len(enriched_members),
             "main_server": Config.MAIN_SERVER
         }
+
+        # Atualizar cache
+        _nodes_cache = result
+        _nodes_cache_time = current_time
+
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

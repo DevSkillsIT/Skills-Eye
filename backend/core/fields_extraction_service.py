@@ -52,30 +52,67 @@ class FieldsExtractionService:
         """
         self.consul_manager = consul_manager
 
-        # Importar metadata_loader
-        from core.metadata_loader import metadata_loader
-        self.metadata_loader = metadata_loader
-
         # Cache de campos obrigatórios e dashboard
         self._required_fields = None
         self._dashboard_fields = None
 
     @property
     def REQUIRED_FIELDS(self) -> set:
-        """Campos obrigatórios (carregados dinamicamente do JSON)"""
+        """
+        Campos obrigatórios extraídos do Prometheus.
+
+        Busca do Consul KV (skills/cm/metadata/fields)
+        Campos são extraídos dinamicamente do prometheus.yml via SSH
+        """
         if self._required_fields is None:
-            self._required_fields = set(self.metadata_loader.get_required_fields())
+            try:
+                from core.kv_manager import KVManager
+                import asyncio
+
+                kv = KVManager()
+                fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+
+                if fields_data and 'fields' in fields_data:
+                    required = [
+                        field['name']
+                        for field in fields_data['fields']
+                        if field.get('required', False)
+                    ]
+                    self._required_fields = set(required)
+                else:
+                    self._required_fields = set()
+            except Exception:
+                self._required_fields = set()
+
         return self._required_fields
 
     @property
     def DASHBOARD_FIELDS(self) -> set:
-        """Campos do dashboard (carregados dinamicamente do JSON)"""
+        """
+        Campos do dashboard extraídos do Prometheus.
+
+        Busca do Consul KV campos com show_in_dashboard=True
+        """
         if self._dashboard_fields is None:
-            field_names = self.metadata_loader.get_field_names(
-                enabled=True,
-                show_in_dashboard=True
-            )
-            self._dashboard_fields = set(field_names)
+            try:
+                from core.kv_manager import KVManager
+                import asyncio
+
+                kv = KVManager()
+                fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+
+                if fields_data and 'fields' in fields_data:
+                    dashboard = [
+                        field['name']
+                        for field in fields_data['fields']
+                        if field.get('show_in_dashboard', False)
+                    ]
+                    self._dashboard_fields = set(dashboard)
+                else:
+                    self._dashboard_fields = set()
+            except Exception:
+                self._dashboard_fields = set()
+
         return self._dashboard_fields
 
     def extract_fields_from_jobs(self, jobs: List[Dict[str, Any]]) -> List[MetadataField]:

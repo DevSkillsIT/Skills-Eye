@@ -7,8 +7,8 @@
     "Usado pelo frontend em todas as páginas (Services, Exporters, Installer)",
     "Fonte única da verdade para campos metadata"
   ],
-  "version": "2.0.0",
-  "last_updated": "2025-11-01T03:02:29.629800Z",
+  "version": "2.1.0",
+  "last_updated": "2025-11-05T02:00:00.000000Z",
   "fields": [
     {
       "name": "cservice",
@@ -24,7 +24,18 @@
       "order": 1,
       "category": "CFTV",
       "editable": true,
-      "validation_regex": null
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Nome do serviço",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
     },
     {
       "name": "vendor",
@@ -83,10 +94,164 @@
       "validation": {}
     },
     {
+      "name": "cluster",
+      "display_name": "Cluster",
+      "description": "Cluster ou instância Prometheus (usado em external_labels)",
+      "source_label": "__meta_consul_service_metadata_cluster",
+      "field_type": "select",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": true,
+      "show_in_form": true,
+      "options": [
+        "palmas-master",
+        "rio-rmd-ldc",
+        "dtc-remote-skills",
+        "genesis-dtc"
+      ],
+      "order": 3.1,
+      "category": "infrastructure",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Selecione cluster",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "datacenter",
+      "display_name": "Datacenter",
+      "description": "Datacenter ou localização física (usado em external_labels)",
+      "source_label": "__meta_consul_service_metadata_datacenter",
+      "field_type": "select",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": true,
+      "show_in_form": true,
+      "options": [
+        "palmas",
+        "rio",
+        "genesis-dtc",
+        "eua"
+      ],
+      "order": 3.2,
+      "category": "infrastructure",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Selecione datacenter",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 100
+      }
+    },
+    {
+      "name": "environment",
+      "display_name": "Environment",
+      "description": "Ambiente de execução (production, staging, development)",
+      "source_label": "__meta_consul_service_metadata_environment",
+      "field_type": "select",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": true,
+      "show_in_form": true,
+      "options": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "order": 3.3,
+      "category": "infrastructure",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Selecione environment",
+      "default_value": "production",
+      "validation": {
+        "min_length": 1,
+        "max_length": 50
+      }
+    },
+    {
+      "name": "site",
+      "display_name": "Site",
+      "description": "Site físico do serviço (usado em tags Consul para filtrar jobs por site)",
+      "source_label": "__meta_consul_service_metadata_site",
+      "field_type": "select",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": true,
+      "show_in_form": true,
+      "options": [
+        "palmas",
+        "rio",
+        "dtc",
+        "genesis"
+      ],
+      "order": 3.4,
+      "category": "infrastructure",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": true,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Selecione site",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 50
+      }
+    },
+    {
       "name": "account",
       "display_name": "Conta",
       "description": "Conta ou tenant do serviço",
       "source_label": "__meta_consul_service_metadata_account",
+      "field_type": "string",
+      "required": false,
+      "show_in_table": true,
+      "show_in_dashboard": false,
+      "show_in_form": true,
+      "order": 4,
+      "category": "infrastructure",
+      "editable": true,
+      "enabled": true,
+      "show_in_filter": false,
+      "show_in_blackbox": true,
+      "show_in_exporters": true,
+      "show_in_services": true,
+      "available_for_registration": true,
+      "placeholder": "Conta",
+      "default_value": null,
+      "validation": {
+        "min_length": 1,
+        "max_length": 200
+      }
+    },
+    {
+      "name": "group",
+      "display_name": "Grupo",
+      "description": "Grupo ou cluster do serviço",
+      "source_label": "__meta_consul_service_metadata_group",
       "field_type": "string",
       "required": false,
       "show_in_table": true,
@@ -101,11 +266,11 @@
       "show_in_exporters": true,
       "show_in_services": true,
       "available_for_registration": true,
-      "placeholder": "Conta",
+      "placeholder": "Grupo (Ex: DTC_Cluster_Local, Producao_Web)",
       "default_value": null,
       "validation": {
         "min_length": 1,
-        "max_length": 200
+        "max_length": 100
       }
     },
     {
@@ -166,20 +331,14 @@
     {
       "name": "tipo_monitoramento",
       "display_name": "Tipo Monitoramento",
-      "description": "Tipo de monitoramento (ambiente)",
+      "description": "Tipo de monitoramento (Internet_Link_Ativo, Status_Server, VPN, etc)",
       "source_label": "__meta_consul_service_metadata_tipo_monitoramento",
-      "field_type": "select",
+      "field_type": "string",
       "required": true,
       "show_in_table": true,
       "show_in_dashboard": true,
       "show_in_form": true,
-      "options": [
-        "prod",
-        "hml",
-        "dev",
-        "test",
-        "staging"
-      ],
+      "options": null,
       "order": 10,
       "category": "basic",
       "editable": true,
@@ -188,11 +347,13 @@
       "show_in_blackbox": true,
       "show_in_exporters": true,
       "show_in_services": true,
-      "available_for_registration": false,
-      "placeholder": "Selecione tipo monitoramento",
+      "available_for_registration": true,
+      "placeholder": "Selecione ou digite (Ex: Internet_Link_Ativo, Status_Server, VPN)",
       "default_value": null,
       "validation": {
-        "required_message": "Informe tipo monitoramento"
+        "required_message": "Informe tipo monitoramento",
+        "min_length": 1,
+        "max_length": 100
       }
     },
     {

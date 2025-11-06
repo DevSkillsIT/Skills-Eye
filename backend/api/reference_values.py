@@ -332,7 +332,7 @@ async def list_all_fields():
 
     Retorna lista dos campos metadata com available_for_registration: true.
     """
-    # Campos suportados (obtidos do metadata_fields.json com available_for_registration: true)
+    # Campos suportados (extraídos do Prometheus com available_for_registration: true)
     supported_fields = [
         {"name": "company", "display_name": "Empresa", "description": "Nome da empresa"},
         {"name": "grupo_monitoramento", "display_name": "Grupo Monitoramento", "description": "Grupo de monitoramento (projeto)"},

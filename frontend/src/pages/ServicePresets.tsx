@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useConsulDelete } from '../hooks/useConsulDelete';
 import {
   ProTable,
   ModalForm,
@@ -61,6 +62,16 @@ const ServicePresets: React.FC = () => {
   const [tableSnapshot, setTableSnapshot] = useState<ServicePreset[]>([]);
   const [registerForm] = Form.useForm();
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
+
+  // Hook para DELETE de presets
+  const { deleteResource } = useConsulDelete({
+    deleteFn: async (payload: any) => consulAPI.deletePreset(payload.preset_id),
+    successMessage: 'Preset deletado com sucesso',
+    errorMessage: 'Erro ao deletar preset',
+    onSuccess: () => {
+      actionRef.current?.reload();
+    },
+  });
 
   // Criar presets built-in ao montar o componente
   useEffect(() => {
@@ -235,14 +246,12 @@ const ServicePresets: React.FC = () => {
     registerForm.resetFields();
   };
 
+  /**
+   * Deleta um preset usando o hook useConsulDelete
+   * Usa APENAS dados do record - ZERO valores hardcoded
+   */
   const handleDelete = async (presetId: string) => {
-    try {
-      await consulAPI.deletePreset(presetId);
-      message.success('Preset deletado com sucesso');
-      actionRef.current?.reload();
-    } catch (error: any) {
-      message.error(error.response?.data?.detail || 'Erro ao deletar preset');
-    }
+    await deleteResource({ preset_id: presetId });
   };
 
   const handleCreatePreset = async (values: PresetFormData) => {
