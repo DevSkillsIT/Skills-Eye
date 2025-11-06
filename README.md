@@ -1,4 +1,4 @@
-# Consul Manager Web Application
+# Skills Eye Web Application
 
 <div align="center">
 
@@ -16,7 +16,7 @@
 
 ## 📋 Sobre o Projeto
 
-O **Consul Manager** é uma aplicação web completa para gerenciar serviços do HashiCorp Consul, com foco especial em:
+O **Skills Eye** é uma aplicação web completa para gerenciar serviços do HashiCorp Consul, com foco especial em:
 
 - Gerenciamento de **Blackbox Exporter** targets
 - Integração com **Prometheus** via service discovery
@@ -351,7 +351,7 @@ acl {
 }
 ```
 
-**Criar token para o Consul Manager:**
+**Criar token para o Skills Eye:**
 
 ```bash
 consul acl policy create \
@@ -359,7 +359,7 @@ consul acl policy create \
   -rules @consul-manager-policy.hcl
 
 consul acl token create \
-  -description "Consul Manager Token" \
+  -description "Skills Eye Token" \
   -policy-name consul-manager
 ```
 
@@ -429,7 +429,7 @@ sudo nano /etc/systemd/system/consul-manager.service
 
 ```ini
 [Unit]
-Description=Consul Manager API
+Description=Skills Eye API
 After=network.target consul.service
 
 [Service]
