@@ -2,7 +2,7 @@
 
 > **Autor:** Adriano Fante
 > **Última Atualização:** 06 de Novembro de 2025
-> **Projeto:** Skills Eye (antigo Consul Manager Web)
+> **Projeto:** Skills Eye
 
 ---
 
