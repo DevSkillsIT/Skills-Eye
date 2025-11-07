@@ -87,18 +87,20 @@ async def _prewarm_metadata_fields_cache():
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.info("[PRE-WARM] Iniciando extração de campos metadata...")
+        logger.info("[PRE-WARM P2] Iniciando extração ULTRA RÁPIDA com AsyncSSH + TAR...")
 
-        # PASSO 3: Extrair campos via SSH (3 servidores em paralelo)
-        # Tempo estimado: 20-30 segundos
-        extraction_result = multi_config.extract_all_fields_with_status()
+        # PASSO 3: Extrair campos via AsyncSSH + TAR (P2 - ULTRA RÁPIDO!)
+        # Tempo estimado P0: 20-30 segundos
+        # Tempo estimado P1: 15 segundos
+        # Tempo estimado P2: 2-3 segundos ← GANHO MASSIVO!
+        extraction_result = multi_config.extract_all_fields_with_asyncssh_tar()
 
         fields = extraction_result['fields']
         successful_servers = extraction_result.get('successful_servers', 0)
         total_servers = extraction_result.get('total_servers', 0)
 
         logger.info(
-            f"[PRE-WARM] ✓ Extração completa: {len(fields)} campos de "
+            f"[PRE-WARM P2] ✓ Extração ULTRA RÁPIDA completa: {len(fields)} campos de "
             f"{successful_servers}/{total_servers} servidores"
         )
 

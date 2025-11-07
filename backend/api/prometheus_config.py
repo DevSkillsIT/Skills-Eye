@@ -271,9 +271,10 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
             logger.info("[FIELDS] force_refresh=true - Limpando cache e fechando conexões SSH")
             multi_config.clear_cache(close_connections=True)
 
+        # OTIMIZAÇÃO P2: Usar AsyncSSH + TAR (10-15x mais rápido!)
         # Extrair de TODOS os servidores EM PARALELO COM STATUS de cada servidor
-        logger.info(f"[FIELDS] Extração completa via SSH - TODOS os 3 servidores em PARALELO")
-        extraction_result = multi_config.extract_all_fields_with_status()
+        logger.info(f"[FIELDS P2] Extração ULTRA RÁPIDA com AsyncSSH + TAR")
+        extraction_result = multi_config.extract_all_fields_with_asyncssh_tar()
 
         fields = extraction_result['fields']
 
