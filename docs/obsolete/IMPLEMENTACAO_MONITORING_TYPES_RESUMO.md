@@ -66,7 +66,7 @@ O backend precisa ser reiniciado para carregar o novo código:
 
 #### **Opção A: Usar Script de Restart**
 ```cmd
-c:\consul-manager-web\restart-app.bat
+restart-app.bat
 ```
 
 #### **Opção B: Reiniciar Manualmente**
@@ -78,7 +78,7 @@ taskkill /F /IM python.exe
 # Deletar pasta __pycache__ recursivamente
 
 # 3. Iniciar backend
-cd c:\consul-manager-web\backend
+cd backend
 python app.py
 ```
 

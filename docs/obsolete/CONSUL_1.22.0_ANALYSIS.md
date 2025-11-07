@@ -27,7 +27,7 @@
 
 ---
 
-## 🚀 Recursos Úteis para Consul Manager Web
+## 🚀 Recursos Úteis para Skills Eye
 
 ### 1. ✅ Multi-Port Service Registration
 
@@ -409,7 +409,7 @@ async def register_service(self, service_data: Dict, node_addr: str = None) -> b
 
 ## ⚠️ Breaking Changes
 
-**Nenhuma breaking change identificada** entre 1.21.4 e 1.22.0 que afete o Consul Manager Web.
+**Nenhuma breaking change identificada** entre 1.21.4 e 1.22.0 que afete o Skills Eye.
 
 ### Mudanças Deprecadas
 - Alguns endpoints de UI internos foram modernizados (Ember components)
@@ -450,7 +450,7 @@ A atualização para Consul 1.22.0 traz **recursos interessantes** mas **nenhuma
 - OIDC requer infraestrutura adicional
 
 ### 🎯 Próximo Passo
-**Implementar suporte a Multi-Port Services** no Consul Manager Web para aproveitar ao máximo a nova versão do Consul.
+**Implementar suporte a Multi-Port Services** no Skills Eye para aproveitar ao máximo a nova versão do Consul.
 
 ---
 

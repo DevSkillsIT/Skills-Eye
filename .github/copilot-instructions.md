@@ -1,4 +1,4 @@
-# Consul Manager Web Application - AI Developer Guide
+# Skills Eye Application - AI Developer Guide
 
 ## Project Overview
 Full-stack Consul service management platform with modern React frontend and FastAPI backend. Focuses on Blackbox Exporter monitoring, service discovery, and configuration management through a centralized web interface.

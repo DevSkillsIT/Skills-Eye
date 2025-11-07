@@ -75,7 +75,17 @@
       "Bash(cmd /c \"move c:\\consul-manager-web\\backend\\core\\metadata_loader.py c:\\consul-manager-web\\backend\\core\\metadata_loader.py.OLD\")",
       "Bash(cmd /c:*)",
       "Bash(for file in ServicePresets.tsx BlackboxGroups.tsx Installer.tsx PrometheusConfig.tsx AuditLog.tsx)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(cat:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git restore:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(nul)"
     ],
     "deny": [],
     "ask": []

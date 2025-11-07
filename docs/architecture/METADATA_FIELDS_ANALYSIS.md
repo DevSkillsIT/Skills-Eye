@@ -10,7 +10,7 @@
 
 ### O QUE É A PÁGINA METADATAFIELDS
 
-A página **MetadataFields** é uma **interface de gerenciamento centralizado** de todos os campos metadata usados no sistema Consul Manager Web. Ela permite que o usuário:
+A página **MetadataFields** é uma **interface de gerenciamento centralizado** de todos os campos metadata usados no sistema Skills Eye. Ela permite que o usuário:
 
 1. **Adicione novos campos metadata** ao sistema
 2. **Edite campos existentes** (display name, tipo, categoria, visibilidade)

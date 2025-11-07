@@ -1,8 +1,8 @@
-# Alterações Realizadas - Consul Manager Web
+# Alterações Realizadas - Skills Eye
 
 ## Resumo Executivo
 
-Este documento descreve todas as alterações realizadas no Consul Manager Web para corrigir problemas identificados e implementar novas funcionalidades baseadas no projeto TenSunS.
+Este documento descreve todas as alterações realizadas no Skills Eye para corrigir problemas identificados e implementar novas funcionalidades baseadas no projeto TenSunS.
 
 ## 1. Correção do ColumnSelector
 

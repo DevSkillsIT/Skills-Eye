@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Consul Manager Web** is a comprehensive web application for managing HashiCorp Consul services, with specialized focus on Prometheus monitoring infrastructure. It transforms a 2980+ line CLI Python script into a modern web UI for managing Blackbox Exporter targets, service discovery, and remote exporter installation.
+**Skills Eye** is a comprehensive web application for managing HashiCorp Consul services, with specialized focus on Prometheus monitoring infrastructure. It transforms a 2980+ line CLI Python script into a modern web UI for managing Blackbox Exporter targets, service discovery, and remote exporter installation.
 
 **Primary User:** Non-developer infrastructure analyst with 25 years experience. Explanations should be clear and interfaces intuitive.
 

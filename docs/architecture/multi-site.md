@@ -8,7 +8,7 @@
 
 ## 🎯 **OBJETIVO**
 
-Implementar suporte completo para arquitetura multi-site distribuída no Consul Manager Web, permitindo:
+Implementar suporte completo para arquitetura multi-site distribuída no Skills Eye, permitindo:
 
 1. Criar serviços Consul com metadados de **cluster**, **datacenter**, **environment**, **site**
 2. **Tags automáticas** por site para filtros no prometheus.yml
@@ -21,7 +21,7 @@ Implementar suporte completo para arquitetura multi-site distribuída no Consul 
 
 ### **1. Novos Campos no `metadata_fields.json`**
 
-**Arquivo:** `C:\consul-manager-web\backend\config\metadata_fields.json`
+**Arquivo:** `backend/config/metadata_fields.json`
 
 **Campos adicionados** (categoria `infrastructure`):
 
@@ -426,7 +426,7 @@ RIO SLAVE              DTC SLAVE            GENESIS SLAVE
 
 ```bash
 # Backend deve estar rodando
-cd c:\consul-manager-web\backend
+cd backend
 python app.py
 
 # Testar extração de global config

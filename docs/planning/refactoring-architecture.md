@@ -2,7 +2,7 @@
 
 **Data:** 2025-10-31
 **Versão:** 1.0
-**Objetivo:** Transformar o Consul Manager Web em um sistema **configuration-driven**, **multi-tenant ready** e **100% customizável**
+**Objetivo:** Transformar o Skills Eye em um sistema **configuration-driven**, **multi-tenant ready** e **100% customizável**
 
 ---
 

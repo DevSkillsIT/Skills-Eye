@@ -1,5 +1,5 @@
 # ANÁLISE COMPLETA - PROBLEMAS DE PERFORMANCE E ARQUITETURA
-## Consul Manager Web - Documentação Técnica Detalhada
+## Skills Eye - Documentação Técnica Detalhada
 
 **Data**: 2025-11-06 (Atualizado)
 **Sessão**: Análise de problemas de timeout e performance
@@ -1684,7 +1684,7 @@ curl -w "\nTempo: %{time_total}s\n" http://localhost:5000/api/v1/prometheus-conf
 curl http://localhost:5000/api/v1/kv/value?key=skills/cm/metadata/fields | python -m json.tool
 
 # Reiniciar aplicação
-cd c:\consul-manager-web && restart-app.bat
+restart-app.bat
 
 # Limpar cache do Consul KV (forçar re-extração)
 curl -X DELETE http://172.16.1.26:8500/v1/kv/skills/cm/metadata/fields?token=8382a112-81e0-cd6d-2b92-8565925a0675

@@ -185,7 +185,7 @@ netstat -ano | findstr :8081
 # Anote o PID e mate: taskkill /PID <numero> /F
 
 # Ir para frontend
-cd c:\consul-manager-web\frontend
+cd frontend
 
 # Limpar cache do Vite
 Remove-Item -Recurse -Force node_modules\.vite -ErrorAction SilentlyContinue
@@ -278,7 +278,7 @@ Se **NADA** funcionar, execute este script completo:
 
 ```powershell
 # Ir para o diretório do projeto
-cd c:\consul-manager-web
+cd <project-directory>
 
 # Parar tudo
 taskkill /F /IM node.exe /T 2>$null
@@ -301,7 +301,7 @@ npm list react
 npm list typescript
 
 # Iniciar backend (em outro terminal)
-# cd c:\consul-manager-web\backend
+# cd backend
 # python app.py
 
 # Iniciar frontend
@@ -344,7 +344,7 @@ Quando funcionar, você verá:
 
 **Comando para coletar info:**
 ```powershell
-cd c:\consul-manager-web\frontend
+cd frontend
 npm run dev > frontend-log.txt 2>&1
 
 cd ..\backend

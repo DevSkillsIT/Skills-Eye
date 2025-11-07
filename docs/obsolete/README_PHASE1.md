@@ -92,7 +92,7 @@ A modern web application for managing HashiCorp Consul services with enhanced fe
 
 ```bash
 git clone <repository-url>
-cd consul-manager-web
+cd Skills-Eye
 ```
 
 ### 2. Configure Environment
@@ -410,7 +410,7 @@ Use the Swagger UI at http://localhost:5000/docs to test endpoints interactively
 ### Project Structure
 
 ```
-consul-manager-web/
+Skills-Eye/
 ├── backend/
 │   ├── api/
 │   │   ├── blackbox.py          # Blackbox endpoints

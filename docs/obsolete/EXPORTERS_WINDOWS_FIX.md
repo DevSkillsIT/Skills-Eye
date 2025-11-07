@@ -98,7 +98,7 @@ A função `detect_exporter_type()` já estava correta e identifica:
 ### 1. Reiniciar Backend
 
 ```powershell
-cd C:\consul-manager-web\backend
+cd backend
 python app.py
 ```
 

@@ -54,13 +54,13 @@ Rio envia métricas para Palmas via remote_write
 
 ---
 
-### **3. Existe sistema similar no mercado ao Consul Manager Web?**
+### **3. Existe sistema similar no mercado ao Skills Eye?**
 
 **✅ RESPOSTA: NÃO existe equivalente open-source.**
 
 **Único sistema encontrado:** **Promgen** (LINE Corporation)
 
-| Recurso | Promgen | Consul Manager Web |
+| Recurso | Promgen | Skills Eye |
 |---------|---------|-------------------|
 | Edita prometheus.yml diretamente | ❌ Gera arquivos separados | ✅ Edita via SSH |
 | Validação promtool remota | ❌ Não | ✅ Sim |
@@ -77,7 +77,7 @@ Rio envia métricas para Palmas via remote_write
 3. Requer **acesso SSH** para editar arquivos remotamente
 4. **Validação complexa** (promtool, regex, relabeling)
 
-**Conclusão: Consul Manager Web é ÚNICO no mercado.**
+**Conclusão: Skills Eye é ÚNICO no mercado.**
 
 ---
 
@@ -255,7 +255,7 @@ remote_write:
 
 A pesquisa web validou 100% das recomendações. É o padrão da comunidade.
 
-### **2. Consul Manager Web: ÚNICO no Mercado ✅**
+### **2. Skills Eye: ÚNICO no Mercado ✅**
 
 Não existe sistema open-source equivalente que combine:
 - Edição direta de prometheus.yml via SSH
