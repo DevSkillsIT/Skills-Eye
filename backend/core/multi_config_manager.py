@@ -693,7 +693,7 @@ class MultiConfigManager:
         self._ssh_connections.clear()
         logger.info(f"[SSH POOL] {closed_count} conexões fechadas e pool limpo")
 
-    def extract_all_fields_with_asyncssh_tar(self) -> Dict[str, Any]:
+    async def extract_all_fields_with_asyncssh_tar(self) -> Dict[str, Any]:
         """
         OTIMIZAÇÃO P2: Extrai campos usando AsyncSSH + TAR (ULTRA RÁPIDO!)
 
@@ -741,17 +741,9 @@ class MultiConfigManager:
             for h in self.hosts
         ]
 
-        # PASSO 3: Executar extração async (cria event loop se necessário)
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        # Executar extração async
-        results = loop.run_until_complete(
-            self._extract_with_asyncssh_tar_async(async_hosts)
-        )
+        # PASSO 3: Executar extração async (await direto - FastAPI já tem event loop!)
+        # CORREÇÃO: FastAPI roda em event loop async, não pode usar run_until_complete
+        results = await self._extract_with_asyncssh_tar_async(async_hosts)
 
         overall_duration = int((time.time() - overall_start) * 1000)
 

@@ -93,7 +93,7 @@ async def _prewarm_metadata_fields_cache():
         # Tempo estimado P0: 20-30 segundos
         # Tempo estimado P1: 15 segundos
         # Tempo estimado P2: 2-3 segundos ← GANHO MASSIVO!
-        extraction_result = multi_config.extract_all_fields_with_asyncssh_tar()
+        extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
 
         fields = extraction_result['fields']
         successful_servers = extraction_result.get('successful_servers', 0)

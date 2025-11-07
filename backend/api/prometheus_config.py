@@ -274,7 +274,7 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
         # OTIMIZAÇÃO P2: Usar AsyncSSH + TAR (10-15x mais rápido!)
         # Extrair de TODOS os servidores EM PARALELO COM STATUS de cada servidor
         logger.info(f"[FIELDS P2] Extração ULTRA RÁPIDA com AsyncSSH + TAR")
-        extraction_result = multi_config.extract_all_fields_with_asyncssh_tar()
+        extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
 
         fields = extraction_result['fields']
 
