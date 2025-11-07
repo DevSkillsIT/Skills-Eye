@@ -263,6 +263,12 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
                     )
             except Exception as e:
                 logger.warning(f"[FIELDS] KV não disponível, extraindo via SSH: {e}")
+        else:
+            # CORREÇÃO CRÍTICA: force_refresh=true DEVE limpar cache em memória
+            # Sem isso, mesmo com force_refresh, o MultiConfigManager retorna cache antigo
+            # Problema identificado no RELATORIO_REAL_PERFORMANCE.md
+            logger.info("[FIELDS] force_refresh=true - Limpando cache em memória antes de extrair")
+            multi_config.clear_cache()
 
         # Extrair de TODOS os servidores EM PARALELO COM STATUS de cada servidor
         logger.info(f"[FIELDS] Extração completa via SSH - TODOS os 3 servidores em PARALELO")

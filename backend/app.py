@@ -41,13 +41,122 @@ except ImportError:
 
 load_dotenv()
 
-# Configuração do lifecycle
+# ============================================
+# FUNÇÕES DE PRÉ-AQUECIMENTO (PRE-WARMING)
+# ============================================
+
+async def _prewarm_metadata_fields_cache():
+    """
+    Pré-aquece o cache de campos metadata em background
+
+    OBJETIVO:
+    - Garante que o KV do Consul esteja sempre populado com campos recentes
+    - Evita cold start lento na primeira requisição após reiniciar o backend
+    - Roda em background para não bloquear o startup da aplicação
+
+    FLUXO:
+    1. Aguarda 5 segundos para o servidor terminar de inicializar
+    2. Extrai campos de TODOS os servidores Prometheus via SSH
+    3. Salva automaticamente no Consul KV (skills/cm/metadata/fields)
+    4. Campos ficam disponíveis instantaneamente para requisições HTTP
+
+    PERFORMANCE:
+    - Tempo estimado: 20-30 segundos (SSH para 3 servidores)
+    - Não bloqueia startup (roda em background via asyncio.create_task)
+    - Primeira requisição HTTP após startup será rápida (~2s lendo do KV)
+
+    TRATAMENTO DE ERROS:
+    - Erros são logados mas NÃO quebram a aplicação
+    - Se falhar, requisições HTTP farão extração sob demanda (fallback)
+
+    BEST PRACTICES (baseado em pesquisa web 2025):
+    - Keep startup quick (<3s): ✅ Usa background task
+    - Wrap em try-except: ✅ Implementado
+    - Log errors without crashing: ✅ Implementado
+    """
+    try:
+        # PASSO 1: Aguardar servidor terminar de inicializar
+        # Garante que todos os módulos estejam carregados antes de usar
+        print("[PRE-WARM] Aguardando 5s para servidor inicializar completamente...")
+        await asyncio.sleep(5)
+
+        # PASSO 2: Importar dependências (após startup completo)
+        from api.prometheus_config import multi_config
+        from core.kv_manager import KVManager
+        from datetime import datetime
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info("[PRE-WARM] Iniciando extração de campos metadata...")
+
+        # PASSO 3: Extrair campos via SSH (3 servidores em paralelo)
+        # Tempo estimado: 20-30 segundos
+        extraction_result = multi_config.extract_all_fields_with_status()
+
+        fields = extraction_result['fields']
+        successful_servers = extraction_result.get('successful_servers', 0)
+        total_servers = extraction_result.get('total_servers', 0)
+
+        logger.info(
+            f"[PRE-WARM] ✓ Extração completa: {len(fields)} campos de "
+            f"{successful_servers}/{total_servers} servidores"
+        )
+
+        # PASSO 4: Salvar no Consul KV para acesso rápido
+        kv_manager = KVManager()
+        await kv_manager.put_json(
+            key='skills/cm/metadata/fields',
+            value={
+                'version': '2.0.0',
+                'last_updated': datetime.now().isoformat(),
+                'source': 'prewarm_startup',
+                'total_fields': len(fields),
+                'fields': [f.to_dict() for f in fields],
+                'extraction_status': {
+                    'total_servers': total_servers,
+                    'successful_servers': successful_servers,
+                    'server_status': extraction_result.get('server_status', []),
+                }
+            },
+            metadata={'auto_updated': True, 'source': 'startup_prewarm'}
+        )
+
+        logger.info(
+            f"[PRE-WARM] ✓ Cache populado no KV: {len(fields)} campos salvos. "
+            f"Próximas requisições serão instantâneas (<2s)!"
+        )
+        print(f"[PRE-WARM] ✓ SUCESSO: Cache KV populado com {len(fields)} campos")
+
+    except Exception as e:
+        # IMPORTANTE: NÃO deixar erro quebrar a aplicação
+        # Se falhar, requisições HTTP farão extração sob demanda
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[PRE-WARM] ✗ Erro ao pré-aquecer cache: {e}", exc_info=True)
+        print(f"[PRE-WARM] ✗ ERRO: {e}")
+        print("[PRE-WARM] Aplicação continuará funcionando. Cache será populado na primeira requisição.")
+
+# ============================================
+# CONFIGURAÇÃO DO LIFECYCLE
+# ============================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    """
+    Gerencia o ciclo de vida da aplicação FastAPI
+
+    STARTUP:
+    - Inicializa sistema de auditoria com eventos de exemplo
+    - Pré-aquece cache de campos metadata (background task)
+
+    SHUTDOWN:
+    - Finaliza recursos (futuro: fechar conexões, etc)
+    """
+    # ============================================
+    # STARTUP - Inicialização da Aplicação
+    # ============================================
     print(">> Iniciando Consul Manager API...")
 
-    # Inicializar sistema de auditoria com eventos de exemplo
+    # PASSO 1: Inicializar sistema de auditoria com eventos de exemplo
     from core.audit_manager import audit_manager
     from datetime import datetime, timedelta
 
@@ -92,8 +201,17 @@ async def lifespan(app: FastAPI):
 
     print(f">> Sistema de auditoria inicializado com {len(audit_manager.events)} eventos de exemplo")
 
+    # PASSO 2: Pré-aquecer cache de campos metadata (BACKGROUND TASK)
+    # IMPORTANTE: Roda em background para não bloquear o startup
+    # Best Practice: Manter startup rápido (<3s), jobs longos vão para background
+    asyncio.create_task(_prewarm_metadata_fields_cache())
+    print(">> Background task de pré-aquecimento do cache iniciado")
+
     yield
-    # Shutdown
+
+    # ============================================
+    # SHUTDOWN - Finalização da Aplicação
+    # ============================================
     print(">> Desligando Consul Manager API...")
 
 # Criar aplicação FastAPI
