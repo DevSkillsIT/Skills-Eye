@@ -95,6 +95,11 @@ class MultiConfigManager:
         self._fields_cache: Optional[List[MetadataField]] = None
         self._files_cache: Dict[str, List[ConfigFile]] = {}  # OTIMIZAÇÃO: Cache para list_config_files
 
+        # OTIMIZAÇÃO CRÍTICA (P1): Pool de conexões SSH para reutilização
+        # Evita abrir/fechar conexão para cada arquivo (handshake ~1-2s cada)
+        # Chave: hostname, Valor: paramiko.SSHClient conectado
+        self._ssh_connections: Dict[str, paramiko.SSHClient] = {}
+
         logger.info(f"MultiConfigManager inicializado com {len(self.hosts)} host(s)")
         for host in self.hosts:
             logger.info(f"  - {host.username}@{host.hostname}:{host.port}")
@@ -150,14 +155,38 @@ class MultiConfigManager:
 
     def _get_ssh_client(self, host: ConfigHost) -> paramiko.SSHClient:
         """
-        Cria cliente SSH para um host
+        Obtém cliente SSH para um host (com pool de conexões)
+
+        OTIMIZAÇÃO CRÍTICA: Reutiliza conexão SSH existente se disponível.
+        Antes: Nova conexão a cada arquivo (~1-2s de handshake por arquivo)
+        Depois: UMA conexão por servidor, reutilizada para todos os arquivos
 
         Args:
             host: Configuração do host
 
         Returns:
-            Cliente SSH conectado
+            Cliente SSH conectado (novo ou reutilizado)
         """
+        # PASSO 1: Verificar se já existe conexão ativa para este host
+        if host.hostname in self._ssh_connections:
+            existing_client = self._ssh_connections[host.hostname]
+
+            # Verificar se conexão ainda está ativa
+            try:
+                transport = existing_client.get_transport()
+                if transport and transport.is_active():
+                    # logger.debug(f"[SSH POOL] Reutilizando conexão para {host.hostname}")
+                    return existing_client
+                else:
+                    # Conexão morta, remover do pool
+                    logger.warning(f"[SSH POOL] Conexão com {host.hostname} está inativa, criando nova")
+                    del self._ssh_connections[host.hostname]
+            except Exception as e:
+                logger.warning(f"[SSH POOL] Erro ao verificar conexão com {host.hostname}: {e}")
+                del self._ssh_connections[host.hostname]
+
+        # PASSO 2: Criar nova conexão SSH
+        logger.info(f"[SSH POOL] Criando nova conexão para {host.hostname}")
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -187,6 +216,9 @@ class MultiConfigManager:
                 look_for_keys=True,
                 timeout=10
             )
+
+        # PASSO 3: Adicionar ao pool para reutilização
+        self._ssh_connections[host.hostname] = client
 
         return client
 
@@ -619,11 +651,41 @@ class MultiConfigManager:
             'from_cache': False,
         }
 
-    def clear_cache(self):
-        """Limpa cache de configurações e campos"""
+    def clear_cache(self, close_connections: bool = False):
+        """
+        Limpa cache de configurações e campos
+
+        Args:
+            close_connections: Se True, também fecha todas as conexões SSH do pool
+        """
         self._config_cache.clear()
         self._fields_cache = None
-        logger.info("Cache limpo")
+        self._files_cache.clear()
+
+        # Fechar conexões SSH se solicitado
+        if close_connections:
+            self._close_all_ssh_connections()
+
+        logger.info(f"Cache limpo (connections_closed={close_connections})")
+
+    def _close_all_ssh_connections(self):
+        """
+        Fecha todas as conexões SSH do pool
+
+        IMPORTANTE: Deve ser chamado apenas quando necessário (ex: force_refresh)
+        Em operações normais, manter conexões abertas para reutilização
+        """
+        closed_count = 0
+        for hostname, client in list(self._ssh_connections.items()):
+            try:
+                client.close()
+                closed_count += 1
+                logger.debug(f"[SSH POOL] Conexão com {hostname} fechada")
+            except Exception as e:
+                logger.warning(f"[SSH POOL] Erro ao fechar conexão com {hostname}: {e}")
+
+        self._ssh_connections.clear()
+        logger.info(f"[SSH POOL] {closed_count} conexões fechadas e pool limpo")
 
     def get_config_summary(self) -> Dict[str, Any]:
         """
