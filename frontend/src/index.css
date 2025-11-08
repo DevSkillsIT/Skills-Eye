@@ -71,32 +71,39 @@ button:focus-visible {
    CORREÇÃO Z-INDEX PROLAYOUT
    ========================================== */
 
-/* CRÍTICO: Sidebar deve ficar ATRÁS do conteúdo ao rolar horizontalmente */
-.ant-pro-sider {
-  z-index: 1 !important; /* Sidebar em z-index baixo */
-  position: relative !important; /* Remove position fixed se existir */
+/* ESTRATÉGIA: Usar classes base do Ant Design Layout (que ProLayout usa internamente)
+   Sidebar deve ter z-index BAIXO, conteúdo z-index ALTO
+   NÃO mexer em position para não quebrar o layout */
+
+/* Sidebar (classes base do Ant Design) */
+.ant-layout-sider,
+aside.ant-layout-sider {
+  z-index: 1 !important;
 }
 
-/* CRÍTICO: Conteúdo principal deve ficar ACIMA do sidebar */
-.ant-pro-layout-content {
-  z-index: 10 !important; /* Conteúdo em z-index alto */
-  position: relative !important;
-  background-color: #f0f2f5; /* Fundo opaco para cobrir sidebar */
+/* Conteúdo principal (classes base do Ant Design) */
+.ant-layout-content,
+main.ant-layout-content {
+  z-index: 10 !important;
+  background: #f0f2f5 !important; /* Fundo opaco */
 }
 
-/* Header também precisa ficar acima */
-.ant-pro-header {
-  z-index: 100 !important; /* Header sempre no topo */
+/* Header */
+.ant-layout-header,
+header.ant-layout-header {
+  z-index: 100 !important;
 }
 
-/* Garantir que tabelas com scroll horizontal funcionem corretamente */
-.ant-table-wrapper {
-  z-index: 5 !important;
-  position: relative !important;
+/* Garantir que o PageContainer (wrapper interno do ProLayout) fique acima */
+.ant-pro-page-container {
+  z-index: 10 !important;
+  background: #f0f2f5 !important;
 }
 
-/* Garantir que ProTable não seja sobreposto */
-.ant-pro-table {
-  z-index: 5 !important;
-  position: relative !important;
+/* Tabelas sempre visíveis */
+.ant-table-wrapper,
+.ant-pro-table-list-toolbar {
+  position: relative;
+  z-index: 5;
+  background: white;
 }
