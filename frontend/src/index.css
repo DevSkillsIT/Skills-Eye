@@ -68,42 +68,50 @@ button:focus-visible {
 }
 
 /* ==========================================
-   CORREÇÃO Z-INDEX PROLAYOUT
+   CORREÇÃO Z-INDEX PROLAYOUT COM SIDEBAR FIXO
    ========================================== */
 
-/* ESTRATÉGIA: Usar classes base do Ant Design Layout (que ProLayout usa internamente)
-   Sidebar deve ter z-index BAIXO, conteúdo z-index ALTO
-   NÃO mexer em position para não quebrar o layout */
+/* PROBLEMA: Sidebar fixo sobrepõe conteúdo ao rolar horizontalmente
+   SOLUÇÃO: Sidebar z-index baixo, conteúdo z-index alto + fundo opaco */
 
-/* Sidebar (classes base do Ant Design) */
+/* Sidebar fixo - deve ficar ATRÁS do conteúdo */
 .ant-layout-sider,
 aside.ant-layout-sider {
   z-index: 1 !important;
 }
 
-/* Conteúdo principal (classes base do Ant Design) */
-.ant-layout-content,
-main.ant-layout-content {
-  z-index: 10 !important;
-  background: #f0f2f5 !important; /* Fundo opaco */
+/* Wrapper do layout - garante que tudo acima do sidebar funcione */
+.ant-layout {
+  position: relative;
 }
 
-/* Header */
+/* Conteúdo principal - deve ficar ACIMA do sidebar ao rolar horizontalmente */
+.ant-layout-content,
+main.ant-layout-content {
+  position: relative;
+  z-index: 10 !important;
+  background: #f0f2f5 !important; /* Fundo opaco essencial */
+  margin-left: 0 !important; /* ProLayout já gerencia a margem */
+}
+
+/* Header fixo - sempre no topo */
 .ant-layout-header,
 header.ant-layout-header {
   z-index: 100 !important;
 }
 
-/* Garantir que o PageContainer (wrapper interno do ProLayout) fique acima */
-.ant-pro-page-container {
+/* PageContainer interno do ProLayout */
+.ant-pro-page-container,
+.ant-pro-page-container-children-content {
+  position: relative;
   z-index: 10 !important;
   background: #f0f2f5 !important;
 }
 
-/* Tabelas sempre visíveis */
-.ant-table-wrapper,
-.ant-pro-table-list-toolbar {
+/* Garantir que cards e tabelas tenham fundo branco opaco */
+.ant-card,
+.ant-table-wrapper {
   position: relative;
   z-index: 5;
-  background: white;
+  background: white !important;
 }

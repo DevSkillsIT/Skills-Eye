@@ -173,6 +173,7 @@ const App: React.FC = () => {
           layout="side"
           navTheme={darkMode ? 'realDark' : 'light'}
           fixedHeader
+          fixSiderbar
           siderWidth={256}
           collapsed={false}
           menuItemRender={(item, dom) => (
