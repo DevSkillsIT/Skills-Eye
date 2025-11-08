@@ -66,3 +66,37 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* ==========================================
+   CORREÇÃO Z-INDEX PROLAYOUT
+   ========================================== */
+
+/* CRÍTICO: Sidebar deve ficar ATRÁS do conteúdo ao rolar horizontalmente */
+.ant-pro-sider {
+  z-index: 1 !important; /* Sidebar em z-index baixo */
+  position: relative !important; /* Remove position fixed se existir */
+}
+
+/* CRÍTICO: Conteúdo principal deve ficar ACIMA do sidebar */
+.ant-pro-layout-content {
+  z-index: 10 !important; /* Conteúdo em z-index alto */
+  position: relative !important;
+  background-color: #f0f2f5; /* Fundo opaco para cobrir sidebar */
+}
+
+/* Header também precisa ficar acima */
+.ant-pro-header {
+  z-index: 100 !important; /* Header sempre no topo */
+}
+
+/* Garantir que tabelas com scroll horizontal funcionem corretamente */
+.ant-table-wrapper {
+  z-index: 5 !important;
+  position: relative !important;
+}
+
+/* Garantir que ProTable não seja sobreposto */
+.ant-pro-table {
+  z-index: 5 !important;
+  position: relative !important;
+}
