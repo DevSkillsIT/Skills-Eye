@@ -45,6 +45,14 @@ load_dotenv()
 # FUNÇÕES DE PRÉ-AQUECIMENTO (PRE-WARMING)
 # ============================================
 
+# Status global do PRE-WARM (para sincronização com endpoints)
+_prewarm_status = {
+    'running': False,
+    'completed': False,
+    'failed': False,
+    'error': None
+}
+
 async def _prewarm_metadata_fields_cache():
     """
     Pré-aquece o cache de campos metadata em background
@@ -74,11 +82,14 @@ async def _prewarm_metadata_fields_cache():
     - Wrap em try-except: ✅ Implementado
     - Log errors without crashing: ✅ Implementado
     """
+    global _prewarm_status
+    _prewarm_status['running'] = True
+
     try:
-        # PASSO 1: Aguardar servidor terminar de inicializar
+        # PASSO 1: Aguardar servidor terminar de inicializar (REDUZIDO PARA 1s)
         # Garante que todos os módulos estejam carregados antes de usar
-        print("[PRE-WARM] Aguardando 5s para servidor inicializar completamente...")
-        await asyncio.sleep(5)
+        print("[PRE-WARM] Aguardando 1s para servidor inicializar completamente...")
+        await asyncio.sleep(1)
 
         # PASSO 2: Importar dependências (após startup completo)
         from api.prometheus_config import multi_config
@@ -129,14 +140,52 @@ async def _prewarm_metadata_fields_cache():
         )
         print(f"[PRE-WARM] ✓ SUCESSO: Cache KV populado com {len(fields)} campos")
 
+        # Marcar como concluído com sucesso
+        _prewarm_status['completed'] = True
+        _prewarm_status['running'] = False
+
+    except asyncio.TimeoutError:
+        # Timeout: PRE-WARM demorou muito (>60s)
+        _prewarm_status['failed'] = True
+        _prewarm_status['running'] = False
+        _prewarm_status['error'] = "Timeout ao conectar servidores Prometheus (>60s)"
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("[PRE-WARM] ✗ TIMEOUT: PRE-WARM demorou mais de 60s")
+        print(f"[PRE-WARM] ✗ TIMEOUT: {_prewarm_status['error']}")
+        print("[PRE-WARM] Aplicação continuará funcionando. Tente sincronizar manualmente.")
+
     except Exception as e:
         # IMPORTANTE: NÃO deixar erro quebrar a aplicação
         # Se falhar, requisições HTTP farão extração sob demanda
+        _prewarm_status['failed'] = True
+        _prewarm_status['running'] = False
+        _prewarm_status['error'] = str(e)
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"[PRE-WARM] ✗ Erro ao pré-aquecer cache: {e}", exc_info=True)
         print(f"[PRE-WARM] ✗ ERRO: {e}")
         print("[PRE-WARM] Aplicação continuará funcionando. Cache será populado na primeira requisição.")
+
+async def _prewarm_with_timeout():
+    """
+    Wrapper para adicionar timeout de 60s ao PRE-WARM
+
+    IMPORTANTE: Timeout de 60s para evitar que a aplicação trave
+    se algum servidor Prometheus estiver inacessível na inicialização.
+    """
+    try:
+        await asyncio.wait_for(
+            _prewarm_metadata_fields_cache(),
+            timeout=60.0
+        )
+    except asyncio.TimeoutError:
+        # Timeout já é tratado dentro da função _prewarm_metadata_fields_cache
+        # mas garantimos aqui também caso a função não trate
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("[PRE-WARM-WRAPPER] Timeout de 60s excedido (wrapper)")
+        print("[PRE-WARM-WRAPPER] ✗ TIMEOUT de 60s excedido")
 
 # ============================================
 # CONFIGURAÇÃO DO LIFECYCLE
@@ -206,8 +255,9 @@ async def lifespan(app: FastAPI):
     # PASSO 2: Pré-aquecer cache de campos metadata (BACKGROUND TASK)
     # IMPORTANTE: Roda em background para não bloquear o startup
     # Best Practice: Manter startup rápido (<3s), jobs longos vão para background
-    asyncio.create_task(_prewarm_metadata_fields_cache())
-    print(">> Background task de pré-aquecimento do cache iniciado")
+    # Timeout de 60s para evitar que servidores inacessíveis travem a aplicação
+    asyncio.create_task(_prewarm_with_timeout())
+    print(">> Background task de pré-aquecimento do cache iniciado (timeout: 60s)")
 
     yield
 

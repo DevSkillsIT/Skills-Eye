@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from typing import Any, Dict, Optional
 
 from core.consul_manager import ConsulManager
-from .models import KVPutRequest
+from .models import KVPutRequest, FieldConfigUpdate
 
 router = APIRouter()
 
@@ -130,16 +130,28 @@ async def get_field_config(field_name: str) -> Dict[str, Any]:
 
 
 @router.put("/metadata/field-config/{field_name}")
-async def update_field_config(field_name: str, config: Dict[str, bool]) -> Dict[str, Any]:
+async def update_field_config(field_name: str, config: FieldConfigUpdate) -> Dict[str, Any]:
     """
-    Atualiza a configuração de exibição de um campo específico.
+    Atualiza a configuração COMPLETA de um campo metadata.
+
+    IMPORTANTE: Aceita TODOS os campos de configuração do campo (não apenas show_in_*)
 
     Args:
-        field_name: Nome do campo
-        config: Objeto com show_in_services, show_in_exporters, show_in_blackbox
+        field_name: Nome técnico do campo
+        config: Objeto com configurações (display_name, category, show_in_*, etc)
 
-    Body esperado:
+    Body esperado (todos os campos são opcionais):
         {
+            "display_name": "Sistema Operacional",
+            "description": "Sistema operacional do servidor",
+            "category": "Infraestrutura",
+            "field_type": "select",
+            "order": 10,
+            "required": false,
+            "show_in_table": true,
+            "show_in_dashboard": true,
+            "show_in_form": true,
+            "editable": true,
             "show_in_services": true,
             "show_in_exporters": true,
             "show_in_blackbox": false
@@ -150,23 +162,28 @@ async def update_field_config(field_name: str, config: Dict[str, bool]) -> Dict[
     """
     key = f"{ALLOWED_PREFIX}metadata/field-config/{field_name}"
 
-    # Validar que o config tem as chaves necessárias
-    required_keys = ["show_in_services", "show_in_exporters", "show_in_blackbox"]
-    if not all(k in config for k in required_keys):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Config deve conter: {', '.join(required_keys)}"
-        )
+    # Converter Pydantic model para dict, excluindo valores None (não enviados)
+    config_dict = config.model_dump(exclude_none=True)
 
-    # Validar que os valores são booleanos
-    if not all(isinstance(config[k], bool) for k in required_keys):
+    if not config_dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Todos os valores devem ser booleanos (true/false)"
+            detail="Nenhuma configuração foi fornecida"
         )
 
     consul = ConsulManager()
-    ok = await consul.put_kv_json(key, config)
+
+    # Tentar ler configuração existente para fazer merge (atualização parcial)
+    existing_config = await consul.get_kv_json(key)
+    if existing_config:
+        # Merge: atualiza apenas os campos enviados
+        merged_config = {**existing_config, **config_dict}
+    else:
+        # Primeira vez salvando: usar apenas os valores enviados
+        merged_config = config_dict
+
+    # Salvar configuração atualizada
+    ok = await consul.put_kv_json(key, merged_config)
 
     if not ok:
         raise HTTPException(
@@ -177,6 +194,6 @@ async def update_field_config(field_name: str, config: Dict[str, bool]) -> Dict[
     return {
         "success": True,
         "field_name": field_name,
-        "config": config,
-        "message": f"Configuração do campo '{field_name}' salva com sucesso"
+        "config": merged_config,
+        "message": f"Configuração do campo '{field_name}' atualizada com sucesso"
     }

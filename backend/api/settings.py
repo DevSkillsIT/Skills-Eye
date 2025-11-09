@@ -5,16 +5,12 @@ Expõe e gerencia configurações do backend
 """
 import os
 import json
-import re
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import List, Optional
 from core.kv_manager import KVManager
 from core.yaml_config_service import YamlConfigService
 import logging
-import paramiko
-from io import StringIO
-from ruamel.yaml import YAML
 
 logger = logging.getLogger(__name__)
 yaml_service = YamlConfigService()

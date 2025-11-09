@@ -1,16 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 /**
- * Página de Gerenciamento de Campos Metadata (SOMENTE LEITURA)
+ * Página de Gerenciamento de Campos Metadata
  *
  * Permite:
- * - Visualizar campos metadata extraídos do prometheus.yml
- * - Ver status de sincronização entre servidores
- * - Sincronizar campos (extrai do Prometheus via SSH e atualiza KV)
- * - Replicar configurações do Master para Slaves
+ * - Adicionar novo campo metadata
+ * - Editar campos existentes
+ * - Sincronizar com prometheus.yml
+ * - Replicar para servidores slaves
  * - Reiniciar serviços Prometheus
- *
- * IMPORTANTE: Campos vêm 100% do prometheus.yml (dinâmico)
- * Para adicionar/remover campos: edite prometheus.yml via PrometheusConfig
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -31,6 +28,7 @@ import {
   Space,
   Tag,
   Badge,
+  Popconfirm,
   Select,
   Tooltip,
   Modal,
@@ -45,24 +43,17 @@ import {
   App,
   Steps,
   List,
-  message,
-  Tabs,
-  Collapse,
-  Checkbox,
-  Popover,
-  Form,
 } from 'antd';
 
 const { Text, Paragraph } = Typography;
 import {
-  // PlusOutlined, DeleteOutlined removidos - página não cria/deleta campos (vêm do Prometheus)
-  // EditOutlined RESTAURADO - edita configurações do campo (display_name, category, show_in_*, etc)
+  PlusOutlined,
   EditOutlined,
+  DeleteOutlined,
   SyncOutlined,
   CloudSyncOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
-  MinusCircleOutlined,
   WarningOutlined,
   CloudServerOutlined,
   InfoCircleOutlined,
@@ -73,103 +64,9 @@ import {
 } from '@ant-design/icons';
 import axios from 'axios';
 import { metadataFieldsAPI, consulAPI } from '../services/api';
-// metadataDynamicAPI removido - campos vêm 100% do Prometheus agora
 import type { PreviewFieldChangeResponse } from '../services/api';
-import ReferenceValueInput from '../components/ReferenceValueInput';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
-
-// ============================================================================
-// COMPONENTE SEPARADO PARA POPOVER (soluciona erro de hooks em render)
-// ============================================================================
-interface PageVisibilityPopoverProps {
-  record: MetadataField;
-  onUpdate: (fieldName: string, updates: Partial<MetadataField>) => void;
-}
-
-const PageVisibilityPopover: React.FC<PageVisibilityPopoverProps> = ({ record, onUpdate }) => {
-  const [popoverVisible, setPopoverVisible] = useState(false);
-
-  const handleUpdateFieldConfig = async (fieldToUpdate: 'services' | 'exporters' | 'blackbox', newValue: boolean) => {
-    try {
-      // Preparar payload com apenas o campo que mudou
-      const payload: any = {};
-      if (fieldToUpdate === 'services') payload.show_in_services = newValue;
-      if (fieldToUpdate === 'exporters') payload.show_in_exporters = newValue;
-      if (fieldToUpdate === 'blackbox') payload.show_in_blackbox = newValue;
-
-      // Salvar configuração no Consul KV
-      await axios.put(`${API_URL}/kv/metadata/field-config/${record.name}`, payload);
-
-      // Atualizar estado local via callback do pai
-      onUpdate(record.name, payload);
-
-      message.success(`Configuração do campo "${record.display_name}" atualizada!`);
-
-      // Fechar Popover (evita cliques múltiplos)
-      setPopoverVisible(false);
-    } catch (error) {
-      console.error('Erro ao atualizar configuração:', error);
-      message.error('Erro ao atualizar configuração do campo');
-    }
-  };
-
-  const content = (
-    <div style={{ padding: '8px 0' }}>
-      <Space direction="vertical" size="small">
-        <Checkbox
-          checked={record.show_in_services ?? true}
-          onChange={(e) => handleUpdateFieldConfig('services', e.target.checked)}
-        >
-          <Tag color="blue" style={{ margin: 0 }}>Services</Tag>
-        </Checkbox>
-        <Checkbox
-          checked={record.show_in_exporters ?? true}
-          onChange={(e) => handleUpdateFieldConfig('exporters', e.target.checked)}
-        >
-          <Tag color="green" style={{ margin: 0 }}>Exporters</Tag>
-        </Checkbox>
-        <Checkbox
-          checked={record.show_in_blackbox ?? true}
-          onChange={(e) => handleUpdateFieldConfig('blackbox', e.target.checked)}
-        >
-          <Tag color="orange" style={{ margin: 0 }}>Blackbox</Tag>
-        </Checkbox>
-      </Space>
-    </div>
-  );
-
-  return (
-    <Popover
-      content={content}
-      title="Configurar visibilidade"
-      trigger="click"
-      placement="left"
-      open={popoverVisible}
-      onOpenChange={setPopoverVisible}
-    >
-      <Space size={4} wrap style={{ cursor: 'pointer' }}>
-        {record.show_in_services !== false && (
-          <Tooltip title="Aparece em formulários de Services">
-            <Tag color="blue">Services</Tag>
-          </Tooltip>
-        )}
-        {record.show_in_exporters !== false && (
-          <Tooltip title="Aparece em formulários de Exporters">
-            <Tag color="green">Exporters</Tag>
-          </Tooltip>
-        )}
-        {record.show_in_blackbox !== false && (
-          <Tooltip title="Aparece em formulários de Blackbox">
-            <Tag color="orange">Blackbox</Tag>
-          </Tooltip>
-        )}
-      </Space>
-    </Popover>
-  );
-};
-
-// ============================================================================
 
 interface MetadataField {
   name: string;
@@ -181,9 +78,6 @@ interface MetadataField {
   show_in_table: boolean;
   show_in_dashboard: boolean;
   show_in_form: boolean;
-  show_in_services?: boolean;
-  show_in_exporters?: boolean;
-  show_in_blackbox?: boolean;
   options?: string[];
   order: number;
   category: string;
@@ -212,25 +106,9 @@ const MetadataFieldsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);
   const [serverJustChanged, setServerJustChanged] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('meta-fields');  // Aba ativa
-  const [externalLabels, setExternalLabels] = useState<Record<string, string>>({});  // External labels do servidor
-  const [loadingExternalLabels, setLoadingExternalLabels] = useState(false);
-
-  // Hook para DELETE de campos metadata - REMOVIDO (página agora é SOMENTE LEITURA)
-  // const { deleteResource: deleteFieldResource } = useConsulDelete({
-  //   deleteFn: async (payload: any) => {
-  //     const response = await axios.delete(`${API_URL}/metadata-fields/${payload.field_name}`);
-  //     return response.data;
-  //   },
-  //   successMessage: 'Campo deletado com sucesso',
-  //   errorMessage: 'Erro ao deletar campo',
-  //   onSuccess: () => {
-  //     fetchFields();
-  //   },
-  // });
   const [serverHasNoPrometheus, setServerHasNoPrometheus] = useState(false);  // ← NOVO: Detecta servidor sem Prometheus
   const [serverPrometheusMessage, setServerPrometheusMessage] = useState('');  // ← NOVO: Mensagem do servidor
-  // createModalVisible REMOVIDO - não criamos mais campos manualmente (vêm do Prometheus)
+  const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingField, setEditingField] = useState<MetadataField | null>(null);
   const [fallbackWarningVisible, setFallbackWarningVisible] = useState(false);
@@ -262,79 +140,23 @@ const MetadataFieldsPage: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [drawerField, setDrawerField] = useState<MetadataField | null>(null);
 
-  // Callback para atualizar campo específico no estado (usado pelo Popover)
-  const handleFieldUpdate = (fieldName: string, updates: Partial<MetadataField>) => {
-    setFields(prevFields =>
-      prevFields.map(f =>
-        f.name === fieldName
-          ? { ...f, ...updates }
-          : f
-      )
-    );
-  };
-
   const fetchFields = async () => {
     setLoading(true);
     try {
-      // USAR ENDPOINT OTIMIZADO QUE JÁ FAZ MERGE NO BACKEND
-      // Evita fazer 56+ requisições HTTP paralelas (um por campo)
       const response = await axios.get(`${API_URL}/metadata-fields/`, {
-        timeout: 30000,
+        timeout: 30000, // 30 segundos (pode precisar consultar múltiplos arquivos)
       });
-
       if (response.data.success) {
-        const fields = response.data.fields.map((field: any) => ({
-          ...field,
-          // Garantir defaults para campos que podem estar ausentes
-          show_in_services: field.show_in_services ?? true,
-          show_in_exporters: field.show_in_exporters ?? true,
-          show_in_blackbox: field.show_in_blackbox ?? true,
-        }));
-
-        console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos carregados (1 requisição)`);
-        setFields(fields);
+        setFields(response.data.fields);
       }
     } catch (error: any) {
       if (error.code === 'ECONNABORTED') {
-        message.error('Tempo esgotado ao carregar campos');
+        message.error('Tempo esgotado ao carregar campos (servidor lento)');
       } else {
         message.error('Erro ao carregar campos: ' + (error.response?.data?.detail || error.message));
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchExternalLabels = async (serverId: string) => {
-    if (!serverId) {
-      setExternalLabels({});
-      return;
-    }
-
-    setLoadingExternalLabels(true);
-    try {
-      // Buscar servidor para pegar hostname
-      const server = servers.find(s => s.id === serverId);
-      if (!server) {
-        setExternalLabels({});
-        return;
-      }
-
-      // REUTILIZAR endpoint /prometheus-config/global
-      const response = await axios.get(`${API_URL}/prometheus-config/global`, {
-        params: { hostname: server.hostname },
-        timeout: 15000,
-      });
-
-      const labels = response.data?.external_labels || {};
-      console.log('[DEBUG] External labels carregados:', labels);
-      console.log('[DEBUG] Keys:', Object.keys(labels));
-      setExternalLabels(labels);
-    } catch (error: any) {
-      console.error('Erro ao buscar external_labels:', error);
-      setExternalLabels({});
-    } finally {
-      setLoadingExternalLabels(false);
     }
   };
 
@@ -457,67 +279,27 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
-  // Carregamento inicial: servidores + campos + sync status (UMA VEZ APENAS)
   useEffect(() => {
-    const initializeData = async () => {
-      // PASSO 1: Carregar servidores
-      await fetchServers();
+    fetchServers();
+  }, []);
 
-      // PASSO 2: Carregar campos (UMA VEZ - não depende do servidor selecionado)
-      // fetchFields() busca de todos os servidores e carrega configs do KV
-      await fetchFields();
-
-      // PASSO 3: Após carregar servidores e campos, carregar external_labels e sync status do servidor selecionado
-      // IMPORTANTE: selectedServer já foi setado por fetchServers() no passo 1
-      if (selectedServer) {
-        console.log('[DEBUG INIT] Carregando external_labels e sync status inicial...');
-        await fetchExternalLabels(selectedServer);
-        await fetchSyncStatus(selectedServer);
-        console.log('[DEBUG INIT] Carregamento inicial completo!');
-      }
-    };
-
-    initializeData();
-  }, []); // Array vazio = executa apenas no mount
-
-  // Quando trocar de servidor: APENAS atualizar sync status (não recarrega campos)
+  // Recarregar campos e sync status quando trocar de servidor
   useEffect(() => {
-    if (selectedServer && fields.length > 0) {
+    if (selectedServer) {
       // Animação de "servidor alterado"
       setServerJustChanged(true);
       setTimeout(() => setServerJustChanged(false), 2000);
 
+      // Limpar dados antigos IMEDIATAMENTE
+      setFields([]);
       setServerHasNoPrometheus(false);
       setServerPrometheusMessage('');
 
-      // IMPORTANTE: Buscar external_labels PRIMEIRO, DEPOIS sync status
-      // Isso garante que o filtro funcione corretamente
-      const loadData = async () => {
-        console.log('[DEBUG] Servidor alterado, atualizando external_labels e sync status...');
-
-        // PASSO 1: Buscar external_labels (necessário para filtrar campos)
-        await fetchExternalLabels(selectedServer);
-
-        // PASSO 2: Buscar sync status (atualiza status nos fields existentes)
-        // NÃO chama fetchFields() novamente!
-        await fetchSyncStatus(selectedServer);
-
-        console.log('[DEBUG] Todos os dados carregados!');
-      };
-
-      loadData();
+      // Carregar novos dados
+      fetchFields();
+      fetchSyncStatus(selectedServer);
     }
   }, [selectedServer]);
-
-  // CORREÇÃO: Carregar external labels quando a aba é selecionada
-  // Problema identificado: fetchExternalLabels() só era chamado quando servidor mudava
-  // Solução: Adicionar listener para mudança de aba
-  useEffect(() => {
-    if (activeTab === 'external-labels' && selectedServer) {
-      console.log('[DEBUG] Aba External Labels selecionada, carregando dados...');
-      fetchExternalLabels(selectedServer);
-    }
-  }, [activeTab, selectedServer]);
 
   useEffect(() => {
     return () => {
@@ -527,80 +309,64 @@ const MetadataFieldsPage: React.FC = () => {
     };
   }, []);
 
-  /**
-   * FUNÇÃO REMOVIDA - handleCreateField
-   *
-   * MOTIVO: Campos agora vêm 100% do prometheus.yml (dinâmico via SSH)
-   * Para adicionar campos: edite prometheus.yml via página PrometheusConfig
-   *
-   * CÓDIGO ANTERIOR TINHA:
-   * - Hardcode Consul: source_label: `__meta_consul_service_metadata_${values.name}`
-   * - Criação manual de campos (não é mais necessário)
-   */
+  const handleCreateField = async (values: any) => {
+    try {
+      const response = await axios.post(`${API_URL}/metadata-fields/`, {
+        field: {
+          ...values,
+          source_label: `__meta_consul_service_metadata_${values.name}`,
+        },
+        sync_prometheus: true
+      });
+
+      if (response.data.success) {
+        message.success(`Campo '${values.display_name}' criado com sucesso!`);
+        fetchFields();
+        setCreateModalVisible(false);
+
+        // Perguntar se quer replicar
+        modal.confirm({
+          title: 'Replicar para servidores slaves?',
+          content: 'Deseja replicar este campo para todos os servidores slaves?',
+          okText: 'Sim, replicar',
+          cancelText: 'Não',
+          onOk: () => handleReplicateToSlaves(),
+        });
+      }
+    } catch (error: any) {
+      message.error('Erro ao criar campo: ' + (error.response?.data?.detail || error.message));
+    }
+  };
 
   const handleEditField = async (values: any) => {
     if (!editingField) return;
 
     try {
-      // PASSO 1: Auto-cadastrar categoria (retroalimentação)
-      if (values.category) {
-        try {
-          await axios.post(`${API_URL}/reference-values/ensure`, {
-            field_name: 'field_category',
-            value: values.category
-          });
-        } catch (err) {
-          console.warn('Erro ao auto-cadastrar categoria:', err);
-          // Não bloqueia edição do campo se falhar
-        }
+      const response = await axios.put(`${API_URL}/metadata-fields/${editingField.name}`, values);
+
+      if (response.data.success) {
+        message.success(`Campo '${values.display_name}' atualizado com sucesso!`);
+        fetchFields();
+        setEditModalVisible(false);
+        setEditingField(null);
       }
-
-      // PASSO 2: Salvar CONFIGURAÇÕES DO CAMPO no Consul KV
-      // IMPORTANTE: Salva apenas configurações de UI (display_name, category, show_in_*, etc)
-      // NÃO edita o prometheus.yml (para isso, use página PrometheusConfig)
-      const configToSave = {
-        display_name: values.display_name,
-        description: values.description,
-        category: values.category,
-        field_type: values.field_type,
-        order: values.order,
-        required: values.required,
-        show_in_table: values.show_in_table,
-        show_in_dashboard: values.show_in_dashboard,
-        show_in_form: values.show_in_form,
-        editable: values.editable,
-        // show_in_* para filtros de página (Services, Exporters, Blackbox, futuras...)
-        show_in_services: values.show_in_services ?? true,
-        show_in_exporters: values.show_in_exporters ?? true,
-        show_in_blackbox: values.show_in_blackbox ?? true,
-      };
-
-      await axios.put(`${API_URL}/kv/metadata/field-config/${editingField.name}`, configToSave);
-
-      // PASSO 3: Atualizar estado local DIRETAMENTE (não recarrega do Prometheus)
-      setFields(prevFields =>
-        prevFields.map(f =>
-          f.name === editingField.name
-            ? { ...f, ...configToSave }
-            : f
-        )
-      );
-
-      message.success(`Configurações do campo '${values.display_name}' atualizadas com sucesso!`);
-      setEditModalVisible(false);
-      setEditingField(null);
     } catch (error: any) {
-      message.error('Erro ao atualizar configurações: ' + (error.response?.data?.detail || error.message));
+      message.error('Erro ao atualizar campo: ' + (error.response?.data?.detail || error.message));
     }
   };
 
-  /**
-   * FUNÇÃO REMOVIDA - Página agora é SOMENTE LEITURA
-   * Para remover campos: edite prometheus.yml via PrometheusConfig
-   */
-  // const handleDeleteField = async (fieldName: string) => {
-  //   await deleteFieldResource({ service_id: fieldName } as any);
-  // };
+  const handleDeleteField = async (fieldName: string) => {
+    try {
+      const response = await axios.delete(`${API_URL}/metadata-fields/${fieldName}`);
+
+      if (response.data.success) {
+        message.success(`Campo deletado com sucesso!`);
+        fetchFields();
+      }
+    } catch (error: any) {
+      message.error('Erro ao deletar campo: ' + (error.response?.data?.detail || error.message));
+    }
+  };
 
   const handleReplicateToSlaves = async () => {
     const hide = message.loading('Replicando configurações...', 0);
@@ -879,29 +645,6 @@ const MetadataFieldsPage: React.FC = () => {
       render: (cat) => <Tag>{cat}</Tag>,
     },
     {
-      title: 'Auto-Cadastro',
-      dataIndex: 'available_for_registration',
-      width: 130,
-      align: 'center' as const,
-      render: (available) =>
-        available ? (
-          <Tooltip title="Este campo suporta retroalimentação (valores novos são cadastrados automaticamente)">
-            <Tag color="green" icon={<CheckCircleOutlined />}>Sim</Tag>
-          </Tooltip>
-        ) : (
-          <Tooltip title="Valores pré-definidos ou campo não suporta auto-cadastro">
-            <Tag icon={<MinusCircleOutlined />}>Não</Tag>
-          </Tooltip>
-        ),
-    },
-    {
-      title: 'Páginas',
-      width: 250,
-      render: (_, record) => (
-        <PageVisibilityPopover record={record} onUpdate={handleFieldUpdate} />
-      ),
-    },
-    {
       title: 'Obrigatório',
       dataIndex: 'required',
       width: 100,
@@ -976,7 +719,7 @@ const MetadataFieldsPage: React.FC = () => {
     },
     {
       title: 'Ações',
-      width: 300,
+      width: 240,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -988,7 +731,7 @@ const MetadataFieldsPage: React.FC = () => {
               onClick={() => handleViewField(record)}
             />
           </Tooltip>
-          <Tooltip title="Preview de Mudanças">
+          <Tooltip title="Preview de Mudanças (FASE 2)">
             <Button
               type="link"
               size="small"
@@ -997,7 +740,7 @@ const MetadataFieldsPage: React.FC = () => {
               disabled={!selectedServer || record.sync_status === 'error'}
             />
           </Tooltip>
-          <Tooltip title="Editar Configurações do Campo">
+          <Tooltip title="Editar">
             <Button
               type="link"
               size="small"
@@ -1008,7 +751,18 @@ const MetadataFieldsPage: React.FC = () => {
               }}
             />
           </Tooltip>
-          {/* Botão DELETE removido - campos vêm do Prometheus (não podem ser deletados manualmente) */}
+          {!record.required && (
+            <Popconfirm
+              title="Tem certeza que deseja deletar este campo?"
+              onConfirm={() => handleDeleteField(record.name)}
+              okText="Sim"
+              cancelText="Não"
+            >
+              <Tooltip title="Deletar">
+                <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -1194,8 +948,21 @@ const MetadataFieldsPage: React.FC = () => {
             </Space>
           </Col>
 
-          {/* BOTÃO "Adicionar Campo" REMOVIDO - Página agora é SOMENTE LEITURA */}
-          {/* Para adicionar campos: edite prometheus.yml via PrometheusConfig */}
+          {/* Coluna 2: Botão Adicionar Campo */}
+          <Col xs={12} lg={4}>
+            <Space direction="vertical" size={4} style={{ width: '100%' }}>
+              <Text strong style={{ fontSize: 13, opacity: 0 }}>.</Text>
+              <Button
+                type="primary"
+                size="large"
+                block
+                icon={<PlusOutlined />}
+                onClick={() => setCreateModalVisible(true)}
+              >
+                Adicionar Campo
+              </Button>
+            </Space>
+          </Col>
 
           {/* Coluna 3: Botão Replicar */}
           <Col xs={12} lg={4}>
@@ -1244,33 +1011,13 @@ const MetadataFieldsPage: React.FC = () => {
         </Row>
       </Card>
 
-      {/* ABAS: Campos de Meta vs External Labels */}
+      {/* Tabela de Campos */}
       <ProCard>
-        <Tabs
-          activeKey={activeTab}
-          onChange={setActiveTab}
-          items={[
-            {
-              key: 'meta-fields',
-              label: (
-                <span>
-                  <FileTextOutlined /> Campos de Meta (Relabel Configs)
-                </span>
-              ),
-              children: (
-                <ProTable<MetadataField>
+        <ProTable<MetadataField>
           columns={columns}
-          dataSource={fields.filter((field) => {
-            // FILTRAR: Remover external_labels desta aba
-            // External labels são campos globais do servidor (global.external_labels)
-            // São extraídos do prometheus.yml via SSH e armazenados em externalLabels state
-            const isExternalLabel = Object.keys(externalLabels).includes(field.name);
-
-            // Retornar FALSE se for external_label (remove da lista de campos de meta)
-            return !isExternalLabel;
-          })}
+          dataSource={fields}
           rowKey="name"
-          loading={loading || loadingSyncStatus || loadingExternalLabels}
+          loading={loading || loadingSyncStatus}
           search={false}
           options={{
             reload: () => {
@@ -1288,14 +1035,7 @@ const MetadataFieldsPage: React.FC = () => {
           }}
           scroll={{ x: 1600 }}
           toolBarRender={() => {
-            // IMPORTANTE: Filtrar external_labels ANTES de contar outdated
-            // External labels NÃO devem ser contados aqui (são globais do servidor)
-            const metaFieldsOnly = fields.filter((field) => {
-              const isExternalLabel = Object.keys(externalLabels).includes(field.name);
-              return !isExternalLabel; // Manter apenas campos de meta (relabel_configs)
-            });
-
-            const outdatedCount = metaFieldsOnly.filter(
+            const outdatedCount = fields.filter(
               (f) => f.sync_status === 'outdated' || f.sync_status === 'missing'
             ).length;
 
@@ -1349,80 +1089,80 @@ const MetadataFieldsPage: React.FC = () => {
             return toolbarItems;
           }}
         />
-              ),
-            },
-            {
-              key: 'external-labels',
-              label: (
-                <span>
-                  <CloudServerOutlined /> External Labels (Global do Servidor)
-                </span>
-              ),
-              children: (
-                <Card>
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="External Labels - Identificam o Servidor Prometheus"
-                    description={
-                      <div>
-                        <p><strong>O que são:</strong> Labels globais configurados no <code>global.external_labels</code> do prometheus.yml</p>
-                        <p><strong>Aplicados por:</strong> Próprio Prometheus automaticamente a TODAS as métricas coletadas</p>
-                        <p><strong>Finalidade:</strong> Identificar qual servidor Prometheus coletou a métrica (ex: site=palmas, datacenter=genesis-dtc)</p>
-                        <p><strong>IMPORTANTE:</strong> NÃO são campos para cadastrar em serviços! São apenas para VISUALIZAÇÃO.</p>
-                      </div>
-                    }
-                    style={{ marginBottom: 16 }}
-                  />
-
-                  {loadingExternalLabels ? (
-                    <div style={{ textAlign: 'center', padding: 40 }}>
-                      <LoadingOutlined style={{ fontSize: 24 }} spin />
-                      <p>Carregando external labels...</p>
-                    </div>
-                  ) : Object.keys(externalLabels).length === 0 ? (
-                    <Alert
-                      type="warning"
-                      message="Nenhum External Label Configurado"
-                      description={
-                        selectedServer
-                          ? "Este servidor não possui external_labels configurados no prometheus.yml"
-                          : "Selecione um servidor acima para ver os external labels"
-                      }
-                    />
-                  ) : (
-                    <Descriptions
-                      bordered
-                      column={1}
-                      size="small"
-                      title={`External Labels do Servidor (${servers.find(s => s.id === selectedServer)?.display_name || 'Desconhecido'})`}
-                    >
-                      {Object.entries(externalLabels).map(([key, value]) => (
-                        <Descriptions.Item key={key} label={<Text strong>{key}</Text>}>
-                          <Tag color="blue">{value}</Tag>
-                        </Descriptions.Item>
-                      ))}
-                    </Descriptions>
-                  )}
-                </Card>
-              ),
-            },
-          ]}
-        />
       </ProCard>
 
-      {/* Modal Criar Campo REMOVIDO - Campos vêm 100% do prometheus.yml */}
-      {/* Para adicionar campos: edite prometheus.yml via página PrometheusConfig */}
-
-      {/* Modal Editar Campo - REORGANIZADO COM COLLAPSE */}
+      {/* Modal Criar Campo */}
       <ModalForm
-        key={editingField?.name || 'edit-field-modal'}
-        title={
-          <Space>
-            <EditOutlined />
-            {`Editar Configurações: ${editingField?.display_name || editingField?.name}`}
-          </Space>
-        }
+        title="Adicionar Novo Campo Metadata"
+        open={createModalVisible}
+        onOpenChange={setCreateModalVisible}
+        onFinish={handleCreateField}
+        modalProps={{
+          width: 600,
+        }}
+      >
+        <ProFormText
+          name="name"
+          label="Nome Técnico"
+          placeholder="ex: datacenter"
+          rules={[{ required: true, pattern: /^[a-z_]+$/, message: 'Apenas letras minúsculas e underscore' }]}
+          tooltip="Nome técnico usado internamente (apenas letras minúsculas e _)"
+        />
+        <ProFormText
+          name="display_name"
+          label="Nome de Exibição"
+          placeholder="ex: Data Center"
+          rules={[{ required: true }]}
+          tooltip="Nome amigável que aparece na interface"
+        />
+        <ProFormTextArea
+          name="description"
+          label="Descrição"
+          placeholder="Descrição do campo"
+          rows={2}
+        />
+        <ProFormSelect
+          name="field_type"
+          label="Tipo do Campo"
+          options={[
+            { label: 'Texto (string)', value: 'string' },
+            { label: 'Número (number)', value: 'number' },
+            { label: 'Seleção (select)', value: 'select' },
+            { label: 'Texto Longo (text)', value: 'text' },
+            { label: 'URL (url)', value: 'url' },
+          ]}
+          rules={[{ required: true }]}
+        />
+        <ProFormSelect
+          name="category"
+          label="Categoria"
+          options={[
+            { label: 'Infraestrutura', value: 'infrastructure' },
+            { label: 'Básico', value: 'basic' },
+            { label: 'Dispositivo', value: 'device' },
+            { label: 'Extras', value: 'extra' },
+          ]}
+          initialValue="extra"
+          rules={[{ required: true }]}
+        />
+        <ProFormDigit
+          name="order"
+          label="Ordem"
+          min={1}
+          max={999}
+          initialValue={23}
+          fieldProps={{ precision: 0 }}
+        />
+        <ProFormSwitch name="required" label="Campo Obrigatório" initialValue={false} />
+        <ProFormSwitch name="show_in_table" label="Mostrar em Tabelas" initialValue={true} />
+        <ProFormSwitch name="show_in_dashboard" label="Mostrar no Dashboard" initialValue={false} />
+        <ProFormSwitch name="show_in_form" label="Mostrar em Formulários" initialValue={true} />
+        <ProFormSwitch name="editable" label="Editável" initialValue={true} />
+      </ModalForm>
+
+      {/* Modal Editar Campo */}
+      <ModalForm
+        title={`Editar Campo: ${editingField?.display_name}`}
         open={editModalVisible}
         onOpenChange={(visible) => {
           setEditModalVisible(visible);
@@ -1431,186 +1171,52 @@ const MetadataFieldsPage: React.FC = () => {
         onFinish={handleEditField}
         initialValues={editingField || {}}
         modalProps={{
-          width: 720,
-          destroyOnHidden: true,
+          width: 600,
         }}
       >
-        {/* Metadados Somente-Leitura */}
-        <Alert
-          message={<><strong>Campo Metadata:</strong> {editingField?.name}</>}
-          description={
-            <div style={{ fontSize: 12, marginTop: 4 }}>
-              <div><strong>Source Label:</strong> <code>{editingField?.source_label || 'N/A'}</code></div>
-              <div style={{ marginTop: 4, color: '#666' }}>
-                ℹ️ Estes campos vêm do prometheus.yml e não podem ser alterados aqui.
-                Use a página "Configuração Prometheus" para editar o prometheus.yml.
-              </div>
-            </div>
-          }
-          type="info"
-          showIcon
-          style={{ marginBottom: 24 }}
+        <ProFormText name="name" label="Nome Técnico" disabled />
+        <ProFormText
+          name="display_name"
+          label="Nome de Exibição"
+          rules={[{ required: true }]}
         />
-
-        {/* Collapse para organizar campos - USANDO NOVA API 'items' */}
-        <Collapse
-          defaultActiveKey={['basic', 'visibility-pages']}
-          style={{ marginBottom: 16 }}
-          items={[
-            // PAINEL 1: Informações Básicas
-            {
-              key: 'basic',
-              label: '📝 Informações Básicas',
-              children: (
-                <>
-                  {/* LINHA 1: Nome de Exibição + Categoria */}
-                  <Row gutter={16}>
-                    <Col span={12}>
-                      <ProFormText
-                        name="display_name"
-                        label="Nome de Exibição"
-                        rules={[{ required: true, message: 'Nome de exibição é obrigatório' }]}
-                        placeholder="Ex: Sistema Operacional, Empresa..."
-                        tooltip="Nome amigável exibido nas tabelas e formulários"
-                      />
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item
-                        name="category"
-                        label="Categoria"
-                        rules={[{ required: true, message: 'Informe a categoria' }]}
-                        tooltip="Digite uma categoria existente ou crie uma nova. Valores novos são cadastrados automaticamente via retroalimentação."
-                      >
-                        <ReferenceValueInput
-                          fieldName="field_category"
-                          placeholder="infrastructure, basic, device..."
-                          required
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  {/* LINHA 2: Descrição (campo grande, ocupa linha inteira) */}
-                  <ProFormTextArea
-                    name="description"
-                    label="Descrição"
-                    rows={2}
-                    placeholder="Descreva o propósito deste campo..."
-                    tooltip="Descrição que aparecerá em tooltips e documentação"
-                  />
-                </>
-              ),
-            },
-            // PAINEL 2: Configurações de Campo
-            {
-              key: 'config',
-              label: '⚙️ Configurações de Campo',
-              children: (
-                <>
-                  {/* LINHA 1: Tipo do Campo + Ordem de Exibição */}
-                  <Row gutter={16}>
-                    <Col span={16}>
-                      <ProFormSelect
-                        name="field_type"
-                        label="Tipo do Campo"
-                        options={[
-                          { label: 'Texto (string)', value: 'string' },
-                          { label: 'Número (number)', value: 'number' },
-                          { label: 'Seleção (select)', value: 'select' },
-                          { label: 'Texto Longo (text)', value: 'text' },
-                          { label: 'URL (url)', value: 'url' },
-                        ]}
-                        rules={[{ required: true, message: 'Selecione o tipo do campo' }]}
-                        tooltip="Define o tipo de entrada e validação do campo"
-                      />
-                    </Col>
-                    <Col span={8}>
-                      <ProFormDigit
-                        name="order"
-                        label="Ordem de Exibição"
-                        min={1}
-                        max={999}
-                        fieldProps={{ precision: 0 }}
-                        tooltip="Ordem em que o campo aparece (menor = primeiro)"
-                      />
-                    </Col>
-                  </Row>
-
-                  {/* LINHA 2: Switches Obrigatório + Editável */}
-                  <Space size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
-                    <ProFormSwitch
-                      name="required"
-                      label="Obrigatório"
-                      tooltip="Campo deve ser preenchido obrigatoriamente"
-                    />
-                    <ProFormSwitch
-                      name="editable"
-                      label="Editável"
-                      tooltip="Usuário pode editar o valor após criação"
-                    />
-                  </Space>
-                </>
-              ),
-            },
-            // PAINEL 3: Visibilidade Geral
-            {
-              key: 'visibility-general',
-              label: '👁️ Visibilidade Geral (UI)',
-              children: (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                  <ProFormSwitch
-                    name="show_in_table"
-                    label="Tabelas"
-                    tooltip="Exibir como coluna em tabelas"
-                  />
-                  <ProFormSwitch
-                    name="show_in_dashboard"
-                    label="Dashboard"
-                    tooltip="Exibir em dashboards e resumos"
-                  />
-                  <ProFormSwitch
-                    name="show_in_form"
-                    label="Formulários"
-                    tooltip="Exibir em formulários de cadastro/edição"
-                  />
-                </div>
-              ),
-            },
-            // PAINEL 4: Visibilidade por Página (CRÍTICO)
-            {
-              key: 'visibility-pages',
-              label: '🎯 Visibilidade por Página (Filtros)',
-              children: (
-                <>
-                  <Alert
-                    message="Controle de Contexto"
-                    description="Configure em quais páginas este campo deve aparecer nos formulários. Ex: 'sistema_operacional' não faz sentido em monitoramento HTTP, então pode desmarcar 'Blackbox'."
-                    type="info"
-                    showIcon
-                    style={{ marginBottom: 16 }}
-                  />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                    <ProFormSwitch
-                      name="show_in_services"
-                      label={<Space><Tag color="blue">Services</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de serviços"
-                    />
-                    <ProFormSwitch
-                      name="show_in_exporters"
-                      label={<Space><Tag color="green">Exporters</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de exporters"
-                    />
-                    <ProFormSwitch
-                      name="show_in_blackbox"
-                      label={<Space><Tag color="orange">Blackbox</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de targets blackbox"
-                    />
-                  </div>
-                </>
-              ),
-            },
+        <ProFormTextArea name="description" label="Descrição" rows={2} />
+        <ProFormSelect
+          name="field_type"
+          label="Tipo do Campo"
+          options={[
+            { label: 'Texto (string)', value: 'string' },
+            { label: 'Número (number)', value: 'number' },
+            { label: 'Seleção (select)', value: 'select' },
+            { label: 'Texto Longo (text)', value: 'text' },
+            { label: 'URL (url)', value: 'url' },
           ]}
+          rules={[{ required: true }]}
         />
+        <ProFormSelect
+          name="category"
+          label="Categoria"
+          options={[
+            { label: 'Infraestrutura', value: 'infrastructure' },
+            { label: 'Básico', value: 'basic' },
+            { label: 'Dispositivo', value: 'device' },
+            { label: 'Extras', value: 'extra' },
+          ]}
+          rules={[{ required: true }]}
+        />
+        <ProFormDigit
+          name="order"
+          label="Ordem"
+          min={1}
+          max={999}
+          fieldProps={{ precision: 0 }}
+        />
+        <ProFormSwitch name="required" label="Campo Obrigatório" />
+        <ProFormSwitch name="show_in_table" label="Mostrar em Tabelas" />
+        <ProFormSwitch name="show_in_dashboard" label="Mostrar no Dashboard" />
+        <ProFormSwitch name="show_in_form" label="Mostrar em Formulários" />
+        <ProFormSwitch name="editable" label="Editável" />
+        <ProFormText name="source_label" label="Source Label" disabled />
       </ModalForm>
 
       {/* FASE 2: Modal de Preview de Mudanças */}

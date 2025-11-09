@@ -128,69 +128,41 @@ const Settings: React.FC = () => {
     }
   };
 
-  const fetchPrometheusServers = async (isRetry = false) => {
+  const fetchPrometheusServers = async () => {
     setLoadingServers(true);
     try {
-      // LER DO CONSUL KV - Dados JÁ extraídos pela página MetadataFields/PrometheusConfig
-      const response = await fetch('/api/v1/kv/value?key=skills/cm/metadata/fields');
+      // OTIMIZAÇÃO: Não faz SSH! Apenas busca lista de servidores do .env (rápido)
+      const serversResponse = await fetch('/api/v1/metadata-fields/servers');
 
-      // Se retornar 404, significa que nunca foi sincronizado
-      // EXTRAÇÃO AUTOMÁTICA na primeira vez (bug do namespace já foi corrigido)
-      if (response.status === 404 && !isRetry) {
-        console.info('[Settings] Primeira vez - extraindo automaticamente do Prometheus via SSH...');
-        message.loading('Extraindo external_labels dos servidores Prometheus via SSH (pode levar 5-30s)...', 0);
+      if (!serversResponse.ok) {
+        throw new Error(`Erro ao buscar servidores: ${serversResponse.statusText}`);
+      }
 
-        try {
-          // USA O MESMO ENDPOINT que MetadataFields e PrometheusConfig
-          const extractResponse = await fetch('/api/v1/prometheus-config/fields');
-          if (!extractResponse.ok) {
-            throw new Error('Erro ao extrair campos do Prometheus');
-          }
+      const serversData = await serversResponse.json();
+      const serverList = serversData.servers || [];
 
-          message.destroy();
-          message.success('Dados extraídos e salvos com sucesso!');
-
-          // Aguardar 1s para garantir que KV foi atualizado
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          // Agora busca do KV (dados recém-salvos) - isRetry=true evita loop
-          await fetchPrometheusServers(true);
-          return;
-        } catch (error) {
-          message.destroy();
-          console.error('[Settings] Erro na extração automática:', error);
-          message.error('Erro ao extrair dados. Clique em "Atualizar" para tentar novamente.');
-          setPrometheusServers([]);
-          return;
-        }
-      } else if (response.status === 404 && isRetry) {
-        // Chegou aqui após extração mas KV ainda não tem dados - erro grave
-        message.error('ERRO: Dados não foram salvos no KV. Verifique logs do backend.');
-        console.error('[Settings] KV ainda retorna 404 após extração - namespace incorreto?');
+      if (serverList.length === 0) {
+        message.warning('Nenhum servidor Prometheus configurado no .env');
         setPrometheusServers([]);
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+      // OTIMIZAÇÃO: NÃO faz SSH para buscar external_labels!
+      // External labels devem ser extraídos via MetadataFields primeiro
+      // Aqui apenas mostramos aviso se não estiverem disponíveis
+      console.log('[Settings] Servidores carregados (sem SSH):', serverList);
+      setPrometheusServers(serverList.map((server: any) => ({
+        hostname: server.hostname,
+        port: server.port,
+        external_labels: server.external_labels || {},  // Se existir no KV/cache
+        external_labels_count: Object.keys(server.external_labels || {}).length,
+        status: Object.keys(server.external_labels || {}).length > 0 ? 'success' : 'pending'
+      })));
 
-      const data = await response.json();
-
-      // Extrair external_labels dos servidores do extraction_status
-      const extractionStatus = data.value?.data?.extraction_status?.server_status || [];
-      const servers = extractionStatus.map((status: any) => ({
-        hostname: status.hostname || status.server_id,
-        port: status.port || 22,
-        external_labels: status.external_labels || {},
-        external_labels_count: Object.keys(status.external_labels || {}).length,
-        status: status.status || 'unknown'
-      }));
-
-      setPrometheusServers(servers);
-    } catch (error) {
-      console.error('[Settings] Erro ao carregar external_labels do KV:', error);
-      message.error(`Erro ao buscar dados: ${error}`);
+    } catch (error: any) {
+      console.error('[Settings] Erro ao carregar servidores:', error);
+      message.error(`Erro: ${error.message}`);
+      setPrometheusServers([]);
     } finally {
       setLoadingServers(false);
     }
@@ -198,7 +170,7 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     loadConfig();
-    fetchPrometheusServers();  // Buscar external_labels de todos os servidores
+    fetchPrometheusServers();  // Buscar lista de servidores (SEM SSH, apenas .env + cache)
   }, []);
 
   // Helper: Buscar external_labels para um prometheus_host específico

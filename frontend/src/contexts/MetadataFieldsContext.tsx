@@ -51,9 +51,10 @@ export function MetadataFieldsProvider({ children }: { children: ReactNode }) {
       console.log('[MetadataFieldsContext] 🔄 Iniciando carregamento de campos...');
 
       // PASSO 2: Fazer requisição ao backend
-      // UMA ÚNICA requisição para todos os campos
-      const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
-        timeout: 60000,
+      // USA /metadata-fields/ que LÊ DO CONSUL KV (rápido, sem SSH)
+      // Apenas MetadataFields page deve usar /prometheus-config/fields (com SSH)
+      const response = await axios.get(`${API_URL}/metadata-fields/`, {
+        timeout: 10000, // Reduzido para 10s (KV é rápido)
       });
 
       const endTime = performance.now();

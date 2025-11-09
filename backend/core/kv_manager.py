@@ -58,11 +58,21 @@ class KVManager:
             default: Value to return if key doesn't exist
 
         Returns:
-            Decoded JSON object or default value
+            Decoded JSON object or default value (auto-unwraps metadata wrapper)
         """
         self._validate_namespace(key)
         result = await self.consul.get_kv_json(key)
-        return result if result is not None else default
+
+        if result is None:
+            return default
+
+        # Auto-unwrap metadata wrapper if present
+        # When put_json() is called with metadata, it wraps as {"data": value, "meta": {...}}
+        # This automatically extracts the actual value for easier consumption
+        if isinstance(result, dict) and 'data' in result and 'meta' in result:
+            return result['data']
+
+        return result
 
     async def put_json(self, key: str, value: Any, metadata: Optional[Dict] = None) -> bool:
         """

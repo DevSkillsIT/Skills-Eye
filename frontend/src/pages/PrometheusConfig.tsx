@@ -120,10 +120,227 @@ interface Server {
   display_name: string;
 }
 
+/**
+ * ============================================================================
+ * EXTRATOR UNIVERSAL DE METADATA FIELDS
+ * ============================================================================
+ * Funciona para TODOS os tipos de exporters e service discoveries do Prometheus
+ *
+ * RESOLUÇÃO DE YAML ANCHORS: Backend já resolve via ruamel.yaml
+ * SUPORTE UNIVERSAL: Consul, EC2, Kubernetes, SNMP, Blackbox, Docker, DigitalOcean, DNS, etc
+ */
+
+/**
+ * Identifica o tipo de service discovery baseado nos prefixos dos source_labels
+ *
+ * @param sourceLabels Array de source labels do relabel_config
+ * @returns Tipo de service discovery detectado
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function identifyServiceDiscovery(sourceLabels: any[]): string {
+  const patterns: Record<string, string> = {
+    consul: '__meta_consul_',
+    ec2: '__meta_ec2_',
+    kubernetes: '__meta_kubernetes_',
+    dns: '__meta_dns_',
+    file: '__meta_filepath',
+    digitalocean: '__meta_digitalocean_',
+    docker: '__meta_docker_',
+    // Multi-target exporters (SNMP, Blackbox)
+    param: '__param_'
+  };
+
+  for (const [sd, prefix] of Object.entries(patterns)) {
+    if (sourceLabels.some((sl: string) => sl && sl.startsWith(prefix))) {
+      return sd;
+    }
+  }
+
+  return 'static'; // Static targets
+}
+
+/**
+ * Determina se é um campo customizado pelo usuário (vs campo padrão do service discovery)
+ *
+ * @param sourceLabels Array de source labels
+ * @param sdType Tipo de service discovery
+ * @returns true se for campo customizado
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isCustomMetadataField(sourceLabels: any[], sdType: string): boolean {
+  const customPatterns: Record<string, (label: string) => boolean> = {
+    // Consul: campos com _metadata_ são customizados pelo usuário
+    consul: (label: string) => label.includes('_metadata_'),
+    // EC2: tags customizadas
+    ec2: (label: string) => label.includes('_tag_'),
+    // Kubernetes: labels e annotations customizadas
+    kubernetes: (label: string) => label.includes('_label_') || label.includes('_annotation_'),
+    // SNMP/Blackbox não têm campos custom nativos, usam __param_
+  };
+
+  const checker = customPatterns[sdType];
+  if (!checker) return false;
+
+  return sourceLabels.some(checker);
+}
+
+/**
+ * Extrai padrão do source_label para identificação
+ *
+ * @param sourceLabels Array de source labels
+ * @param sdType Tipo de service discovery
+ * @returns Padrão identificado
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getSourcePattern(sourceLabels: any[], sdType: string): string {
+  // Retorna o primeiro source_label que identifica o tipo
+  const metaLabel = sourceLabels.find((sl: string) =>
+    sl && sl.startsWith('__meta_')
+  );
+  return metaLabel || sourceLabels[0] || 'unknown';
+}
+
+/**
+ * Detecta e processa padrão multi-target (SNMP/Blackbox Exporters)
+ *
+ * Multi-target exporters usam um padrão onde:
+ * - __param_target define o alvo real
+ * - __address__ é substituído pelo endereço do exporter
+ *
+ * @param relabelConfigs Array completo de relabel configs
+ * @returns Informações do multi-target ou null
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function detectMultiTargetPattern(relabelConfigs: any[]): { type: string; extractableFields: string[] } | null {
+  // Padrão característico de multi-target exporters
+  const hasParamTarget = relabelConfigs.some((rc: any) =>
+    rc.target_label === '__param_target'
+  );
+
+  const hasAddressReplacement = relabelConfigs.some((rc: any) =>
+    rc.target_label === '__address__' && rc.replacement
+  );
+
+  if (hasParamTarget && hasAddressReplacement) {
+    // É um multi-target exporter
+    return {
+      type: 'multi-target',
+      extractableFields: relabelConfigs
+        .filter((rc: any) => {
+          // Campos extraíveis em multi-target
+          // IMPORTANTE: NÃO filtrar 'instance'!
+          // Se instance vem de __param_target, é uma transformação EXPLÍCITA válida
+          return rc.target_label &&
+                 !rc.target_label.startsWith('__')
+        })
+        .map((rc: any) => rc.target_label)
+    };
+  }
+
+  return null;
+}
+
+/**
+ * ALGORITMO UNIVERSAL PARA EXTRAIR CAMPOS METADATA
+ *
+ * Funciona para TODOS os tipos de service discovery e exporters:
+ * - Consul (service_metadata_*)
+ * - EC2 (tags)
+ * - Kubernetes (labels/annotations)
+ * - SNMP/Blackbox (multi-target)
+ * - Docker, DigitalOcean, DNS, etc
+ *
+ * @param relabelConfigs Array de configurações de relabel já parseadas pelo backend
+ * @returns Array de campos metadata identificados
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractMetadataFields(relabelConfigs: any[]): any[] {
+  // NOTA: Backend já resolve YAML anchors via ruamel.yaml antes de enviar
+  // Recebemos relabel_configs já parseados e expandidos
+
+  const metadataFields = new Map(); // Usar Map para deduplicar
+
+  // PASSO 1: Detectar padrão multi-target
+  const multiTargetInfo = detectMultiTargetPattern(relabelConfigs);
+
+  // PASSO 2: Processar todos os relabel_configs
+  relabelConfigs.forEach((rc: any) => {
+    const sourceLabels = rc.source_labels || [];
+    const targetLabel = rc.target_label;
+
+    // REGRA UNIVERSAL: Qualquer campo é metadata se:
+    // 1. Tem target_label definido E target_label NÃO começa com __
+    // 2. Target label não é 'job' (especial do Prometheus)
+    // 3. E atende QUALQUER destas condições:
+    //    a) Source vem de __meta_* (Consul, K8s, EC2, Docker, DNS, etc)
+    //    b) Source vem de __param_* (SNMP/Blackbox multi-target)
+    //    c) É transformação válida: labels públicos → target público (file_sd, static)
+
+    // Filtro 1: Target label deve existir
+    if (!targetLabel) {
+      return;
+    }
+
+    // Filtro 2: Ignorar labels internos (começam com __)
+    if (targetLabel.startsWith('__')) {
+      return;
+    }
+
+    // Filtro 3: Ignorar 'job' sempre (é label especial do Prometheus)
+    if (targetLabel === 'job') {
+      return;
+    }
+
+    // IMPORTANTE: NÃO filtrar 'instance' em multi-target!
+    // Se instance vem de __param_target, é uma transformação EXPLÍCITA válida
+    // As condições de inclusão abaixo já tratam corretamente
+
+    // CONDIÇÕES DE INCLUSÃO (qualquer uma verdadeira = incluir campo)
+
+    // 1. Tem source com __meta_* (service discovery: Consul, K8s, EC2, etc)
+    const hasMetaSource = sourceLabels.some((sl: string) =>
+      sl && sl.startsWith('__meta_')
+    );
+
+    // 2. Tem source com __param_* (multi-target exporters: SNMP, Blackbox)
+    const hasParamSource = sourceLabels.some((sl: string) =>
+      sl && sl.startsWith('__param_')
+    );
+
+    // 3. Transformação válida: source_labels públicos (sem __) gerando target público
+    //    Isso captura file_sd (datacenter→dc) e static (env→priority)
+    const hasValidTransformation =
+      sourceLabels.length > 0 &&
+      sourceLabels.some((sl: string) => sl && !sl.startsWith('__'));
+
+    // INCLUIR se QUALQUER condição for verdadeira
+    if (hasMetaSource || multiTargetInfo || hasParamSource || hasValidTransformation) {
+      // PASSO 3: Identificar tipo de service discovery
+      const sdType = identifyServiceDiscovery(sourceLabels);
+
+      // PASSO 4: Montar objeto com TODAS as informações
+      metadataFields.set(targetLabel, {
+        targetName: targetLabel,
+        sourceLabels: sourceLabels,
+        serviceDiscovery: sdType,
+        sourcePattern: getSourcePattern(sourceLabels, sdType),
+        isCustomField: isCustomMetadataField(sourceLabels, sdType),
+        isMultiTarget: !!multiTargetInfo,
+        replacement: rc.replacement,
+        regex: rc.regex,
+        action: rc.action || 'replace'
+      });
+    }
+  });
+
+  return Array.from(metadataFields.values());
+}
+
 const PrometheusConfig: React.FC = () => {
   const navigate = useNavigate();
   const { modal } = App.useApp(); // Hook para usar Modal com contexto
   const [allFiles, setAllFiles] = useState<ConfigFile[]>([]); // TODOS os arquivos
+  const [lastFilesFetch, setLastFilesFetch] = useState<Date | null>(null); // Data do último carregamento
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [fileType, setFileType] = useState<string>('prometheus'); // NOVO: tipo do arquivo
@@ -224,8 +441,28 @@ const PrometheusConfig: React.FC = () => {
   // Modal de progresso de extração
   const [progressModalVisible, setProgressModalVisible] = useState(false);
 
+  // Modal de visualização dos Target Mappings
+  const [targetMappingModalVisible, setTargetMappingModalVisible] = useState(false);
+  const [selectedTargetMappings, setSelectedTargetMappings] = useState<{
+    jobName: string;
+    mappings: any[];
+    allRelabels: any[];
+  } | null>(null);
+
   const loadPrometheusFields = async () => {
-    // Abrir modal IMEDIATAMENTE ao iniciar carregamento
+    // CRÍTICO: RESETAR estados ANTES de abrir modal
+    // Previne mostrar dados antigos (tudo verde) por alguns milissegundos
+    setFieldsData(prev => ({
+      ...prev,
+      loading: true,
+      fromCache: false,
+      successfulServers: 0,
+      totalServers: 0,
+      serverStatus: [],
+      // NÃO limpar fields aqui porque pode ser carregamento do cache (rápido)
+    }));
+
+    // Agora sim abrir modal com estados limpos
     setProgressModalVisible(true);
 
     // PASSO 1: Buscar lista de servidores para mostrar Timeline pré-populada
@@ -260,16 +497,22 @@ const PrometheusConfig: React.FC = () => {
 
     // PASSO 2: Fazer requisição de fields de TODOS os servidores (processamento paralelo)
     try {
-      console.log('[PrometheusConfig] Buscando fields de TODOS os 3 servidores em paralelo...');
-
       const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
         timeout: 60000, // 60 segundos (processamento paralelo SSH em 3 servidores)
       });
+
+      // Log apropriado baseado na origem dos dados
+      if (response.data.from_cache) {
+        console.log('[PrometheusConfig] ⚡ Campos carregados do CACHE (sem SSH) em milissegundos');
+      } else {
+        console.log('[PrometheusConfig] 🔌 Campos extraídos via SSH de', response.data.total_servers, 'servidores');
+      }
+
       console.log('[PrometheusConfig] Resposta recebida:', {
         success: response.data.success,
         total: response.data.total,
+        fromCache: response.data.from_cache,
         server_status_length: response.data.server_status?.length,
-        server_status: response.data.server_status,
       });
 
       if (response.data.success) {
@@ -284,7 +527,6 @@ const PrometheusConfig: React.FC = () => {
           successfulServers: response.data.successful_servers || 0,
           fromCache: response.data.from_cache || false,
         };
-        console.log('[PrometheusConfig] Atualizando fieldsData com:', newFieldsData);
         setFieldsData(newFieldsData);
       }
     } catch (err: any) {
@@ -293,6 +535,106 @@ const PrometheusConfig: React.FC = () => {
         ...prev,
         loading: false,
         error: err.response?.data?.message || 'Erro ao carregar campos',
+      }));
+    }
+  };
+
+  // Função para recarregar campos COM force_refresh (bypass cache)
+  // CRÍTICO: Limpa TODOS os caches (prometheus config + metadata fields KV)
+  const loadPrometheusFieldsForceRefresh = async () => {
+    console.log('[PrometheusConfig] 🔄 ATUALIZAÇÃO FORÇADA - Limpando TODOS os caches e forçando extração SSH...');
+
+    // CRÍTICO: RESETAR todos os estados ANTES de abrir o modal
+    // Isso previne mostrar dados antigos (tudo verde) antes de começar
+    setFieldsData(prev => ({
+      ...prev,
+      loading: true,              // Indicar que está carregando
+      fromCache: false,            // NÃO é do cache
+      successfulServers: 0,        // Resetar contador de sucesso
+      totalServers: 0,             // Resetar total
+      serverStatus: [],            // Limpar status antigos (importante!)
+      fields: [],                  // Limpar campos antigos
+    }));
+
+    // Agora sim abrir modal com estados limpos
+    setProgressModalVisible(true);
+
+    try {
+      // PASSO 1: Limpar cache do backend (prometheus config files)
+      console.log('[PrometheusConfig] PASSO 1/4: Limpando cache de arquivos Prometheus...');
+      await axios.post(`${API_URL}/prometheus-config/clear-cache`);
+
+      // PASSO 2: Deletar KV de metadata fields para forçar extração SSH
+      console.log('[PrometheusConfig] PASSO 2/4: Deletando cache KV de metadata fields...');
+      try {
+        await axios.delete(`${API_URL}/kv/value`, {
+          params: { key: 'skills/cm/metadata/fields' }
+        });
+        console.log('[PrometheusConfig] ✓ Cache KV deletado com sucesso');
+      } catch (deleteErr) {
+        // KV pode não existir, ignorar erro 404
+        console.log('[PrometheusConfig] ⚠ KV não existe ou já foi deletado (OK)');
+      }
+
+      // PASSO 3: Buscar lista de servidores para Timeline
+      console.log('[PrometheusConfig] PASSO 3/4: Carregando lista de servidores...');
+      const serversResponse = await axios.get(`${API_URL}/metadata-fields/servers`);
+      if (serversResponse.data.success && serversResponse.data.servers) {
+        const serversList = serversResponse.data.servers as Array<{ id: string; name: string }>;
+        const initialStatus: ServerStatus[] = serversList.map((srv) => ({
+          hostname: srv.id.split(':')[0],
+          success: false,
+          from_cache: false,
+          files_count: 0,
+          fields_count: 0,
+          error: null,
+          duration_ms: 0,
+        }));
+
+        setFieldsData(prev => ({
+          ...prev,
+          loading: true,
+          error: null,
+          serverStatus: initialStatus,
+          totalServers: initialStatus.length,
+          successfulServers: 0,
+          fromCache: false,
+        }));
+        console.log(`[PrometheusConfig] ✓ ${serversList.length} servidores encontrados`);
+      }
+    } catch (err) {
+      console.error('[PrometheusConfig] ✗ Erro ao preparar extração:', err);
+    }
+
+    try {
+      // PASSO 4: Extrair campos via SSH (force_refresh=true)
+      console.log('[PrometheusConfig] PASSO 4/4: 🔌 Conectando via SSH para extração FORÇADA...');
+      const response = await axios.get(`${API_URL}/prometheus-config/fields`, {
+        params: { force_refresh: true },
+        timeout: 60000,
+      });
+
+      if (response.data.success) {
+        setFieldsData({
+          fields: response.data.fields,
+          loading: false,
+          error: null,
+          total: response.data.total,
+          lastUpdated: response.data.last_updated,
+          serverStatus: response.data.server_status || [],
+          totalServers: response.data.total_servers || 0,
+          successfulServers: response.data.successful_servers || 0,
+          fromCache: false,
+        });
+        console.log(`[PrometheusConfig] ✅ EXTRAÇÃO SSH CONCLUÍDA! ${response.data.total} campos de ${response.data.successful_servers}/${response.data.total_servers} servidores`);
+        console.log('[PrometheusConfig] ✓ Todos os caches foram limpos e dados atualizados via SSH!');
+      }
+    } catch (err: any) {
+      console.error('[PrometheusConfig] Erro ao recarregar fields:', err);
+      setFieldsData(prev => ({
+        ...prev,
+        loading: false,
+        error: err.response?.data?.message || 'Erro ao recarregar campos',
       }));
     }
   };
@@ -328,6 +670,7 @@ const PrometheusConfig: React.FC = () => {
       });
       if (response.data.success) {
         setAllFiles(response.data.files);
+        setLastFilesFetch(new Date()); // Armazenar data/hora do carregamento
         // CORREÇÃO: Remover auto-seleção daqui para evitar duplicação
         // A auto-seleção é feita no useEffect (linhas 581-607) que monitora allFiles
         // Isso previne tentativas de carregar arquivos que não existem
@@ -515,6 +858,20 @@ const PrometheusConfig: React.FC = () => {
     loadInitialData();
   }, []); // Só executa no mount
 
+  // CORREÇÃO: Carregar campos metadata automaticamente ao montar a página
+  // Isso garante que o modal apareça assim que a página carrega (como solicitado)
+  useEffect(() => {
+    // Aguardar um pequeno delay para servidor estar selecionado
+    const timer = setTimeout(() => {
+      if (selectedServer && fields.length === 0 && !loadingFields) {
+        console.log('[PrometheusConfig] Auto-carregando fields na montagem da página');
+        loadPrometheusFields();
+      }
+    }, 500); // 500ms para garantir que selectedServer foi setado
+
+    return () => clearTimeout(timer);
+  }, [selectedServer]); // Executar quando selectedServer estiver disponível
+
   // Recarregar arquivos quando trocar de servidor (inicial ou manual)
   useEffect(() => {
     if (selectedServer) {
@@ -623,27 +980,32 @@ const PrometheusConfig: React.FC = () => {
     }
 
     try {
-      // CRÍTICO: Limpar cache do backend primeiro
-      const hideLoading = message.loading('Limpando cache e recarregando...', 0);
+      console.log('[PrometheusConfig] 🔄 ATUALIZAÇÃO COMPLETA via botão sidebar - Forçando refresh de TUDO (arquivos + metadata)');
 
-      await axios.post(`${API_URL}/prometheus-config/clear-cache`);
+      // PASSO 1: SEMPRE forçar extração SSH de campos metadata (mostra modal com progress)
+      // Isso também limpa cache do backend e KV internamente
+      await loadPrometheusFieldsForceRefresh();
 
-      // Recarregar dados (fetchFiles já valida selectedServer internamente)
+      // PASSO 2: Recarregar lista de arquivos
+      console.log('[PrometheusConfig] Recarregando lista de arquivos...');
       await fetchFiles();
 
-      // CORREÇÃO: Só recarregar fields se estiver na aba de Campos Metadata
-      if (activeTabKey === 'fields') {
-        reloadFields();
-      }
-
-      if (selectedFile) {
+      // PASSO 3: Recarregar dados específicos da aba ativa
+      if (activeTabKey === 'jobs' && selectedFile) {
+        console.log('[PrometheusConfig] Recarregando jobs da aba Jobs...');
         await fetchJobs(selectedFile, selectedServer);
+      } else if (activeTabKey === 'alertmanager' && selectedFile) {
+        console.log('[PrometheusConfig] Recarregando dados da aba Alertmanager...');
+        const isAlertmanagerFile = selectedFile.toLowerCase().includes('alertmanager');
+        if (isAlertmanagerFile) {
+          await fetchAlertmanagerData(selectedFile, selectedServer);
+        }
       }
 
-      hideLoading();
-      message.success('Dados recarregados com sucesso!', 2);
+      message.success('Arquivos e dados recarregados com sucesso!', 2);
+      console.log('[PrometheusConfig] ✅ Atualização completa finalizada!');
     } catch (error: any) {
-      console.error('Erro ao recarregar:', error);
+      console.error('[PrometheusConfig] ❌ Erro ao recarregar:', error);
       message.error('Erro ao recarregar dados');
     }
   };
@@ -1403,53 +1765,78 @@ const PrometheusConfig: React.FC = () => {
               return <Tag>Sem mapeamento</Tag>;
             }
 
-            // Procurar configurações de target_label e replacement
-            const targetConfigs = relabelConfigs.filter(
-              (rc: any) => rc.target_label && rc.replacement
-            );
+            // EXTRAÇÃO UNIVERSAL DE METADATA FIELDS
+            // Funciona para TODOS os tipos de exporters: Consul, EC2, K8s, SNMP, Blackbox, etc
+            // Resolve YAML anchors automaticamente via backend
+            const extractedFields = extractMetadataFields(relabelConfigs);
+
+            // targetConfigs para compatibilidade com código existente
+            const targetConfigs = extractedFields.map((field: any) => {
+              // Encontrar o relabel_config original que gerou este campo
+              const originalRc = relabelConfigs.find((rc: any) => rc.target_label === field.targetName);
+              return originalRc || {
+                target_label: field.targetName,
+                replacement: field.replacement,
+                source_labels: field.sourceLabels,
+                regex: field.regex,
+                action: field.action
+              };
+            });
+
+            // DEBUG: Log COMPLETO para ver o que está sendo extraído
+            console.log('[TARGET-MAPPING-UNIVERSAL]', {
+              jobName: record.job_name,
+              totalRelabelConfigs: relabelConfigs.length,
+              extractedFieldsCount: extractedFields.length,
+              extractedFieldNames: extractedFields.map((f: any) => f.targetName),
+              isMultiTarget: extractedFields[0]?.isMultiTarget || false,
+              // Service Discovery Types DETECTADOS automaticamente
+              serviceDiscoveryTypes: [...new Set(
+                extractedFields.map((f: any) => f.serviceDiscovery)
+              )],
+              // Campos CUSTOMIZADOS (metadata_*, tags, labels, annotations)
+              customFields: extractedFields.filter((f: any) => f.isCustomField).map((f: any) => f.targetName),
+              // Campos PADRÃO do SD
+              standardFields: extractedFields.filter((f: any) => !f.isCustomField).map((f: any) => f.targetName),
+              // Amostra de campos extraídos com TODAS as informações
+              sampleFieldsDetailed: extractedFields.slice(0, 5).map((f: any) => ({
+                targetName: f.targetName,
+                serviceDiscovery: f.serviceDiscovery,
+                isCustomField: f.isCustomField,
+                sourcePattern: f.sourcePattern,
+                isMultiTarget: f.isMultiTarget
+              }))
+            });
 
             if (targetConfigs.length === 0) {
-              return <Badge count={relabelConfigs.length} style={{ backgroundColor: '#52c41a' }} />;
+              return <Tag>Sem mapeamento</Tag>;
             }
 
             // Melhor visualização: mostrar de forma mais compacta e legível
             const mainMapping = targetConfigs[0];
 
             return (
-              <Tooltip
-                title={
-                  <div>
-                    <div style={{ marginBottom: 8, fontWeight: 'bold' }}>
-                      Configurações de Mapeamento ({relabelConfigs.length} total)
-                    </div>
-                    {targetConfigs.map((rc: any, idx: number) => (
-                      <div key={idx} style={{
-                        marginBottom: 8,
-                        padding: 8,
-                        background: 'rgba(255,255,255,0.1)',
-                        borderRadius: 4
-                      }}>
-                        <div><strong>Target:</strong> {rc.target_label}</div>
-                        <div><strong>Replacement:</strong> {rc.replacement}</div>
-                        {rc.source_labels && (
-                          <div><strong>Source:</strong> {rc.source_labels.join(', ')}</div>
-                        )}
-                        {rc.action && (
-                          <div><strong>Action:</strong> {rc.action}</div>
-                        )}
-                      </div>
-                    ))}
-                    {relabelConfigs.length > targetConfigs.length && (
-                      <div style={{ marginTop: 8, opacity: 0.7 }}>
-                        +{relabelConfigs.length - targetConfigs.length} outras configurações
-                      </div>
-                    )}
-                  </div>
-                }
-              >
-                <Space size={4} wrap>
+              <Tooltip title="Clique para ver todos os campos mapeados">
+                <Space
+                  size={4}
+                  wrap
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    console.log('[TARGET-MAPPING] Abrindo modal com dados:', {
+                      jobName: record.job_name,
+                      mappings: targetConfigs,
+                      allRelabels: relabelConfigs
+                    });
+                    setSelectedTargetMappings({
+                      jobName: record.job_name,
+                      mappings: targetConfigs,
+                      allRelabels: relabelConfigs
+                    });
+                    setTargetMappingModalVisible(true);
+                  }}
+                >
                   <Badge
-                    count={relabelConfigs.length}
+                    count={targetConfigs.length}
                     style={{ backgroundColor: '#52c41a' }}
                     showZero
                   />
@@ -1464,6 +1851,7 @@ const PrometheusConfig: React.FC = () => {
                       </Text>
                     </>
                   )}
+                  <EyeOutlined style={{ fontSize: 12, color: '#1890ff' }} />
                 </Space>
               </Tooltip>
             );
@@ -2093,7 +2481,19 @@ const PrometheusConfig: React.FC = () => {
                     <LoadingOutlined /> Carregando...
                   </span>
                 ) : (
-                  <span><strong>{files.length}</strong> arquivo(s)</span>
+                  <>
+                    <span><strong>{files.length}</strong> arquivo(s)</span>
+                    {lastFilesFetch && (
+                      <span style={{ fontSize: 12, opacity: 0.65, marginLeft: 8 }}>
+                        (Arquivos e Informações sincronizados em: {lastFilesFetch.toLocaleString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })})
+                      </span>
+                    )}
+                  </>
                 )}
                 {serverJustChanged && (
                   <Tag color="success" icon={<CheckCircleOutlined />}>
@@ -2227,11 +2627,11 @@ const PrometheusConfig: React.FC = () => {
             </Space>
           </Col>
 
-          {/* Coluna 4: Botão Recarregar */}
+          {/* Coluna 4: Botão Atualizar */}
           <Col xs={12} lg={3}>
             <Space direction="vertical" size={4} style={{ width: '100%' }}>
               <Text strong style={{ fontSize: 13, opacity: 0 }}>.</Text>
-              <Tooltip title="Recarregar arquivos e dados do servidor">
+              <Tooltip title="Atualizar lista de arquivos e re-extrair campos metadata via SSH">
                 <Button
                   size="large"
                   block
@@ -2239,7 +2639,7 @@ const PrometheusConfig: React.FC = () => {
                   onClick={handleReload}
                   disabled={!selectedServer}
                 >
-                  Recarregar
+                  Atualizar Dados
                 </Button>
               </Tooltip>
             </Space>
@@ -2647,9 +3047,9 @@ const PrometheusConfig: React.FC = () => {
             )}
             <span>
               {loadingFields
-                ? 'Extraindo Campos Metadata dos Servidores...'
+                ? 'Extraindo Arquivos e Campos Metadata dos Servidores...'
                 : fromCache
-                ? 'Campos Metadata Carregados (Cache)'
+                ? 'Configurações Carregadas (Cache)'
                 : `Extração Concluída (${successfulServers}/${totalServers} servidores)`}
             </span>
           </Space>
@@ -2658,13 +3058,25 @@ const PrometheusConfig: React.FC = () => {
         onCancel={() => setProgressModalVisible(false)}
         width={700}
         footer={
-          <Button
-            type="primary"
-            onClick={() => setProgressModalVisible(false)}
-            disabled={loadingFields}
-          >
-            {loadingFields ? 'Aguarde...' : 'OK'}
-          </Button>
+          <Space>
+            <Button
+              onClick={() => setProgressModalVisible(false)}
+              disabled={loadingFields}
+            >
+              OK
+            </Button>
+            <Button
+              type="primary"
+              icon={<ReloadOutlined />}
+              onClick={async () => {
+                setProgressModalVisible(false);
+                await loadPrometheusFieldsForceRefresh();
+              }}
+              disabled={loadingFields}
+            >
+              Atualizar Dados
+            </Button>
+          </Space>
         }
       >
         <div style={{ marginBottom: 16 }}>
@@ -2803,6 +3215,139 @@ const PrometheusConfig: React.FC = () => {
             <div style={{ marginTop: 16, color: '#666' }}>
               Iniciando extração dos servidores...
             </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal de Visualização dos Target Mappings */}
+      <Modal
+        title={
+          <Space>
+            <EyeOutlined />
+            Target Mappings - {selectedTargetMappings?.jobName || 'Job'}
+          </Space>
+        }
+        open={targetMappingModalVisible}
+        onCancel={() => setTargetMappingModalVisible(false)}
+        width={900}
+        footer={
+          <Button onClick={() => setTargetMappingModalVisible(false)}>
+            Fechar
+          </Button>
+        }
+      >
+        {selectedTargetMappings && (
+          <div>
+            {/* Informações Resumidas */}
+            <Alert
+              message={
+                <Space>
+                  <CheckCircleOutlined />
+                  {selectedTargetMappings.mappings.length} campos mapeados (target_label)
+                </Space>
+              }
+              description={
+                <div>
+                  <div>Job: <strong>{selectedTargetMappings.jobName}</strong></div>
+                  <div>Total de relabel_configs: <strong>{selectedTargetMappings.allRelabels.length}</strong></div>
+                  <div>
+                    Campos metadata filtrados: <strong>{selectedTargetMappings.mappings.length}</strong> (apenas campos do Consul com source __meta_consul_service, excluindo labels internos __)
+                  </div>
+                </div>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+
+            {/* Lista de Campos Mapeados */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 12 }}>
+                Campos Mapeados (Target Labels):
+              </div>
+              <div style={{
+                maxHeight: 400,
+                overflowY: 'auto',
+                border: '1px solid #f0f0f0',
+                borderRadius: 4,
+                padding: 12
+              }}>
+                {selectedTargetMappings.mappings.map((mapping: any, idx: number) => (
+                  <div
+                    key={idx}
+                    style={{
+                      marginBottom: 12,
+                      padding: 12,
+                      background: '#fafafa',
+                      borderRadius: 4,
+                      border: '1px solid #e8e8e8'
+                    }}
+                  >
+                    <Row gutter={[16, 8]}>
+                      <Col span={24}>
+                        <Space>
+                          <Badge count={idx + 1} style={{ backgroundColor: '#52c41a' }} />
+                          <Text strong>Target Label:</Text>
+                          <Tag color="blue">{mapping.target_label}</Tag>
+                        </Space>
+                      </Col>
+                      <Col span={24}>
+                        <Text type="secondary">Replacement:</Text>{' '}
+                        <Text code>{mapping.replacement}</Text>
+                      </Col>
+                      {mapping.source_labels && mapping.source_labels.length > 0 && (
+                        <Col span={24}>
+                          <Text type="secondary">Source Labels:</Text>{' '}
+                          <Space size={4} wrap>
+                            {mapping.source_labels.map((sl: string, slIdx: number) => (
+                              <Tag key={slIdx} color="orange" style={{ fontSize: 11 }}>
+                                {sl}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </Col>
+                      )}
+                      {mapping.action && (
+                        <Col span={24}>
+                          <Text type="secondary">Action:</Text>{' '}
+                          <Tag color="purple">{mapping.action}</Tag>
+                        </Col>
+                      )}
+                      {mapping.regex && (
+                        <Col span={24}>
+                          <Text type="secondary">Regex:</Text>{' '}
+                          <Text code style={{ fontSize: 11 }}>{mapping.regex}</Text>
+                        </Col>
+                      )}
+                    </Row>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Comparação com Metadata Fields */}
+            <Alert
+              message="Comparação com Metadata Fields"
+              description={
+                <div>
+                  <div>
+                    Estes {selectedTargetMappings.mappings.length} campos devem corresponder aos campos
+                    META visíveis na página <strong>Metadata Fields</strong>.
+                  </div>
+                  <div style={{ marginTop: 8 }}>
+                    Se a quantidade estiver diferente de 21, verifique:
+                    <ul style={{ marginTop: 4, marginBottom: 0 }}>
+                      <li>Se há external labels sendo incluídos incorretamente</li>
+                      <li>Se algum campo metadata não tem replacement configurado</li>
+                      <li>Se há duplicatas nos target_label</li>
+                    </ul>
+                  </div>
+                </div>
+              }
+              type="warning"
+              showIcon
+              style={{ marginTop: 16 }}
+            />
           </div>
         )}
       </Modal>

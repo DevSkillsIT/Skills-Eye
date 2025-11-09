@@ -36,6 +36,10 @@ _servers_cache = {
     "ttl": 300  # 5 minutos em segundos
 }
 
+# Lock global para evitar múltiplas extrações SSH simultâneas
+_extraction_lock = asyncio.Lock()
+_extraction_in_progress = False
+
 # ============================================================================
 # MODELOS PYDANTIC
 # ============================================================================
@@ -159,7 +163,16 @@ async def load_fields_config() -> Dict[str, Any]:
 
     IMPORTANTE: Não usa mais arquivo JSON hardcoded!
     Campos vêm 100% do Prometheus via extração SSH.
+
+    FALLBACK AUTOMÁTICO COM LOCK:
+    - Se KV vazio, dispara extração SSH sob demanda
+    - Usa lock global para evitar múltiplas extrações simultâneas
+    - Se já existe extração em progresso, aguarda e tenta ler KV novamente
+    - Popula KV automaticamente
+    - Retorna dados extraídos
     """
+    global _extraction_lock, _extraction_in_progress
+
     try:
         from core.kv_manager import KVManager
 
@@ -167,11 +180,72 @@ async def load_fields_config() -> Dict[str, Any]:
         fields_data = await kv.get_json('skills/cm/metadata/fields')
 
         if not fields_data:
-            logger.error("Dados de campos não encontrados no KV. Execute sincronização primeiro.")
-            raise HTTPException(
-                status_code=404,
-                detail="Campos não encontrados. Execute sincronização na página MetadataFields primeiro."
-            )
+            logger.warning("[METADATA-FIELDS] KV vazio detectado!")
+
+            # Adquirir lock para garantir que apenas uma extração aconteça por vez
+            async with _extraction_lock:
+                # DOUBLE-CHECK: Verificar novamente se KV ainda está vazio
+                # (outra requisição pode ter populado enquanto aguardávamos lock)
+                fields_data = await kv.get_json('skills/cm/metadata/fields')
+
+                if fields_data:
+                    logger.info("[METADATA-FIELDS] KV foi populado por outra requisição. Usando dados existentes.")
+                    return fields_data
+
+                logger.info("[METADATA-FIELDS FALLBACK] Disparando extração SSH sob demanda (com lock)...")
+                _extraction_in_progress = True
+
+                try:
+                    from api.prometheus_config import multi_config
+                    from datetime import datetime
+
+                    logger.info("[METADATA-FIELDS FALLBACK] Iniciando extração via AsyncSSH + TAR...")
+                    extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+
+                    fields = extraction_result['fields']
+                    successful_servers = extraction_result.get('successful_servers', 0)
+                    total_servers = extraction_result.get('total_servers', 0)
+
+                    logger.info(
+                        f"[METADATA-FIELDS FALLBACK] ✓ Extração completa: {len(fields)} campos de "
+                        f"{successful_servers}/{total_servers} servidores"
+                    )
+
+                    # Salvar no KV para próximas requisições
+                    fields_data = {
+                        'version': '2.0.0',
+                        'last_updated': datetime.now().isoformat(),
+                        'source': 'fallback_on_demand',
+                        'total_fields': len(fields),
+                        'fields': [f.to_dict() for f in fields],
+                        'extraction_status': {
+                            'total_servers': total_servers,
+                            'successful_servers': successful_servers,
+                            'server_status': extraction_result.get('server_status', []),
+                        }
+                    }
+
+                    await kv.put_json(
+                        key='skills/cm/metadata/fields',
+                        value=fields_data,
+                        metadata={'auto_updated': True, 'source': 'fallback_on_demand'}
+                    )
+
+                    logger.info(
+                        f"[METADATA-FIELDS FALLBACK] ✓ Cache KV populado com {len(fields)} campos. "
+                        f"Próximas requisições usarão cache."
+                    )
+
+                    return fields_data
+
+                except Exception as fallback_error:
+                    logger.error(f"[METADATA-FIELDS FALLBACK] ✗ Erro na extração sob demanda: {fallback_error}", exc_info=True)
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"KV vazio e falha ao extrair campos automaticamente: {str(fallback_error)}"
+                    )
+                finally:
+                    _extraction_in_progress = False
 
         return fields_data
     except HTTPException:
@@ -546,32 +620,61 @@ async def get_sync_status(
     try:
         logger.info(f"[SYNC-STATUS] Verificando sync status para servidor: {server_id}")
 
-        # Buscar campos do KV (se não existir, retornar erro orientando a fazer sync primeiro)
+        # Buscar campos do KV (se não existir, buscar de prometheus_config.py via fallback)
         try:
             config = await load_fields_config()
             fields = config.get('fields', [])
             logger.info(f"[SYNC-STATUS] Carregados {len(fields)} campos do KV")
         except HTTPException as e:
-            # Se retornou 404 (não encontrado), orientar usuário
+            # Se retornou 404 (não encontrado), FALLBACK: buscar do endpoint prometheus-config
             if e.status_code == 404:
-                logger.warning("[SYNC-STATUS] Campos não encontrados no KV - necessário sincronizar primeiro")
-                # Retornar resposta vazia indicando que precisa sincronizar
-                return SyncStatusResponse(
-                    success=True,
-                    server_id=server_id,
-                    server_hostname=server_id.split(':')[0] if ':' in server_id else server_id,
-                    fields=[],
-                    total_synced=0,
-                    total_outdated=0,
-                    total_missing=0,
-                    total_error=0,
-                    prometheus_file_path=None,
-                    checked_at=datetime.now().isoformat(),
-                    message="Campos não carregados. Clique em 'Sincronizar Campos' para extrair do Prometheus primeiro.",
-                    fallback_used=False,
-                )
-            # Outros erros, repassar
-            raise
+                logger.warning("[SYNC-STATUS] Campos não encontrados no KV - usando FALLBACK")
+
+                try:
+                    # FALLBACK: Buscar campos do cache do multi_config_manager
+                    # Usar instância GLOBAL de prometheus_config.py (já tem cache populado!)
+                    from api.prometheus_config import multi_config
+
+                    # Extração via P2 (usa cache se disponível)
+                    logger.info("[SYNC-STATUS FALLBACK] Chamando extract_all_fields_with_asyncssh_tar()")
+                    extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result keys: {extraction_result.keys()}")
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result['fields'] type: {type(extraction_result.get('fields', []))}")
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result['fields'] length: {len(extraction_result.get('fields', []))}")
+
+                    fields_objects = extraction_result.get('fields', [])
+
+                    # Converter MetadataField objects para dict
+                    fields = [f.to_dict() for f in fields_objects]
+
+                    logger.info(f"[SYNC-STATUS FALLBACK] Carregados {len(fields)} campos do cache P2")
+
+                    if len(fields) == 0:
+                        # Se ainda assim não tem campos, orientar usuário
+                        return SyncStatusResponse(
+                            success=True,
+                            server_id=server_id,
+                            server_hostname=server_id.split(':')[0] if ':' in server_id else server_id,
+                            fields=[],
+                            total_synced=0,
+                            total_outdated=0,
+                            total_missing=0,
+                            total_error=0,
+                            prometheus_file_path=None,
+                            checked_at=datetime.now().isoformat(),
+                            message="Campos não carregados. Clique em 'Sincronizar Campos' para extrair do Prometheus primeiro.",
+                            fallback_used=True,
+                        )
+                except Exception as fallback_err:
+                    logger.error(f"[SYNC-STATUS FALLBACK] Erro no fallback: {fallback_err}")
+                    # Retornar erro se fallback também falhar
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Erro ao carregar campos (KV e fallback falharam): {str(fallback_err)}"
+                    )
+            else:
+                # Outros erros HTTP, repassar
+                raise
         except Exception as e:
             logger.error(f"[SYNC-STATUS] Erro ao carregar campos: {e}")
             raise HTTPException(
@@ -1371,7 +1474,44 @@ async def list_fields(
     - category: Filtrar por categoria (infrastructure, basic, device, extra)
     - required_only: Apenas campos obrigatórios
     - show_in_table_only: Apenas campos que aparecem em tabelas
+
+    PROTEÇÃO CONTRA RACE CONDITION:
+    - Se PRE-WARM estiver rodando, aguarda até 15 segundos
+    - Polling a cada 0.5s (30 iterações)
+    - Retorna erro 503 se timeout ou PRE-WARM falhar
     """
+    # Import status from app module
+    try:
+        from app import _prewarm_status
+    except ImportError:
+        logger.warning("[METADATA-FIELDS] Não foi possível importar _prewarm_status do app.py")
+        _prewarm_status = {'running': False, 'completed': False, 'failed': False, 'error': None}
+
+    # Se PRE-WARM está rodando, aguardar até 15s
+    if _prewarm_status.get('running', False):
+        logger.info("[METADATA-FIELDS] PRE-WARM em andamento, aguardando até 15s...")
+
+        for i in range(30):  # 30 * 0.5s = 15s
+            if _prewarm_status.get('completed', False):
+                logger.info(f"[METADATA-FIELDS] PRE-WARM concluído após {i * 0.5}s, prosseguindo...")
+                break
+            if _prewarm_status.get('failed', False):
+                error_msg = _prewarm_status.get('error', 'Erro desconhecido')
+                logger.error(f"[METADATA-FIELDS] PRE-WARM falhou: {error_msg}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Falha ao inicializar cache: {error_msg}"
+                )
+            await asyncio.sleep(0.5)
+        else:
+            # Timeout de 15s
+            logger.warning("[METADATA-FIELDS] Timeout aguardando PRE-WARM (15s)")
+            raise HTTPException(
+                status_code=503,
+                detail="Sistema ainda inicializando. Tente novamente em alguns segundos."
+            )
+
+    # Continuar com lógica normal de leitura do KV
     config = await load_fields_config()
     fields = config.get('fields', [])
 

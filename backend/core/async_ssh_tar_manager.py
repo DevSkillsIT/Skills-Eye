@@ -180,14 +180,15 @@ class AsyncSSHTarManager:
             logger.info(f"[TAR] Executando: {tar_command} em {host.hostname}")
 
             # PASSO 3: Executar comando e capturar stdout (stream binário)
-            result = await conn.run(tar_command, check=False)
+            # IMPORTANTE: encoding=None para receber bytes ao invés de string!
+            result = await conn.run(tar_command, check=False, encoding=None)
 
             if not result.stdout:
                 logger.warning(f"[TAR] Nenhum arquivo encontrado em {directory} (host: {host.hostname})")
                 return {}
 
             # PASSO 4: Descompactar TAR em memória
-            tar_bytes = result.stdout  # Bytes do TAR compactado
+            tar_bytes = result.stdout  # Bytes do TAR compactado (com encoding=None)
 
             files_content: Dict[str, str] = {}
 

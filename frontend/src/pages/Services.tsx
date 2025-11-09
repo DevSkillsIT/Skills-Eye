@@ -437,45 +437,8 @@ const Services: React.FC = () => {
     return map;
   }, [nodes]);
 
-  // SISTEMA DINÂMICO: Carregar valores dos campos metadata dinamicamente
-  const loadMetadataOptions = useCallback(async () => {
-    try {
-      setMetadataLoading(true);
-
-      // Buscar valores de TODOS os campos com show_in_filter=true
-      if (filterFields.length === 0) {
-        // Ainda carregando campos dinâmicos
-        setMetadataOptions({});
-        return;
-      }
-
-      // Criar promises para cada campo de filtro
-      const promises = filterFields.map((field) =>
-        consulAPI.getServiceMetadataValues(field.name),
-      );
-
-      const responses = await Promise.all(promises);
-
-      // Montar objeto de opções dinamicamente
-      const options: Record<string, string[]> = {};
-      filterFields.forEach((field, index) => {
-        const values = responses[index].data.values || [];
-
-        // CASO ESPECIAL: campo 'module' inclui módulos padrão
-        if (field.name === 'module') {
-          options[field.name] = Array.from(new Set([...DEFAULT_MODULES, ...values]));
-        } else {
-          options[field.name] = values;
-        }
-      });
-
-      setMetadataOptions(options);
-    } catch (error) {
-      message.error('Falha ao carregar metadados do Consul');
-    } finally {
-      setMetadataLoading(false);
-    }
-  }, [filterFields]);
+  // OTIMIZAÇÃO: Removida função loadMetadataOptions() que fazia N requisições HTTP
+  // Agora extraímos valores únicos diretamente dos dados já carregados no requestHandler
 
   const loadNodes = useCallback(async () => {
     try {
@@ -491,13 +454,6 @@ const Services: React.FC = () => {
   useEffect(() => {
     loadNodes();
   }, [loadNodes]);
-
-  // Carregar opções de metadata apenas quando filterFields estiver disponível
-  useEffect(() => {
-    if (!filterFieldsLoading && filterFields.length > 0) {
-      loadMetadataOptions();
-    }
-  }, [filterFields, filterFieldsLoading, loadMetadataOptions]);
 
   useEffect(() => {
     actionRef.current?.reload();
@@ -563,10 +519,56 @@ const Services: React.FC = () => {
           meta: item.meta || {},
         }));
 
+        // OTIMIZAÇÃO: Extrair metadataOptions dinamicamente dos dados JÁ CARREGADOS
+        // Elimina necessidade de N requisições HTTP extras para /api/v1/services/metadata/unique-values
+        const optionsSets: Record<string, Set<string>> = {};
+
+        // Inicializar Set para cada filterField
+        filterFields.forEach((field) => {
+          optionsSets[field.name] = new Set<string>();
+        });
+
+        // Extrair valores únicos de TODOS os registros
+        backendRows.forEach((item: any) => {
+          filterFields.forEach((field) => {
+            const value = item.meta?.[field.name];
+            if (value && typeof value === 'string') {
+              optionsSets[field.name].add(value);
+            }
+          });
+        });
+
+        // Converter Sets para Arrays
+        const options: Record<string, string[]> = {};
+        Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
+          // CASO ESPECIAL: campo 'module' inclui módulos padrão do Blackbox
+          if (fieldName === 'module') {
+            options[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
+          } else {
+            options[fieldName] = Array.from(valueSet);
+          }
+        });
+
+        setMetadataOptions(options);
+        setMetadataLoading(false);
+
         // Aplicar filtros avançados (se houver)
         const advancedRows = applyAdvancedFilters(rows);
 
-        const nextSummary = advancedRows.reduce(
+        // PASSO 1: Filtrar por metadata (filtros dinâmicos)
+        let filteredRows = advancedRows;
+        if (filters && Object.keys(filters).length > 0) {
+          filteredRows = advancedRows.filter((item) => {
+            // Verificar se item atende a TODOS os filtros ativos
+            return Object.entries(filters).every(([fieldName, filterValue]) => {
+              if (!filterValue) return true; // Filtro vazio = não filtrar
+              const itemValue = item.meta?.[fieldName];
+              return itemValue && String(itemValue) === String(filterValue);
+            });
+          });
+        }
+
+        const nextSummary = filteredRows.reduce(
           (acc, item) => {
             acc.total += 1;
             const envKey = item.meta?.env || 'desconhecido';
@@ -579,11 +581,12 @@ const Services: React.FC = () => {
         );
         setSummary(nextSummary);
 
+        // PASSO 2: Filtrar por keyword/search
         const keywordRaw = (params?.keyword ?? searchValue) || '';
         const keyword = keywordRaw.trim().toLowerCase();
-        let searchedRows = advancedRows;
+        let searchedRows = filteredRows;
         if (keyword) {
-          searchedRows = advancedRows.filter((item) => {
+          searchedRows = filteredRows.filter((item) => {
             const fields = [
               item.service,
               item.id,
@@ -669,7 +672,7 @@ const Services: React.FC = () => {
     successMessage: 'Serviço removido com sucesso',
     errorMessage: 'Falha ao remover serviço',
     onSuccess: async () => {
-      await loadMetadataOptions();
+      // metadataOptions serão atualizadas automaticamente quando requestHandler recarregar os dados
       actionRef.current?.reload();
     },
   });
@@ -770,7 +773,7 @@ const Services: React.FC = () => {
 
         setFormOpen(false);
         setCurrentRecord(null);
-        await loadMetadataOptions();
+        // metadataOptions serão atualizadas automaticamente quando requestHandler recarregar os dados
         actionRef.current?.reload();
         return true;
       } catch (error: any) {
@@ -784,7 +787,7 @@ const Services: React.FC = () => {
         return false;
       }
     },
-    [currentRecord, formMode, loadMetadataOptions, formFields, batchEnsure, ensureTags],
+    [currentRecord, formMode, formFields, batchEnsure, ensureTags],
   );
   // SISTEMA DINÂMICO: Gerar columnMap combinando fixas + metadata
   const columnMap = useMemo<Record<string, ServiceColumn<ServiceTableItem>>>(() => {

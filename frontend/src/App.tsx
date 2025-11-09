@@ -17,12 +17,6 @@ import {
   FolderOutlined,
   HistoryOutlined,
   SettingOutlined,
-  MonitorOutlined,
-  ControlOutlined,
-  ThunderboltOutlined,
-  TagsOutlined,
-  BulbOutlined,
-  BookOutlined,
 } from '@ant-design/icons';
 import Dashboard from './pages/Dashboard';
 import Services from './pages/Services';
@@ -51,109 +45,86 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Menu organizado em grupos com submenus
   const menuItems = [
     {
-      key: 'dashboard',
       path: '/',
       name: 'Dashboard',
       icon: <DashboardOutlined />,
     },
     {
-      key: 'monitoring',
-      name: 'Monitoramento',
-      icon: <MonitorOutlined />,
-      children: [
-        {
-          path: '/services',
-          name: 'Servicos',
-          icon: <DatabaseOutlined />,
-        },
-        {
-          path: '/service-groups',
-          name: 'Grupos de Servicos',
-          icon: <AppstoreOutlined />,
-        },
-        {
-          path: '/exporters',
-          name: 'Exporters',
-          icon: <CloudServerOutlined />,
-        },
-        {
-          path: '/blackbox',
-          name: 'Alvos Blackbox',
-          icon: <RadarChartOutlined />,
-        },
-        {
-          path: '/blackbox-groups',
-          name: 'Grupos Blackbox',
-          icon: <AppstoreAddOutlined />,
-        },
-        {
-          path: '/presets',
-          name: 'Presets de Servicos',
-          icon: <BookOutlined />,
-        },
-      ],
+      path: '/services',
+      name: 'Servicos',
+      icon: <DatabaseOutlined />,
     },
     {
-      key: 'config',
-      name: 'Configurações',
-      icon: <ControlOutlined />,
-      children: [
-        {
-          path: '/prometheus-config',
-          name: 'Config Prometheus',
-          icon: <ThunderboltOutlined />,
-        },
-        {
-          path: '/metadata-fields',
-          name: 'Campos Metadata',
-          icon: <TagsOutlined />,
-        },
-        {
-          path: '/monitoring-types',
-          name: 'Tipos de Monitoramento',
-          icon: <BulbOutlined />,
-        },
-        {
-          path: '/reference-values',
-          name: 'Valores de Referência',
-          icon: <DatabaseOutlined />,
-        },
-        {
-          path: '/settings',
-          name: 'Configurações',
-          icon: <SettingOutlined />,
-        },
-      ],
+      path: '/service-groups',
+      name: 'Grupos de Servicos',
+      icon: <AppstoreOutlined />,
     },
     {
-      key: 'system',
-      name: 'Sistema',
+      path: '/hosts',
+      name: 'Hosts',
+      icon: <HddOutlined />,
+    },
+    {
+      path: '/exporters',
+      name: 'Exporters',
+      icon: <CloudServerOutlined />,
+    },
+    {
+      path: '/blackbox',
+      name: 'Alvos Blackbox',
+      icon: <RadarChartOutlined />,
+    },
+    {
+      path: '/blackbox-groups',
+      name: 'Grupos Blackbox',
+      icon: <AppstoreAddOutlined />,
+    },
+    {
+      path: '/presets',
+      name: 'Presets de Servicos',
+      icon: <AppstoreOutlined />,
+    },
+    {
+      path: '/prometheus-config',
+      name: 'Config Prometheus',
+      icon: <SettingOutlined />,
+    },
+    {
+      path: '/metadata-fields',
+      name: 'Campos Metadata',
+      icon: <DatabaseOutlined />,
+    },
+    {
+      path: '/kv-browser',
+      name: 'Armazenamento KV',
+      icon: <FolderOutlined />,
+    },
+    {
+      path: '/audit-log',
+      name: 'Log de Auditoria',
+      icon: <HistoryOutlined />,
+    },
+    {
+      path: '/installer',
+      name: 'Instalar Exporters',
       icon: <ToolOutlined />,
-      children: [
-        {
-          path: '/hosts',
-          name: 'Hosts',
-          icon: <HddOutlined />,
-        },
-        {
-          path: '/kv-browser',
-          name: 'Armazenamento KV',
-          icon: <FolderOutlined />,
-        },
-        {
-          path: '/audit-log',
-          name: 'Log de Auditoria',
-          icon: <HistoryOutlined />,
-        },
-        {
-          path: '/installer',
-          name: 'Instalar Exporters',
-          icon: <AppstoreAddOutlined />,
-        },
-      ],
+    },
+    {
+      path: '/monitoring-types',
+      name: 'Tipos de Monitoramento',
+      icon: <DatabaseOutlined />,
+    },
+    {
+      path: '/reference-values',
+      name: 'Valores de Referência',
+      icon: <DatabaseOutlined />,
+    },
+    {
+      path: '/settings',
+      name: 'Configurações',
+      icon: <SettingOutlined />,
     },
   ];
 
@@ -168,14 +139,9 @@ const App: React.FC = () => {
         <AntdApp>
         <MetadataFieldsProvider>
         <ProLayout
-          title="📊 Consul Manager"
-          logo={null}
-          layout="side"
-          navTheme={darkMode ? 'realDark' : 'light'}
+          title="Consul Manager"
           fixedHeader
           fixSiderbar
-          siderWidth={256}
-          collapsed={false}
           menuItemRender={(item, dom) => (
             <Link to={item.path || '/'}>{dom}</Link>
           )}
@@ -186,14 +152,9 @@ const App: React.FC = () => {
           rightContentRender={() => (
             <a
               onClick={() => setDarkMode((value) => !value)}
-              style={{
-                marginRight: 16,
-                cursor: 'pointer',
-                fontSize: 14,
-                color: darkMode ? '#fff' : '#1890ff'
-              }}
+              style={{ marginRight: 16 }}
             >
-              {darkMode ? '☀️ Modo Claro' : '🌙 Modo Escuro'}
+              {darkMode ? 'Modo claro' : 'Modo escuro'}
             </a>
           )}
         >
@@ -224,8 +185,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-
-
-
-

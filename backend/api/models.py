@@ -187,3 +187,43 @@ class KVPutRequest(BaseModel):
     """Requisição para escrita no Consul KV"""
     key: str = Field(..., description="Chave completa (prefixo skills/cm/)")
     value: Dict[str, Any] = Field(..., description="Valor JSON serializável")
+
+
+class FieldConfigUpdate(BaseModel):
+    """
+    Modelo para atualização de configurações de campos metadata
+
+    IMPORTANTE: Todos os campos são opcionais para permitir atualizações parciais
+    """
+    display_name: Optional[str] = Field(None, description="Nome amigável para exibição")
+    description: Optional[str] = Field(None, description="Descrição do campo")
+    category: Optional[str] = Field(None, description="Categoria do campo (vem da página Valores de Referência)")
+    field_type: Optional[str] = Field(None, description="Tipo do campo (text, select, number, date)")
+    order: Optional[int] = Field(None, description="Ordem de exibição")
+    required: Optional[bool] = Field(None, description="Campo obrigatório?")
+    show_in_table: Optional[bool] = Field(None, description="Mostrar em tabelas?")
+    show_in_dashboard: Optional[bool] = Field(None, description="Mostrar no dashboard?")
+    show_in_form: Optional[bool] = Field(None, description="Mostrar em formulários?")
+    editable: Optional[bool] = Field(None, description="Campo editável?")
+    show_in_services: Optional[bool] = Field(None, description="Mostrar na página Services?")
+    show_in_exporters: Optional[bool] = Field(None, description="Mostrar na página Exporters?")
+    show_in_blackbox: Optional[bool] = Field(None, description="Mostrar na página Blackbox?")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "display_name": "Sistema Operacional",
+                "description": "Sistema operacional do servidor",
+                "category": "Infraestrutura",
+                "field_type": "select",
+                "order": 10,
+                "required": False,
+                "show_in_table": True,
+                "show_in_dashboard": True,
+                "show_in_form": True,
+                "editable": True,
+                "show_in_services": True,
+                "show_in_exporters": True,
+                "show_in_blackbox": False
+            }
+        }

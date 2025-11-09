@@ -20,7 +20,7 @@ from io import StringIO
 from ruamel.yaml import YAML
 
 from core.yaml_config_service import YamlConfigService
-from core.fields_extraction_service import FieldsExtractionService, MetadataField
+from core.fields_extraction_service import FieldsExtractionService
 from core.consul_manager import ConsulManager
 from core.multi_config_manager import MultiConfigManager
 
@@ -63,6 +63,8 @@ class ServerStatus(BaseModel):
     fields_count: int = 0
     error: Optional[str] = None
     duration_ms: int = 0
+    port: int = 22  # Porta SSH usada para conectar ao servidor
+    external_labels: Dict[str, str] = {}  # External labels extraídos do prometheus.yml (global.external_labels)
 
 
 class FieldsResponse(BaseModel):
@@ -75,6 +77,8 @@ class FieldsResponse(BaseModel):
     total_servers: Optional[int] = None
     successful_servers: Optional[int] = None
     from_cache: bool = False
+    kv_saved: bool = False  # NOVO: Indica se salvou no Consul KV
+    kv_save_error: Optional[str] = None  # NOVO: Erro ao salvar no KV (se houver)
 
 
 class BackupResponse(BaseModel):
@@ -260,6 +264,8 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
                         total_servers=kv_data.get('extraction_status', {}).get('total_servers', 0),
                         successful_servers=kv_data.get('extraction_status', {}).get('successful_servers', 0),
                         from_cache=True,
+                        kv_saved=True,  # Campos vieram do KV, então obviamente KV está OK
+                        kv_save_error=None,
                     )
             except Exception as e:
                 logger.warning(f"[FIELDS] KV não disponível, extraindo via SSH: {e}")
@@ -278,7 +284,11 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
 
         fields = extraction_result['fields']
 
-        # Enriquecer com valores do Consul se solicitado
+        # ENRIQUECIMENTO PASSO 1: Aplicar metadata estática (category, order, description, etc.)
+        logger.info(f"[ENRICH] Enriquecendo {len(fields)} campos com metadata estática")
+        fields = FieldsExtractionService.enrich_fields_with_static_metadata(fields)
+
+        # ENRIQUECIMENTO PASSO 2: Adicionar valores do Consul se solicitado
         if enrich_with_values:
             try:
                 consul = ConsulManager()
@@ -292,6 +302,8 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
 
         # SALVAR AUTOMATICAMENTE NO CONSUL KV
         # O KV é a fonte de verdade - campos vêm do Prometheus e são salvos no KV
+        kv_saved = False
+        kv_save_error = None
         try:
             from core.kv_manager import KVManager
             kv_manager = KVManager()
@@ -313,8 +325,10 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
                 },
                 metadata={'auto_updated': True, 'source': 'prometheus_config_api'}
             )
+            kv_saved = True
             logger.info(f"[KV-SAVE] Campos salvos automaticamente no Consul KV: {len(fields_dict)} campos")
         except Exception as e:
+            kv_save_error = str(e)
             logger.warning(f"[KV-SAVE] Não foi possível salvar campos no KV: {e}")
             # Não bloqueia a resposta se falhar o salvamento
 
@@ -327,6 +341,8 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
             total_servers=extraction_result.get('total_servers'),
             successful_servers=extraction_result.get('successful_servers'),
             from_cache=extraction_result.get('from_cache', False),
+            kv_saved=kv_saved,
+            kv_save_error=kv_save_error,
         )
 
     except Exception as e:

@@ -68,50 +68,10 @@ button:focus-visible {
 }
 
 /* ==========================================
-   CORREÇÃO Z-INDEX PROLAYOUT COM SIDEBAR FIXO
+   SIDEBAR - FUNDO BRANCO
    ========================================== */
 
-/* PROBLEMA: Sidebar fixo sobrepõe conteúdo ao rolar horizontalmente
-   SOLUÇÃO: Sidebar z-index baixo, conteúdo z-index alto + fundo opaco */
-
-/* Sidebar fixo - deve ficar ATRÁS do conteúdo */
-.ant-layout-sider,
-aside.ant-layout-sider {
-  z-index: 1 !important;
-}
-
-/* Wrapper do layout - garante que tudo acima do sidebar funcione */
-.ant-layout {
-  position: relative;
-}
-
-/* Conteúdo principal - deve ficar ACIMA do sidebar ao rolar horizontalmente */
-.ant-layout-content,
-main.ant-layout-content {
-  position: relative;
-  z-index: 10 !important;
-  background: #f0f2f5 !important; /* Fundo opaco essencial */
-  margin-left: 0 !important; /* ProLayout já gerencia a margem */
-}
-
-/* Header fixo - sempre no topo */
-.ant-layout-header,
-header.ant-layout-header {
-  z-index: 100 !important;
-}
-
-/* PageContainer interno do ProLayout */
-.ant-pro-page-container,
-.ant-pro-page-container-children-content {
-  position: relative;
-  z-index: 10 !important;
-  background: #f0f2f5 !important;
-}
-
-/* Garantir que cards e tabelas tenham fundo branco opaco */
-.ant-card,
-.ant-table-wrapper {
-  position: relative;
-  z-index: 5;
-  background: white !important;
+/* Fundo branco na sidebar */
+.ant-layout-sider {
+  background-color: #ffffff !important;
 }

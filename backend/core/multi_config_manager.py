@@ -419,6 +419,7 @@ class MultiConfigManager:
             'fields_count': result['fields_count'],
             'error': result.get('error'),
             'duration_ms': result['duration_ms'],
+            'port': target_host.port,  # NOVO: Porta SSH do servidor
             'external_labels': result.get('external_labels', {})
         }]
 
@@ -472,6 +473,7 @@ class MultiConfigManager:
             'fields_count': 0,
             'error': None,
             'duration_ms': 0,
+            'port': host.port,  # NOVO: Porta SSH do servidor
             'fields_map': {},  # Campos extraídos deste servidor
             'external_labels': {},  # External labels do prometheus.yml
         }
@@ -569,6 +571,7 @@ class MultiConfigManager:
                         'from_cache': True,
                         'files_count': 0,
                         'fields_count': 0,
+                        'port': host.port,  # NOVO: Porta SSH
                         'external_labels': {}  # Cache não tem external_labels
                     }
                     for host in self.hosts
@@ -634,7 +637,8 @@ class MultiConfigManager:
                 'fields_count': r['fields_count'],
                 'error': r.get('error'),
                 'duration_ms': r['duration_ms'],
-                'external_labels': r.get('external_labels', {})  # ADICIONAR external_labels
+                'port': r.get('port', 22),  # NOVO: Porta SSH
+                'external_labels': r.get('external_labels', {})
             }
             for r in server_results
         ]
@@ -754,10 +758,16 @@ class MultiConfigManager:
                 if field_name not in all_fields_map:
                     all_fields_map[field_name] = field
 
-        # PASSO 5: Armazenar no cache
-        self._fields_cache = list(all_fields_map.values())
+        # PASSO 5: ENRIQUECER campos com metadata estática
+        # IMPORTANTE: Aplicar ANTES de cachear para que o cache já tenha campos completos!
+        fields_list = list(all_fields_map.values())
+        from core.fields_extraction_service import FieldsExtractionService
+        enriched_fields = FieldsExtractionService.enrich_fields_with_static_metadata(fields_list)
 
-        logger.info(f"[P2] ✓ Extração completa em {overall_duration}ms ({len(self._fields_cache)} campos)")
+        # PASSO 6: Armazenar campos ENRIQUECIDOS no cache
+        self._fields_cache = enriched_fields
+
+        logger.info(f"[P2] ✓ Extração completa em {overall_duration}ms ({len(self._fields_cache)} campos enriquecidos)")
 
         return {
             'fields': self._fields_cache,
