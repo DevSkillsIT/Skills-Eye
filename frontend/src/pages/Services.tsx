@@ -286,6 +286,10 @@ const Services: React.FC = () => {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
+
+  // Estado para ordenação (aplicada em TODOS os dados antes de paginar)
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata dinâmicos
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
     const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
@@ -440,6 +444,18 @@ const Services: React.FC = () => {
     setAdvancedOperator('and');
     setAdvancedOpen(false);
     actionRef.current?.reload();
+  }, []);
+
+  // Handler para capturar mudanças de ordenação da tabela
+  const handleTableChange = useCallback((pagination: any, filters: any, sorter: any) => {
+    // Capturar ordenação
+    if (sorter && sorter.field) {
+      setSortField(sorter.field);
+      setSortOrder(sorter.order || null);
+    } else {
+      setSortField(null);
+      setSortOrder(null);
+    }
   }, []);
 
   const handleResize = useCallback(
@@ -609,12 +625,46 @@ const Services: React.FC = () => {
           });
         }
 
-        setTableSnapshot(searchedRows);
+        // PASSO 3: Aplicar ordenação em TODOS os dados (antes de paginar)
+        let sortedRows = searchedRows;
+        if (sortField && sortOrder) {
+          sortedRows = [...searchedRows].sort((a, b) => {
+            // Extrair valor do campo (pode ser campo fixo ou metadata)
+            const getFieldValue = (row: ServiceTableItem, field: string): any => {
+              // Campos fixos
+              if (field === 'node') return row.node || '';
+              if (field === 'service') return row.service || '';
+              if (field === 'id') return row.id || '';
+              if (field === 'address') return row.address || '';
+              if (field === 'port') return row.port || 0;
+              if (field === 'tags') return (row.tags || []).join(',');
+              // Campos metadata
+              return row.meta?.[field] || '';
+            };
+
+            const aValue = getFieldValue(a, sortField);
+            const bValue = getFieldValue(b, sortField);
+
+            // Comparação
+            let comparison = 0;
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+              comparison = aValue.localeCompare(bValue);
+            } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+              comparison = aValue - bValue;
+            } else {
+              comparison = String(aValue).localeCompare(String(bValue));
+            }
+
+            return sortOrder === 'ascend' ? comparison : -comparison;
+          });
+        }
+
+        setTableSnapshot(sortedRows);
 
         const current = params?.current ?? 1;
         const pageSize = params?.pageSize ?? 25;
         const start = (current - 1) * pageSize;
-        const paginatedRows = searchedRows.slice(start, start + pageSize);
+        const paginatedRows = sortedRows.slice(start, start + pageSize);
 
         return {
           data: paginatedRows,
@@ -630,7 +680,7 @@ const Services: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode],
+    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode, sortField, sortOrder, filterFields],
   );
   const openCreateModal = useCallback(() => {
     setFormMode('create');
@@ -922,6 +972,9 @@ const Services: React.FC = () => {
         filters: fieldOptions.map(opt => ({ text: opt, value: opt })),
         filterMode: 'tree',
         filterSearch: true, // Habilita busca dentro do dropdown de filtro
+        filterIcon: (filtered: boolean) => (
+          <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+        ),
         onFilter: (value, record) => {
           const fieldValue = record.meta?.[field.name];
           return fieldValue === value;
@@ -1142,10 +1195,12 @@ const Services: React.FC = () => {
               onClick={() => {
                 // Limpar TUDO: filtros + ordenação + seleção
                 actionRef.current?.reset?.();
+                setSortField(null);
+                setSortOrder(null);
               }}
-              title="Limpar filtros, ordenação e seleção"
+              title="Limpar filtros e ordenação"
             >
-              Limpar Tudo
+              Limpar Filtros e Ordem
             </Button>
 
             <ColumnSelector
@@ -1205,6 +1260,7 @@ const Services: React.FC = () => {
           actionRef={actionRef}
           request={requestHandler}
           params={{ keyword: searchValue }}
+          onChange={handleTableChange}
           pagination={{
             defaultPageSize: 25,
             showSizeChanger: true,
