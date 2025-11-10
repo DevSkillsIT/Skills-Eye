@@ -162,7 +162,7 @@ Exemplo:
 { service_id: 'palmas', site_code: 'palmas' }
 
 // Para KV
-{ service_id: 'skills/cm/blackbox/targets/1', kv_key: 'skills/cm/blackbox/targets/1' }
+{ service_id: 'skills/eye/blackbox/targets/1', kv_key: 'skills/eye/blackbox/targets/1' }
 ```
 
 ## Typescript e Type Safety

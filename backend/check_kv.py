@@ -7,7 +7,7 @@ CONSUL_HOST = "172.16.1.26"
 CONSUL_PORT = 8500
 CONSUL_TOKEN = "8382a112-81e0-cd6d-2b92-8565925a0675"
 
-url = f"http://{CONSUL_HOST}:{CONSUL_PORT}/v1/kv/skills/cm/metadata/fields"
+url = f"http://{CONSUL_HOST}:{CONSUL_PORT}/v1/kv/skills/eye/metadata/fields"
 headers = {"X-Consul-Token": CONSUL_TOKEN}
 
 print("Verificando Consul KV...")
@@ -52,6 +52,6 @@ if response.status_code == 200:
     else:
         print("[PROBLEMA] Resposta do Consul está vazia!")
 elif response.status_code == 404:
-    print("[NOT FOUND] Chave 'skills/cm/metadata/fields' não existe no Consul KV!")
+    print("[NOT FOUND] Chave 'skills/eye/metadata/fields' não existe no Consul KV!")
 else:
     print(f"[ERRO] Erro ao consultar Consul: {response.text}")

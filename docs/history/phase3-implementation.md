@@ -72,7 +72,7 @@ A **Phase 3** do Consul Manager focou na modernização completa da interface do
 - Navegador visual do KV store do Consul
 - Tree view com estrutura hierárquica
 - Editor JSON integrado
-- Validação de namespace (`skills/cm/*`)
+- Validação de namespace (`skills/eye/*`)
 
 **Funcionalidades:**
 - ✅ Navegação em árvore do KV store
@@ -306,7 +306,7 @@ Todos os componentes utilizam Ant Design Grid System:
 
 **Criar Chave:**
 1. Clique em "Nova Chave"
-2. Digite caminho completo começando com `skills/cm/`
+2. Digite caminho completo começando com `skills/eye/`
 3. Adicione valor (JSON ou texto simples)
 4. Salve
 

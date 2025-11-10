@@ -23,7 +23,7 @@ class MonitoringTypeManager:
 
     Suporta dois modos:
     1. File-based: Lê JSONs do diretório backend/schemas/monitoring-types/
-    2. Consul KV-based (futuro): Lê de skills/cm/monitoring-types/
+    2. Consul KV-based (futuro): Lê de skills/eye/monitoring-types/
     """
 
     def __init__(self, consul_client=None, use_local_files=True):

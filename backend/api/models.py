@@ -185,7 +185,7 @@ class BlackboxDeleteRequest(BaseModel):
 
 class KVPutRequest(BaseModel):
     """Requisição para escrita no Consul KV"""
-    key: str = Field(..., description="Chave completa (prefixo skills/cm/)")
+    key: str = Field(..., description="Chave completa (prefixo skills/eye/)")
     value: Dict[str, Any] = Field(..., description="Valor JSON serializável")
 
 

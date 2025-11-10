@@ -1,0 +1,41 @@
+================================================================================
+ANALISE COMPLETA DE USO DO CONSUL KV
+================================================================================
+
+[1/5] Listando todas as keys do KV...
+[OK] Total de keys: 281
+
+[2/5] Agrupando por namespace...
+DISTRIBUICAO POR NAMESPACE:
+  reference-values                  261 keys
+  audit                               9 keys
+  metadata                            6 keys
+  services                            4 keys
+  settings                            1 keys
+
+[3/5] Verificando dual storage (KV + Services)...
+
+  BLACKBOX TARGETS:
+    KV (skills/eye/blackbox/targets): 0 targets
+    [OK] ARQUITETURA TENSUNS! Nenhum target no KV - usando apenas Services API
+
+[4/5] Namespaces corretos (sem dual storage):
+  [OK] metadata                  6 keys (correto - KV only)
+  [OK] settings                  1 keys (correto - KV only)
+  [OK] audit                     9 keys (correto - KV only)
+  [OK] services                  4 keys (correto - KV only)
+
+[5/5] RECOMENDACOES:
+
+  ✅ ARQUITETURA ATUAL JA ESTA ALINHADA COM TENSUNS!
+
+  ✅ Nenhum dual storage detectado
+  ✅ Targets de monitoramento armazenados APENAS em Services API
+  ✅ KV usado corretamente para dados auxiliares (metadata, settings, audit, presets)
+
+  PROXIMOS PASSOS:
+  1. Verificar se ha codigo legacy referenciando blackbox/targets no KV
+  2. Remover constantes BLACKBOX_TARGETS do KVManager se nao utilizadas
+  3. Documentar arquitetura atual (ja correta)
+
+================================================================================

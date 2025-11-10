@@ -49,7 +49,7 @@ async def main():
     kv = KVManager()
 
     print("[INFO] Buscando sites do Consul KV...")
-    sites_data = await kv.get_json("skills/cm/settings/sites")
+    sites_data = await kv.get_json("skills/eye/settings/sites")
 
     if not sites_data or "sites" not in sites_data:
         print("[ERROR] Sites não encontrados no KV!")
@@ -79,7 +79,7 @@ async def main():
 
     if updated_count > 0:
         print(f"\n[SAVE] Salvando {updated_count} sites atualizados no KV...")
-        success = await kv.put_json("skills/cm/settings/sites", {"sites": sites})
+        success = await kv.put_json("skills/eye/settings/sites", {"sites": sites})
 
         if success:
             print("[SUCCESS] ✅ Sites atualizados com sucesso!")

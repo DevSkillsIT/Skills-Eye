@@ -220,7 +220,7 @@ restart-app.bat
 ### 💾 KV Store Browser
 - **Navegação visual em árvore** do Consul KV
 - **Editor JSON integrado** com syntax highlighting
-- **Namespace isolado:** `skills/cm/`
+- **Namespace isolado:** `skills/eye/`
 - **Metadados automáticos:** created_at, updated_by, version
 - **Breadcrumb navigation** para facilitar navegação
 - **Página:** KvBrowser

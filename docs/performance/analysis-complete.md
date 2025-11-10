@@ -190,7 +190,7 @@ Sistema apresenta timeouts de 15-30 segundos ao carregar páginas (Exporters, Se
 │                         ▼                                       │
 │         ┌───────────────────────────────┐                      │
 │         │  Consul KV                    │                      │
-│         │  skills/cm/metadata/fields    │                      │
+│         │  skills/eye/metadata/fields    │                      │
 │         │  (cache dos campos)           │                      │
 │         └───────────┬───────────────────┘                      │
 │                     │                                           │
@@ -259,7 +259,7 @@ Sistema apresenta timeouts de 15-30 segundos ao carregar páginas (Exporters, Se
 #### Infraestrutura
 - **Service Registry**: Consul (172.16.1.26:8500)
 - **Monitoring**: Prometheus (3 instâncias)
-- **KV Store**: Consul KV (namespace: skills/cm/)
+- **KV Store**: Consul KV (namespace: skills/eye/)
 - **SSH Ports**: 22 (padrão), 5522 (alternativo)
 
 ---
@@ -318,7 +318,7 @@ async def get_available_fields(
     if not force_refresh:
         try:
             kv_manager = KVManager()
-            kv_data = await kv_manager.get_json('skills/cm/metadata/fields')
+            kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
 
             if kv_data and kv_data.get('fields'):
                 # SUCESSO: Retorna do cache
@@ -340,7 +340,7 @@ async def get_available_fields(
 
     # PASSO 3: Salvar no KV para próximas requisições
     await kv_manager.put_json(
-        key='skills/cm/metadata/fields',
+        key='skills/eye/metadata/fields',
         value={
             'fields': [f.to_dict() for f in fields],
             'extraction_status': {...},
@@ -362,7 +362,7 @@ async def get_available_fields(
 │
 ├─► KVManager (core/kv_manager.py)
 │   └─► Consul HTTP API
-│       └─► GET /v1/kv/skills/cm/metadata/fields
+│       └─► GET /v1/kv/skills/eye/metadata/fields
 │
 └─► MultiConfigManager (core/multi_config_manager.py)
     └─► extract_all_fields_with_status()
@@ -618,7 +618,7 @@ MetadataField {
          │
          │ Salvo no Consul KV
          ▼
-skills/cm/metadata/fields = {
+skills/eye/metadata/fields = {
     fields: [
         { name: "company", ... },
         { name: "env", ... },
@@ -799,7 +799,7 @@ Opção B: Cache Pre-Warming
 
 ```bash
 # Teste realizado durante sessão
-$ curl http://localhost:5000/api/v1/kv/value?key=skills/cm/metadata/fields
+$ curl http://localhost:5000/api/v1/kv/value?key=skills/eye/metadata/fields
 
 # ANTES da re-extração:
 {
@@ -948,7 +948,7 @@ async def get_available_fields(force_refresh: bool = False):
     # NOVO: Tentar ler do KV primeiro
     if not force_refresh:
         try:
-            kv_data = await kv_manager.get_json('skills/cm/metadata/fields')
+            kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
             if kv_data and kv_data.get('fields'):
                 return FieldsResponse(
                     fields=kv_data['fields'],
@@ -1290,7 +1290,7 @@ async def pre_warm_cache():
         # Salva no KV
         kv_manager = KVManager()
         await kv_manager.put_json(
-            key='skills/cm/metadata/fields',
+            key='skills/eye/metadata/fields',
             value={
                 'fields': [f.to_dict() for f in result['fields']],
                 'extraction_status': result,
@@ -1405,7 +1405,7 @@ async def update_fields_cache():
 
         kv_manager = KVManager()
         await kv_manager.put_json(
-            key='skills/cm/metadata/fields',
+            key='skills/eye/metadata/fields',
             value={
                 'fields': [f.to_dict() for f in result['fields']],
                 'last_updated': datetime.now().isoformat()
@@ -1681,13 +1681,13 @@ async def get_available_fields():
 curl -w "\nTempo: %{time_total}s\n" http://localhost:5000/api/v1/prometheus-config/fields -o nul
 
 # Ver dados do KV
-curl http://localhost:5000/api/v1/kv/value?key=skills/cm/metadata/fields | python -m json.tool
+curl http://localhost:5000/api/v1/kv/value?key=skills/eye/metadata/fields | python -m json.tool
 
 # Reiniciar aplicação
 restart-app.bat
 
 # Limpar cache do Consul KV (forçar re-extração)
-curl -X DELETE http://172.16.1.26:8500/v1/kv/skills/cm/metadata/fields?token=8382a112-81e0-cd6d-2b92-8565925a0675
+curl -X DELETE http://172.16.1.26:8500/v1/kv/skills/eye/metadata/fields?token=8382a112-81e0-cd6d-2b92-8565925a0675
 ```
 
 ---

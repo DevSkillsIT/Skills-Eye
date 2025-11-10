@@ -233,7 +233,7 @@ if matches_type(service, type_schema['matchers']):
 ### Estrutura no Consul KV
 
 ```
-skills/cm/
+skills/eye/
 ├── monitoring-types/              # Tipos de monitoramento configuráveis
 │   ├── network-probes.json        # ICMP, TCP, DNS, SSH, etc
 │   ├── web-probes.json            # HTTP 2xx, 4xx, 5xx, HTTPS, POST
@@ -472,7 +472,7 @@ class MonitoringTypeManager:
 
     def __init__(self, consul_client):
         self.consul = consul_client
-        self.kv_prefix = "skills/cm/monitoring-types/"
+        self.kv_prefix = "skills/eye/monitoring-types/"
 
     async def get_all_categories(self) -> List[MonitoringCategory]:
         """Retorna todas as categorias de monitoramento"""
@@ -898,7 +898,7 @@ class TenantContext:
 
     def get_kv_prefix(self, base_path: str) -> str:
         """Retorna path do KV com tenant_id"""
-        return f"skills/cm/tenants/{self.tenant_id}/{base_path}"
+        return f"skills/eye/tenants/{self.tenant_id}/{base_path}"
 
     async def get_monitoring_types(self) -> List[MonitoringType]:
         """Busca tipos do tenant + tipos globais"""
@@ -912,7 +912,7 @@ class TenantContext:
 ### Feature Flags por Tenant
 
 ```json
-// skills/cm/tenants/{tenant_id}/features.json
+// skills/eye/tenants/{tenant_id}/features.json
 {
   "features": {
     "custom_monitoring_types": true,

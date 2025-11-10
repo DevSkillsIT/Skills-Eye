@@ -19,7 +19,7 @@ router = APIRouter(prefix="/settings", tags=["Settings"])
 kv = KVManager()
 
 # Namespace KV para settings
-SETTINGS_KV_PATH = "skills/cm/settings/"
+SETTINGS_KV_PATH = "skills/eye/settings/"
 SITES_KV_KEY = f"{SETTINGS_KV_PATH}sites"
 
 
@@ -282,7 +282,7 @@ async def delete_site(code: str):
 
 
 # ENDPOINT DESABILITADO - NÃO USAR SSH AQUI
-# Settings deve ler do Consul KV (skills/cm/metadata/fields.json)
+# Settings deve ler do Consul KV (skills/eye/metadata/fields.json)
 # Dados são salvos automaticamente quando /prometheus-config/fields é chamado
 #
 # @router.get("/prometheus-servers")

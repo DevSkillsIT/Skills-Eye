@@ -251,7 +251,7 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
                 from core.kv_manager import KVManager
                 kv_manager = KVManager()
 
-                kv_data = await kv_manager.get_json('skills/cm/metadata/fields')
+                kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
 
                 if kv_data and kv_data.get('fields'):
                     logger.info(f"[FIELDS] Retornando {len(kv_data['fields'])} campos do KV (cache) - EVITANDO SSH")
@@ -308,9 +308,9 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
             from core.kv_manager import KVManager
             kv_manager = KVManager()
 
-            # Salvar no KV: skills/cm/metadata/fields
+            # Salvar no KV: skills/eye/metadata/fields
             await kv_manager.put_json(
-                key='skills/cm/metadata/fields',
+                key='skills/eye/metadata/fields',
                 value={
                     'version': '2.0.0',
                     'last_updated': datetime.now().isoformat(),

@@ -19,7 +19,7 @@ async def test_kv_manager():
 
     # Test 1: Basic KV operations
     print("\n[Test 1] Basic KV Put/Get")
-    test_key = "skills/cm/test/sample.json"
+    test_key = "skills/eye/test/sample.json"
     test_value = {"message": "Hello from Phase 1", "version": "1.0"}
 
     success = await kv.put_json(test_key, test_value, metadata={"updated_by": "test_script"})
@@ -30,8 +30,8 @@ async def test_kv_manager():
 
     # Test 2: List keys
     print("\n[Test 2] List Keys")
-    keys = await kv.list_keys("skills/cm/test/")
-    print(f"  Found {len(keys)} keys under skills/cm/test/")
+    keys = await kv.list_keys("skills/eye/test/")
+    print(f"  Found {len(keys)} keys under skills/eye/test/")
     for key in keys[:5]:  # Show first 5
         print(f"    - {key}")
 
@@ -166,7 +166,7 @@ async def test_kv_namespace_validation():
     # Test 1: Valid namespace
     print("\n[Test 1] Valid Namespace")
     try:
-        await kv.put_json("skills/cm/test/valid.json", {"test": "valid"})
+        await kv.put_json("skills/eye/test/valid.json", {"test": "valid"})
         print("  ✓ Valid namespace accepted")
     except ValueError as e:
         print(f"  ✗ Unexpected error: {e}")
@@ -226,8 +226,8 @@ async def cleanup_test_data():
     print("\n[Cleanup] Removing test data...")
 
     # Delete test KV entries
-    await kv.delete_key("skills/cm/test/sample.json")
-    await kv.delete_key("skills/cm/test/valid.json")
+    await kv.delete_key("skills/eye/test/sample.json")
+    await kv.delete_key("skills/eye/test/valid.json")
     print("  ✓ Removed test KV entries")
 
     # Delete test target

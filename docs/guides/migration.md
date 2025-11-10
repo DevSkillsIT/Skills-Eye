@@ -8,7 +8,7 @@ This guide helps you migrate from the original Consul Manager or TenSunS-based s
 
 ### What's New?
 
-1. **Standardized KV Namespace**: All app data moved to `skills/cm/*`
+1. **Standardized KV Namespace**: All app data moved to `skills/eye/*`
 2. **Dual Storage**: Blackbox targets stored in both Services (for Prometheus) and KV (for advanced features)
 3. **Group Management**: Organize targets into logical groups
 4. **Audit Logging**: Complete audit trail of all operations
@@ -183,7 +183,7 @@ curl -X POST "http://localhost:5000/api/v1/kv/migrate?old_prefix=ConsulManager/r
 
 ```bash
 # List migrated keys
-curl "http://localhost:5000/api/v1/kv/list?prefix=skills/cm/blackbox/targets/"
+curl "http://localhost:5000/api/v1/kv/list?prefix=skills/eye/blackbox/targets/"
 
 # Get audit log of migration
 curl "http://localhost:5000/api/v1/kv/audit/events?action=MIGRATE"
@@ -282,7 +282,7 @@ CONSUL_PORT=8500
 CONSUL_TOKEN=your-token-here
 
 # New optional variables
-KV_NAMESPACE=skills/cm        # Default namespace
+KV_NAMESPACE=skills/eye        # Default namespace
 ENABLE_AUDIT_LOG=true         # Enable audit logging
 ENABLE_KV_STORAGE=true        # Enable dual storage mode
 ```
@@ -353,7 +353,7 @@ All Consul services are still registered normally, so Prometheus continues worki
 Before rolling back completely, export KV data for future use:
 
 ```bash
-curl "http://localhost:5000/api/v1/kv/tree?prefix=skills/cm/" > kv_backup.json
+curl "http://localhost:5000/api/v1/kv/tree?prefix=skills/eye/" > kv_backup.json
 ```
 
 ---
@@ -394,9 +394,9 @@ This will:
 
 ### Issue 1: "Key outside namespace" Error
 
-**Problem:** Trying to access KV keys outside `skills/cm/`
+**Problem:** Trying to access KV keys outside `skills/eye/`
 
-**Solution:** All app KV keys must start with `skills/cm/`. Use the API endpoints which enforce this.
+**Solution:** All app KV keys must start with `skills/eye/`. Use the API endpoints which enforce this.
 
 ### Issue 2: Targets Not Appearing in Prometheus
 

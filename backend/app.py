@@ -65,7 +65,7 @@ async def _prewarm_metadata_fields_cache():
     FLUXO:
     1. Aguarda 5 segundos para o servidor terminar de inicializar
     2. Extrai campos de TODOS os servidores Prometheus via SSH
-    3. Salva automaticamente no Consul KV (skills/cm/metadata/fields)
+    3. Salva automaticamente no Consul KV (skills/eye/metadata/fields)
     4. Campos ficam disponíveis instantaneamente para requisições HTTP
 
     PERFORMANCE:
@@ -118,7 +118,7 @@ async def _prewarm_metadata_fields_cache():
         # PASSO 4: Salvar no Consul KV para acesso rápido
         kv_manager = KVManager()
         await kv_manager.put_json(
-            key='skills/cm/metadata/fields',
+            key='skills/eye/metadata/fields',
             value={
                 'version': '2.0.0',
                 'last_updated': datetime.now().isoformat(),

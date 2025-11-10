@@ -180,7 +180,7 @@ async def get_available_fields(force_refresh: bool = Query(False)):
     if not force_refresh:
         try:
             kv_manager = KVManager()
-            kv_data = await kv_manager.get_json('skills/cm/metadata/fields')
+            kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
 
             if kv_data and kv_data.get('fields'):
                 logger.info(f"[FIELDS] Retornando do KV (cache) - EVITANDO SSH")
@@ -202,7 +202,7 @@ async def get_available_fields(force_refresh: bool = Query(False)):
 ```python
 # SALVAR AUTOMATICAMENTE NO CONSUL KV após SSH
 await kv_manager.put_json(
-    key='skills/cm/metadata/fields',
+    key='skills/eye/metadata/fields',
     value={
         'fields': fields_dict,
         'last_updated': datetime.now().isoformat(),
@@ -366,7 +366,7 @@ async def pre_warm_cache():
     """Popula KV em background"""
     await asyncio.sleep(5)  # Espera servidor iniciar
     result = multi_config.extract_all_fields_with_status()
-    await kv_manager.put_json('skills/cm/metadata/fields', {...})
+    await kv_manager.put_json('skills/eye/metadata/fields', {...})
 ```
 
 **Conclusão Pre-Warm:**
@@ -482,7 +482,7 @@ Requisição HTTP
            ▼
 ┌─────────────────────┐
 │ Cache KV (Consul)   │ ← ~2s
-│ skills/cm/metadata/ │
+│ skills/eye/metadata/ │
 └──────────┬──────────┘
            │ (MISS)
            ▼

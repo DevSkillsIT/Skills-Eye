@@ -156,7 +156,7 @@ Abra o navegador em: **http://localhost:8080**
 2. Navegue pela árvore à esquerda
 3. Clique em uma chave para ver valor
 4. Crie nova chave:
-   - Chave: `skills/cm/test/my-key`
+   - Chave: `skills/eye/test/my-key`
    - Valor: `{"test": "value"}` (JSON)
 
 ### Audit Log

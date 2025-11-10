@@ -103,7 +103,14 @@
       "Bash(tasklist:*)",
       "Bash(taskkill:*)",
       "Bash(start /MIN cmd /k \"npm run dev\")",
-      "Bash(netstat:*)"
+      "Bash(netstat:*)",
+      "Bash(dir:*)",
+      "Bash(tee:*)",
+      "Bash(if not exist docs mkdir docs)",
+      "Bash(docs/KV_USAGE_ANALYSIS.txt)",
+      "Bash(npx tsc:*)",
+      "Bash(migration_report.txt)",
+      "Bash(restart-app.bat)"
     ],
     "deny": [],
     "ask": []

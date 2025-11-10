@@ -124,7 +124,7 @@ class SiteConfig(BaseModel):
 ```
 
 #### Funcionalidade
-- External labels são armazenados em `skills/cm/settings/sites` no Consul KV
+- External labels são armazenados em `skills/eye/settings/sites` no Consul KV
 - Apenas para VISUALIZAÇÃO/REFERÊNCIA no frontend
 - **NÃO são injetados automaticamente** no Meta dos serviços (isso seria errado!)
 - External labels são aplicados pelo PRÓPRIO Prometheus via `global.external_labels`

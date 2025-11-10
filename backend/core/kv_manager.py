@@ -16,14 +16,14 @@ logger = logging.getLogger(__name__)
 class KVManager:
     """
     Manages Consul KV operations with standardized namespace structure.
-    All app data is stored under 'skills/cm/' prefix to avoid conflicts.
+    All app data is stored under 'skills/eye/' prefix to avoid conflicts.
     """
 
     # Root namespace
-    PREFIX = "skills/cm"
+    PREFIX = "skills/eye"
 
     # Blackbox namespaces
-    BLACKBOX_TARGETS = f"{PREFIX}/blackbox/targets"
+    # NOTA: BLACKBOX_TARGETS foi removido - targets agora são armazenados apenas no Services API
     BLACKBOX_GROUPS = f"{PREFIX}/blackbox/groups"
     BLACKBOX_MODULES = f"{PREFIX}/blackbox/modules.json"
 
@@ -54,7 +54,7 @@ class KVManager:
         Get and decode JSON value from KV store.
 
         Args:
-            key: Full key path (must start with skills/cm/)
+            key: Full key path (must start with skills/eye/)
             default: Value to return if key doesn't exist
 
         Returns:
@@ -79,7 +79,7 @@ class KVManager:
         Store JSON value in KV with optional metadata.
 
         Args:
-            key: Full key path (must start with skills/cm/)
+            key: Full key path (must start with skills/eye/)
             value: Data to store (will be JSON-encoded)
             metadata: Optional metadata (created_at, updated_by, version, etc.)
 
@@ -110,7 +110,7 @@ class KVManager:
         Delete a single key from KV store.
 
         Args:
-            key: Full key path (must start with skills/cm/)
+            key: Full key path (must start with skills/eye/)
 
         Returns:
             True if successful
@@ -123,7 +123,7 @@ class KVManager:
         Delete all keys under a prefix (recursive delete).
 
         Args:
-            prefix: Prefix path (must start with skills/cm/)
+            prefix: Prefix path (must start with skills/eye/)
 
         Returns:
             True if successful
@@ -141,7 +141,7 @@ class KVManager:
         List all keys under a prefix.
 
         Args:
-            prefix: Prefix path (must start with skills/cm/)
+            prefix: Prefix path (must start with skills/eye/)
 
         Returns:
             List of key paths
@@ -154,7 +154,7 @@ class KVManager:
         Get all key-value pairs under a prefix (recursive).
 
         Args:
-            prefix: Prefix path (must start with skills/cm/)
+            prefix: Prefix path (must start with skills/eye/)
             unwrap_metadata: If True, extract 'data' from metadata-wrapped values
 
         Returns:
@@ -177,75 +177,10 @@ class KVManager:
     # =========================================================================
     # Blackbox Target Operations
     # =========================================================================
-
-    async def get_blackbox_target(self, target_id: str) -> Optional[Dict]:
-        """Get a single blackbox target by ID."""
-        key = f"{self.BLACKBOX_TARGETS}/{target_id}.json"
-        return await self.get_json(key)
-
-    async def put_blackbox_target(self, target_id: str, target_data: Dict, user: str = "system") -> bool:
-        """
-        Store a blackbox target in KV.
-
-        Args:
-            target_id: Unique target identifier
-            target_data: Target configuration (see blueprint schema)
-            user: User performing the operation
-        """
-        key = f"{self.BLACKBOX_TARGETS}/{target_id}.json"
-
-        # Ensure required fields
-        target_data.setdefault("id", target_id)
-        target_data.setdefault("enabled", True)
-        target_data.setdefault("interval", "30s")
-        target_data.setdefault("timeout", "10s")
-
-        metadata = {
-            "updated_by": user,
-            "resource_type": "blackbox_target"
-        }
-
-        return await self.put_json(key, target_data, metadata)
-
-    async def delete_blackbox_target(self, target_id: str) -> bool:
-        """Delete a blackbox target from KV."""
-        key = f"{self.BLACKBOX_TARGETS}/{target_id}.json"
-        return await self.delete_key(key)
-
-    async def list_blackbox_targets(self, filters: Optional[Dict[str, str]] = None) -> List[Dict]:
-        """
-        List all blackbox targets with optional filtering.
-
-        Args:
-            filters: Optional dict with keys: group, module, enabled, etc.
-
-        Returns:
-            List of target configurations
-        """
-        tree = await self.get_tree(self.BLACKBOX_TARGETS)
-        targets = []
-
-        for key, value in tree.items():
-            if not isinstance(value, dict):
-                continue
-
-            # Apply filters
-            if filters:
-                if "group" in filters and value.get("group") != filters["group"]:
-                    continue
-                if "module" in filters and value.get("module") != filters["module"]:
-                    continue
-                if "enabled" in filters and value.get("enabled") != filters["enabled"]:
-                    continue
-                if "labels" in filters:
-                    # Check if all filter labels match
-                    target_labels = value.get("labels", {})
-                    if not all(target_labels.get(k) == v for k, v in filters["labels"].items()):
-                        continue
-
-            targets.append(value)
-
-        return targets
+    # NOTA: Métodos de blackbox targets foram REMOVIDOS (2025-01-09)
+    # Targets agora são gerenciados EXCLUSIVAMENTE via Consul Services API
+    # Ver: blackbox_manager.py para operações de targets
+    # Ver: CLEANUP_STRATEGY.md para documentação da migração
 
     # =========================================================================
     # Blackbox Group Operations
@@ -533,7 +468,7 @@ class KVManager:
             for old_key, value in old_tree.items():
                 try:
                     # Map old key to new key structure
-                    # Example: ConsulManager/record/blackbox/module_list -> skills/cm/blackbox/modules.json
+                    # Example: ConsulManager/record/blackbox/module_list -> skills/eye/blackbox/modules.json
                     if "module_list" in old_key:
                         new_key = self.BLACKBOX_MODULES
                     else:

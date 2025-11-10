@@ -110,15 +110,13 @@ const mapRecordToPayload = (record: BlackboxTargetRecord): BlackboxTargetPayload
   env: record.meta?.env || '',
   name: record.meta?.name || '',
   instance: record.meta?.instance || '',
-  group: record.meta?.group || (record.kv as any)?.group || undefined,
-  interval: record.meta?.interval || (record.kv as any)?.interval || '30s',
-  timeout: record.meta?.timeout || (record.kv as any)?.timeout || '10s',
-  enabled: record.meta?.enabled ?? ((record.kv as any)?.enabled ?? true),
-  labels:
-    (record.meta?.labels as Record<string, string> | undefined) ||
-    ((record.kv as any)?.labels as Record<string, string> | undefined) ||
-    undefined,
-  notes: (record.meta as any)?.notes || (record.kv as any)?.notes || undefined,
+  // NOTA: Referências ao KV removidas (2025-01-09) - dados agora apenas em Meta (Services API)
+  group: record.meta?.group || undefined,
+  interval: record.meta?.interval || '30s',
+  timeout: record.meta?.timeout || '10s',
+  enabled: record.meta?.enabled ?? true,
+  labels: (record.meta?.labels as Record<string, string> | undefined) || undefined,
+  notes: (record.meta as any)?.notes || undefined,
 });
 
 const stringifyLabels = (labels?: Record<string, string>) => {

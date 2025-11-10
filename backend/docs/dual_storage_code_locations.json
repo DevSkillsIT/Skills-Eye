@@ -1,0 +1,244 @@
+{
+  "total_files": 8,
+  "total_occurrences": 37,
+  "files": {
+    "analyze_kv_usage.py": [
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 50,
+        "code": "print(f\"    KV (skills/eye/blackbox/targets): {blackbox_targets_kv} targets\")",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 72,
+        "code": "print(\"  [CRITICO] Eliminar skills/eye/blackbox/targets/\")",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 46,
+        "code": "blackbox_targets_kv = len(by_namespace.get('blackbox', []))",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 50,
+        "code": "print(f\"    KV (skills/eye/blackbox/targets): {blackbox_targets_kv} targets\")",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 52,
+        "code": "if blackbox_targets_kv == 0:",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 71,
+        "code": "if blackbox_targets_kv > 0:",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "analyze_kv_usage.py",
+        "line": 73,
+        "code": "print(f\"     - {blackbox_targets_kv} targets armazenados desnecessariamente no KV\")",
+        "pattern": "BLACKBOX_TARGETS"
+      }
+    ],
+    "find_dual_storage_code.py": [
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 2,
+        "code": "Busca TODOS os arquivos que acessam skills/eye/blackbox/targets",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 11,
+        "code": "print(\"BUSCA DE CODIGO USANDO skills/eye/blackbox/targets\")",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 17,
+        "code": "r'blackbox/targets',",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 18,
+        "code": "r'BLACKBOX_TARGETS',",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 19,
+        "code": "r'get_blackbox_target',",
+        "pattern": "get_blackbox_target"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 20,
+        "code": "r'create_blackbox_target',",
+        "pattern": "create_blackbox_target"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 21,
+        "code": "r'update_blackbox_target',",
+        "pattern": "update_blackbox_target"
+      },
+      {
+        "file": "find_dual_storage_code.py",
+        "line": 22,
+        "code": "r'delete_blackbox_target',",
+        "pattern": "delete_blackbox_target"
+      }
+    ],
+    "api\\blackbox.py": [
+      {
+        "file": "api\\blackbox.py",
+        "line": 159,
+        "code": "await kv.delete_blackbox_target(request.service_id)",
+        "pattern": "delete_blackbox_target"
+      },
+      {
+        "file": "api\\blackbox.py",
+        "line": 238,
+        "code": "await kv.delete_blackbox_target(request.service_id)",
+        "pattern": "delete_blackbox_target"
+      }
+    ],
+    "api\\dashboard.py": [
+      {
+        "file": "api\\dashboard.py",
+        "line": 25,
+        "code": "blackbox_targets: int",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "api\\dashboard.py",
+        "line": 140,
+        "code": "'blackbox_targets': blackbox_count,",
+        "pattern": "BLACKBOX_TARGETS"
+      }
+    ],
+    "api\\optimized_endpoints.py": [
+      {
+        "file": "api\\optimized_endpoints.py",
+        "line": 238,
+        "code": "def get_blackbox_targets_optimized(force_refresh: bool = Query(False)):",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "api\\optimized_endpoints.py",
+        "line": 238,
+        "code": "def get_blackbox_targets_optimized(force_refresh: bool = Query(False)):",
+        "pattern": "get_blackbox_target"
+      }
+    ],
+    "api\\search.py": [
+      {
+        "file": "api\\search.py",
+        "line": 345,
+        "code": "async def search_blackbox_targets(",
+        "pattern": "BLACKBOX_TARGETS"
+      }
+    ],
+    "core\\blackbox_manager.py": [
+      {
+        "file": "core\\blackbox_manager.py",
+        "line": 82,
+        "code": "kv_targets = await self.kv.list_blackbox_targets(kv_filters or None)",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\blackbox_manager.py",
+        "line": 729,
+        "code": "return await self.kv.list_blackbox_targets(filters={\"group\": group_id})",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\blackbox_manager.py",
+        "line": 756,
+        "code": "target = await self.kv.get_blackbox_target(tid)",
+        "pattern": "get_blackbox_target"
+      },
+      {
+        "file": "core\\blackbox_manager.py",
+        "line": 406,
+        "code": "await self.kv.delete_blackbox_target(service_id)",
+        "pattern": "delete_blackbox_target"
+      }
+    ],
+    "core\\kv_manager.py": [
+      {
+        "file": "core\\kv_manager.py",
+        "line": 26,
+        "code": "BLACKBOX_TARGETS = f\"{PREFIX}/blackbox/targets\"",
+        "pattern": "blackbox/targets"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 26,
+        "code": "BLACKBOX_TARGETS = f\"{PREFIX}/blackbox/targets\"",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 183,
+        "code": "key = f\"{self.BLACKBOX_TARGETS}/{target_id}.json\"",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 195,
+        "code": "key = f\"{self.BLACKBOX_TARGETS}/{target_id}.json\"",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 212,
+        "code": "key = f\"{self.BLACKBOX_TARGETS}/{target_id}.json\"",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 215,
+        "code": "async def list_blackbox_targets(self, filters: Optional[Dict[str, str]] = None) -> List[Dict]:",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 225,
+        "code": "tree = await self.get_tree(self.BLACKBOX_TARGETS)",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 460,
+        "code": "import_type: Type of import (blackbox_targets, services, etc.)",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 542,
+        "code": "new_key = f\"{self.BLACKBOX_TARGETS}/{suffix}\"",
+        "pattern": "BLACKBOX_TARGETS"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 181,
+        "code": "async def get_blackbox_target(self, target_id: str) -> Optional[Dict]:",
+        "pattern": "get_blackbox_target"
+      },
+      {
+        "file": "core\\kv_manager.py",
+        "line": 210,
+        "code": "async def delete_blackbox_target(self, target_id: str) -> bool:",
+        "pattern": "delete_blackbox_target"
+      }
+    ]
+  }
+}

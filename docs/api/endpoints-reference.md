@@ -89,7 +89,7 @@ Apenas endpoints de **instalação remota** (`/installer/*`) requerem HTTP Basic
 Authorization: Basic base64(username:password)
 ```
 
-**Credenciais:** Configuradas no Consul KV: `skills/cm/settings/credentials`
+**Credenciais:** Configuradas no Consul KV: `skills/eye/settings/credentials`
 
 ---
 

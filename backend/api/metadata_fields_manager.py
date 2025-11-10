@@ -177,7 +177,7 @@ async def load_fields_config() -> Dict[str, Any]:
         from core.kv_manager import KVManager
 
         kv = KVManager()
-        fields_data = await kv.get_json('skills/cm/metadata/fields')
+        fields_data = await kv.get_json('skills/eye/metadata/fields')
 
         if not fields_data:
             logger.warning("[METADATA-FIELDS] KV vazio detectado!")
@@ -186,7 +186,7 @@ async def load_fields_config() -> Dict[str, Any]:
             async with _extraction_lock:
                 # DOUBLE-CHECK: Verificar novamente se KV ainda está vazio
                 # (outra requisição pode ter populado enquanto aguardávamos lock)
-                fields_data = await kv.get_json('skills/cm/metadata/fields')
+                fields_data = await kv.get_json('skills/eye/metadata/fields')
 
                 if fields_data:
                     logger.info("[METADATA-FIELDS] KV foi populado por outra requisição. Usando dados existentes.")
@@ -226,7 +226,7 @@ async def load_fields_config() -> Dict[str, Any]:
                     }
 
                     await kv.put_json(
-                        key='skills/cm/metadata/fields',
+                        key='skills/eye/metadata/fields',
                         value=fields_data,
                         metadata={'auto_updated': True, 'source': 'fallback_on_demand'}
                     )
@@ -263,7 +263,7 @@ async def save_fields_config(config: Dict[str, Any]) -> bool:
     Salva configuração de campos no Consul KV.
 
     IMPORTANTE: Não salva mais em arquivo JSON!
-    Campos são salvos no KV: skills/cm/metadata/fields
+    Campos são salvos no KV: skills/eye/metadata/fields
     """
     try:
         from core.kv_manager import KVManager
@@ -272,12 +272,12 @@ async def save_fields_config(config: Dict[str, Any]) -> bool:
         config['last_updated'] = datetime.utcnow().isoformat() + 'Z'
 
         kv = KVManager()
-        success = await kv.put_json('skills/cm/metadata/fields', config)
+        success = await kv.put_json('skills/eye/metadata/fields', config)
 
         if not success:
             raise ValueError("Falha ao salvar no Consul KV")
 
-        logger.info(f"Configuração salva no KV: skills/cm/metadata/fields")
+        logger.info(f"Configuração salva no KV: skills/eye/metadata/fields")
         return True
     except Exception as e:
         logger.error(f"Erro ao salvar configuração: {e}")

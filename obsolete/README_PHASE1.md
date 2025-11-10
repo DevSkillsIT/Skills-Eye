@@ -51,7 +51,7 @@ A modern web application for managing HashiCorp Consul services with enhanced fe
 │                    Consul (Service + KV)                     │
 │  ┌──────────────┐              ┌───────────────┐            │
 │  │   Services   │◄─────────────┤  KV Store     │            │
-│  │  (Discovery) │  consul_sd   │  skills/cm/*  │            │
+│  │  (Discovery) │  consul_sd   │  skills/eye/*  │            │
 │  └──────┬───────┘              └───────────────┘            │
 └─────────┼──────────────────────────────────────────────────┘
           │ Service Discovery
@@ -111,7 +111,7 @@ CONSUL_PORT=8500
 CONSUL_TOKEN=your-consul-token-here
 
 # Application Settings
-KV_NAMESPACE=skills/cm
+KV_NAMESPACE=skills/eye
 ENABLE_AUDIT_LOG=true
 ENABLE_KV_STORAGE=true
 
@@ -290,7 +290,7 @@ curl -X POST "http://localhost:5000/api/v1/blackbox/import" \
 ## 🗂️ KV Namespace Structure
 
 ```
-skills/cm/
+skills/eye/
 ├── blackbox/
 │   ├── targets/
 │   │   ├── http_2xx_Ramada_web_prod@HomePage.json

@@ -7,7 +7,7 @@ quando o usuário digita um valor novo em um formulário.
 
 EXEMPLO:
 1. Usuário cadastra servidor com empresa="Ramada"
-2. Sistema automaticamente cria registro em skills/cm/reference-values/company/ramada.json
+2. Sistema automaticamente cria registro em skills/eye/reference-values/company/ramada.json
 3. Próximo cadastro: "Ramada" aparece como opção no select
 
 CAMPOS SUPORTADOS (available_for_registration: true):
@@ -147,14 +147,15 @@ class ReferenceValuesManager:
         success = await self._put_value(field_name, normalized, value_data, user)
 
         if success:
-            # Log audit event
-            await self.kv.log_audit_event(
-                action="CREATE",
-                resource_type="reference_value",
-                resource_id=f"{field_name}/{normalized}",
-                user=user,
-                details={"field": field_name, "value": normalized}
-            )
+            # AUDIT LOG DESABILITADO: reference_value auto-cadastro não precisa de auditoria
+            # Motivo: Gera 96.7% dos audit logs com crescimento exponencial
+            # await self.kv.log_audit_event(
+            #     action="CREATE",
+            #     resource_type="reference_value",
+            #     resource_id=f"{field_name}/{normalized}",
+            #     user=user,
+            #     details={"field": field_name, "value": normalized}
+            # )
             return True, normalized, f"Valor '{normalized}' cadastrado automaticamente"
 
         return False, normalized, "Erro ao cadastrar valor"
@@ -207,13 +208,14 @@ class ReferenceValuesManager:
         success = await self._put_value(field_name, normalized, value_data, user)
 
         if success:
-            await self.kv.log_audit_event(
-                action="CREATE",
-                resource_type="reference_value",
-                resource_id=f"{field_name}/{normalized}",
-                user=user,
-                details={"field": field_name, "value": normalized, "source": "manual"}
-            )
+            # AUDIT LOG DESABILITADO: reference_value manual creation não precisa de auditoria
+            # await self.kv.log_audit_event(
+            #     action="CREATE",
+            #     resource_type="reference_value",
+            #     resource_id=f"{field_name}/{normalized}",
+            #     user=user,
+            #     details={"field": field_name, "value": normalized, "source": "manual"}
+            # )
             return True, f"Valor '{normalized}' criado com sucesso"
 
         return False, "Erro ao criar valor"
@@ -309,13 +311,14 @@ class ReferenceValuesManager:
         success = await self._put_value(field_name, normalized, existing, user)
 
         if success:
-            await self.kv.log_audit_event(
-                action="UPDATE",
-                resource_type="reference_value",
-                resource_id=f"{field_name}/{normalized}",
-                user=user,
-                details={"field": field_name, "value": normalized, "updates": updates}
-            )
+            # AUDIT LOG DESABILITADO: reference_value updates não precisam de auditoria
+            # await self.kv.log_audit_event(
+            #     action="UPDATE",
+            #     resource_type="reference_value",
+            #     resource_id=f"{field_name}/{normalized}",
+            #     user=user,
+            #     details={"field": field_name, "value": normalized, "updates": updates}
+            # )
             return True, f"Valor '{normalized}' atualizado com sucesso"
 
         return False, "Erro ao atualizar valor"
@@ -359,13 +362,14 @@ class ReferenceValuesManager:
         success = await self.kv.delete_key(key)
 
         if success:
-            await self.kv.log_audit_event(
-                action="DELETE",
-                resource_type="reference_value",
-                resource_id=f"{field_name}/{normalized}",
-                user=user,
-                details={"field": field_name, "value": normalized, "forced": force}
-            )
+            # AUDIT LOG DESABILITADO: reference_value deletes não precisam de auditoria
+            # await self.kv.log_audit_event(
+            #     action="DELETE",
+            #     resource_type="reference_value",
+            #     resource_id=f"{field_name}/{normalized}",
+            #     user=user,
+            #     details={"field": field_name, "value": normalized, "forced": force}
+            # )
             return True, f"Valor '{normalized}' deletado com sucesso"
 
         return False, "Erro ao deletar valor"
@@ -383,10 +387,10 @@ class ReferenceValuesManager:
             value: Valor (já normalizado)
 
         Returns:
-            Chave completa: skills/cm/reference-values/{field_name}/{value_slug}.json
+            Chave completa: skills/eye/reference-values/{field_name}/{value_slug}.json
 
         Examples:
-            ("company", "Empresa Ramada") → "skills/cm/reference-values/company/empresa_ramada.json"
+            ("company", "Empresa Ramada") → "skills/eye/reference-values/company/empresa_ramada.json"
         """
         # Slugify: converte para lowercase, substitui espaços por _
         slug = re.sub(r'[^\w\s-]', '', value.lower())

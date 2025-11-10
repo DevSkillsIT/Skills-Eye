@@ -8,12 +8,14 @@ import React, {
 import {
   Button,
   Card,
+  Col,
   Descriptions,
   Drawer,
   Form,
   Input,
   message,
   Popconfirm,
+  Row,
   Select,
   Space,
   Statistic,
@@ -23,8 +25,11 @@ import {
 } from 'antd';
 import { useConsulDelete } from '../hooks/useConsulDelete';
 import {
+  ApartmentOutlined,
+  BankOutlined,
   ClearOutlined,
   CloudOutlined,
+  CloudServerOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -32,6 +37,9 @@ import {
   InfoCircleOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
+  TagsOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import type { ActionType } from '@ant-design/pro-components';
 import {
@@ -45,10 +53,10 @@ import {
   ProTable,
 } from '@ant-design/pro-components';
 import { useSearchParams } from 'react-router-dom';
-import MetadataFilterBar from '../components/MetadataFilterBar';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
 import AdvancedSearchPanel, { type SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
+import { NodeSelector, type ConsulNode } from '../components/NodeSelector';
 import { consulAPI } from '../services/api';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
@@ -68,8 +76,6 @@ const { Option } = Select;
 const { Search } = Input;
 const { Text } = Typography;
 
-const ALL_NODES = 'ALL';
-const DEFAULT_NODE = '__MAIN__';
 const DEFAULT_MODULES = [
   'icmp',
   'http_2xx',
@@ -88,12 +94,6 @@ const FORM_ROW_STYLE: React.CSSProperties = {
   gap: 16,
   gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
 };
-
-interface ConsulNode {
-  node: string;
-  addr: string;
-  status?: string;
-}
 
 interface ServiceTableItem {
   key: string;
@@ -141,6 +141,19 @@ const FIXED_COLUMN_PRESETS: ColumnConfig[] = [
   { key: 'port', title: 'Porta', visible: false },
   { key: 'tags', title: 'Tags', visible: true },
   { key: 'actions', title: 'Ações', visible: true, locked: true },
+];
+
+// CAMPOS METADATA que devem ser visíveis por padrão
+// Campos não listados aqui ficam ocultos (mas podem ser habilitados pelo usuário)
+const DEFAULT_VISIBLE_METADATA_FIELDS = [
+  'module',
+  'company',
+  'grupo_monitoramento',
+  'project', // Nome antigo de grupo_monitoramento
+  'tipo_monitoramento',
+  'env', // Nome antigo de tipo_monitoramento
+  'name',
+  'instance',
 ];
 
 const SERVICE_ID_SANITIZE_REGEX = /[[ \]`~!\\#$^&*=|"{}\':;?\t\n]+/g;
@@ -241,12 +254,10 @@ const Services: React.FC = () => {
   const { batchEnsure } = useBatchEnsure();
   const { ensureTags } = useServiceTags({ autoLoad: false });
 
-  // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
-  const [filters, setFilters] = useState<Record<string, string | undefined>>({});
+  // SISTEMA DINÂMICO: metadataOptions para preencher filtros das colunas
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
-  const [nodes, setNodes] = useState<ConsulNode[]>([]);
-  const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
+  const [selectedNode, setSelectedNode] = useState<string>('all');
   const [detailRecord, setDetailRecord] = useState<ServiceTableItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
@@ -260,7 +271,17 @@ const Services: React.FC = () => {
     total: number;
     byEnv: Record<string, number>;
     byModule: Record<string, number>;
-  }>({ total: 0, byEnv: {}, byModule: {} });
+    byCompany: Record<string, number>;
+    byNode: Record<string, number>;
+    uniqueTags: Set<string>;
+  }>({
+    total: 0,
+    byEnv: {},
+    byModule: {},
+    byCompany: {},
+    byNode: {},
+    uniqueTags: new Set()
+  });
   const [tableSnapshot, setTableSnapshot] = useState<ServiceTableItem[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
@@ -270,7 +291,9 @@ const Services: React.FC = () => {
     const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
       key: field.name,
       title: field.display_name,
-      visible: field.show_in_table ?? true, // Exibir por padrão se show_in_table não definido
+      // Exibir apenas campos essenciais por padrão
+      // Usuário pode habilitar outros campos via ColumnSelector
+      visible: DEFAULT_VISIBLE_METADATA_FIELDS.includes(field.name),
       locked: false,
     }));
 
@@ -427,50 +450,22 @@ const Services: React.FC = () => {
     [],
   );
 
-  const nodeAddressMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    nodes.forEach((node) => {
-      if (node.node && node.addr) {
-        map[node.node] = node.addr;
-      }
-    });
-    return map;
-  }, [nodes]);
-
   // OTIMIZAÇÃO: Removida função loadMetadataOptions() que fazia N requisições HTTP
   // Agora extraímos valores únicos diretamente dos dados já carregados no requestHandler
 
-  const loadNodes = useCallback(async () => {
-    try {
-      const response = await consulAPI.getNodes();
-      const list = response.data?.data || [];
-      setNodes(list);
-    } catch (error) {
-      message.error('Falha ao carregar nos do cluster');
-    }
-  }, []);
-
-  // Carregar nodes imediatamente
-  useEffect(() => {
-    loadNodes();
-  }, [loadNodes]);
-
   useEffect(() => {
     actionRef.current?.reload();
-  }, [filters, selectedNode, advancedConditions, advancedOperator]);
+  }, [selectedNode, advancedConditions, advancedOperator]);
 
-  // SISTEMA DINÂMICO: buildQueryParams aceita filtros dinâmicos
+  // SISTEMA DINÂMICO: buildQueryParams para filtro de nó
   const buildQueryParams = useCallback((): ServiceQuery => {
-    const params: ServiceQuery = { ...filters } as ServiceQuery;
-    if (selectedNode === ALL_NODES) {
-      params.node_addr = 'ALL';
-    } else if (selectedNode === DEFAULT_NODE) {
-      delete params.node_addr;
-    } else if (selectedNode) {
+    const params: ServiceQuery = {} as ServiceQuery;
+    // 'all' = todos os nós (não envia filtro de nó específico)
+    if (selectedNode && selectedNode !== 'all') {
       params.node_addr = selectedNode;
     }
     return params;
-  }, [filters, selectedNode]);
+  }, [selectedNode]);
 
   const flattenServices = useCallback(
     (data: Record<string, Record<string, ConsulServiceRecord>>) => {
@@ -482,7 +477,7 @@ const Services: React.FC = () => {
             key: `${nodeName}::${serviceId}`,
             id: serviceId,
             node: nodeName,
-            nodeAddr: nodeAddressMap[nodeName],
+            nodeAddr: undefined, // Campo opcional - endereço do nó (não mais usado)
             service: service.Service || '',
             tags: service.Tags || [],
             address: service.Address,
@@ -493,7 +488,7 @@ const Services: React.FC = () => {
       });
       return rows;
     },
-    [nodeAddressMap],
+    [],
   );
 
   const requestHandler = useCallback(
@@ -553,31 +548,42 @@ const Services: React.FC = () => {
         setMetadataLoading(false);
 
         // Aplicar filtros avançados (se houver)
-        const advancedRows = applyAdvancedFilters(rows);
-
-        // PASSO 1: Filtrar por metadata (filtros dinâmicos)
-        let filteredRows = advancedRows;
-        if (filters && Object.keys(filters).length > 0) {
-          filteredRows = advancedRows.filter((item) => {
-            // Verificar se item atende a TODOS os filtros ativos
-            return Object.entries(filters).every(([fieldName, filterValue]) => {
-              if (!filterValue) return true; // Filtro vazio = não filtrar
-              const itemValue = item.meta?.[fieldName];
-              return itemValue && String(itemValue) === String(filterValue);
-            });
-          });
-        }
+        // NOTA: Filtros de coluna (filterDropdown) são aplicados automaticamente pelo ProTable
+        const filteredRows = applyAdvancedFilters(rows);
 
         const nextSummary = filteredRows.reduce(
           (acc, item) => {
             acc.total += 1;
-            const envKey = item.meta?.env || 'desconhecido';
+
+            // Contar por ambiente
+            const envKey = item.meta?.env || item.meta?.tipo_monitoramento || 'desconhecido';
             acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
+
+            // Contar por módulo
             const moduleKey = item.meta?.module || 'desconhecido';
             acc.byModule[moduleKey] = (acc.byModule[moduleKey] || 0) + 1;
+
+            // Contar por empresa
+            const companyKey = item.meta?.company || 'desconhecido';
+            acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
+
+            // Contar por nó
+            const nodeKey = item.node || 'desconhecido';
+            acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
+
+            // Coletar tags únicas
+            (item.tags || []).forEach(tag => acc.uniqueTags.add(tag));
+
             return acc;
           },
-          { total: 0, byEnv: {} as Record<string, number>, byModule: {} as Record<string, number> },
+          {
+            total: 0,
+            byEnv: {} as Record<string, number>,
+            byModule: {} as Record<string, number>,
+            byCompany: {} as Record<string, number>,
+            byNode: {} as Record<string, number>,
+            uniqueTags: new Set<string>()
+          },
         );
         setSummary(nextSummary);
 
@@ -624,7 +630,7 @@ const Services: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, flattenServices, nodes, searchValue, selectedNode],
+    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode],
   );
   const openCreateModal = useCallback(() => {
     setFormMode('create');
@@ -658,7 +664,7 @@ const Services: React.FC = () => {
       // Adapter para API de Services (usa serviceId + params)
       const nodeAddrParam =
         payload.node_addr ||
-        (selectedNode && selectedNode !== ALL_NODES && selectedNode !== DEFAULT_NODE
+        (selectedNode && selectedNode !== 'all'
           ? selectedNode
           : undefined);
 
@@ -789,6 +795,7 @@ const Services: React.FC = () => {
     },
     [currentRecord, formMode, formFields, batchEnsure, ensureTags],
   );
+
   // SISTEMA DINÂMICO: Gerar columnMap combinando fixas + metadata
   const columnMap = useMemo<Record<string, ServiceColumn<ServiceTableItem>>>(() => {
     // COLUNAS FIXAS com lógica específica
@@ -890,21 +897,41 @@ const Services: React.FC = () => {
       },
     };
 
-    // COLUNAS METADATA DINÂMICAS
+    // COLUNAS METADATA DINÂMICAS - COM FILTROS NATIVOS ANT DESIGN
     const metadataColumns: Record<string, ServiceColumn<ServiceTableItem>> = {};
     tableFields.forEach((field) => {
+      // Buscar opções disponíveis para este campo (se existir)
+      const fieldOptions = metadataOptions[field.name] || [];
+
       metadataColumns[field.name] = {
         title: field.display_name,
         dataIndex: ['meta', field.name],
         width: field.field_type === 'string' ? 200 : 140,
         ellipsis: true,
         tooltip: field.description,
+
+        // FILTROS NATIVOS DO ANT DESIGN - Padrão da documentação oficial
+        filters: fieldOptions.map(opt => ({ text: opt, value: opt })),
+        filterMode: 'tree',
+        filterSearch: true, // Habilita busca dentro do dropdown de filtro
+        onFilter: (value, record) => {
+          const fieldValue = record.meta?.[field.name];
+          return fieldValue === value;
+        },
+
+        // ORDENAÇÃO
+        sorter: (a, b) => {
+          const aValue = String(a.meta?.[field.name] || '');
+          const bValue = String(b.meta?.[field.name] || '');
+          return aValue.localeCompare(bValue);
+        },
+        sortDirections: ['ascend', 'descend'],
       };
     });
 
     // Combinar fixas + dinâmicas
     return { ...fixedColumns, ...metadataColumns };
-  }, [tableFields, handleDelete, openEditModal]);
+  }, [tableFields, handleDelete, openEditModal, metadataOptions]);
 
   const visibleColumns = useMemo(() => {
     return columnConfig
@@ -979,22 +1006,6 @@ const Services: React.FC = () => {
     URL.revokeObjectURL(url);
   }, [tableSnapshot]);
 
-  const nodeSelector = (
-    <Select
-      value={selectedNode}
-      style={{ minWidth: 220 }}
-      onChange={(value) => setSelectedNode(value)}
-    >
-      <Option value={ALL_NODES}>Todos os nos</Option>
-      <Option value={DEFAULT_NODE}>Servidor principal</Option>
-      {nodes.map((node) => (
-        <Option value={node.addr} key={node.addr}>
-          {`${node.node} (${node.addr})`}
-        </Option>
-      ))}
-    </Select>
-  );
-
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
   );
@@ -1006,126 +1017,153 @@ const Services: React.FC = () => {
       }}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* Summary Cards */}
-        <Card>
-          <Space size="large" wrap>
-            <Statistic
-              title="Serviços registrados"
-              value={summary.total}
-              prefix={<CloudOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-            />
-            <Statistic
-              title="Ambientes distintos"
-              value={Object.keys(summary.byEnv).length}
-              suffix=" ambientes"
-            />
-            <Statistic
-              title="Modulos distintos"
-              value={Object.keys(summary.byModule).length}
-              suffix=" modulos"
-            />
-          </Space>
+        {/* Dashboard: NodeSelector + Métricas - LARGURA FIXA, NÃO SEGUE TABELA */}
+        <Card styles={{ body: { padding: '10px 16px' } }} style={{ maxWidth: '100%', width: 'fit-content' }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            {/* NodeSelector */}
+            <div style={{ width: 340 }}>
+              <Typography.Text strong style={{ fontSize: '12px', display: 'block', marginBottom: 6 }}>
+                Nó do Consul
+              </Typography.Text>
+              <NodeSelector
+                value={selectedNode}
+                onChange={(nodeAddr) => setSelectedNode(nodeAddr)}
+                style={{ width: 340 }}
+                showAllNodesOption={true}
+              />
+            </div>
+
+            {/* Dashboard - LARGURA FIXA */}
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ textAlign: 'center', minWidth: 90 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Total</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#3f8600' }}>
+                  <CloudOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {summary.total}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 80 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Nós</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#1890ff' }}>
+                  <ApartmentOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {Object.keys(summary.byNode).length}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 100 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Empresas</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#722ed1' }}>
+                  <BankOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {Object.keys(summary.byCompany).length}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 100 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Ambientes</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#fa8c16' }}>
+                  <TeamOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {Object.keys(summary.byEnv).length}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 90 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Módulos</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#13c2c2' }}>
+                  <CloudOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {Object.keys(summary.byModule).length}
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', minWidth: 80 }}>
+                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Tags</div>
+                <div style={{ fontSize: '20px', fontWeight: 600, color: '#eb2f96' }}>
+                  <TagsOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                  {summary.uniqueTags.size}
+                </div>
+              </div>
+            </div>
+          </div>
         </Card>
 
-        {/* Filters and Actions */}
+        {/* Actions */}
         <Card size="small">
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Space wrap>
-              <MetadataFilterBar
-                fields={filterFields}
-                value={filters}
-                options={metadataOptions}
-                loading={metadataLoading || filterFieldsLoading}
-                onChange={setFilters}
-                onReset={() => setFilters({})}
-                extra={nodeSelector}
-              />
-            </Space>
+          <Space wrap>
+            <Search
+              allowClear
+              placeholder="Buscar por nome, instancia ou ID"
+              enterButton
+              style={{ width: 300 }}
+              value={searchInput}
+              onChange={(event) => {
+                const next = event.target.value;
+                setSearchInput(next);
+                if (!next) {
+                  handleSearchSubmit('');
+                }
+              }}
+              onSearch={handleSearchSubmit}
+            />
 
-            <Space wrap>
-              <Search
-                allowClear
-                placeholder="Buscar por nome, instancia ou ID"
-                enterButton
-                style={{ width: 300 }}
-                value={searchInput}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setSearchInput(next);
-                  if (!next) {
-                    handleSearchSubmit('');
-                  }
-                }}
-                onSearch={handleSearchSubmit}
-              />
+            <Button
+              icon={<FilterOutlined />}
+              type={advancedActive ? 'primary' : 'default'}
+              onClick={() => setAdvancedOpen(true)}
+            >
+              Busca Avancada
+              {advancedConditions.length > 0 && ` (${advancedConditions.length})`}
+            </Button>
 
+            {advancedActive && (
               <Button
-                icon={<FilterOutlined />}
-                type={advancedActive ? 'primary' : 'default'}
-                onClick={() => setAdvancedOpen(true)}
+                icon={<ClearOutlined />}
+                onClick={handleAdvancedClear}
               >
-                Busca Avancada
-                {advancedConditions.length > 0 && ` (${advancedConditions.length})`}
+                Limpar Filtros Avancados
               </Button>
+            )}
 
-              {advancedActive && (
+            <ColumnSelector
+              columns={columnConfig}
+              onChange={setColumnConfig}
+              storageKey="services-columns"
+            />
+
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={handleExport}
+            >
+              Exportar CSV
+            </Button>
+
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => actionRef.current?.reload()}
+            >
+              Atualizar
+            </Button>
+
+            <Popconfirm
+              title="Remover serviços selecionados?"
+              description="Esta acao removera os serviços selecionados do Consul. Tem certeza?"
+              onConfirm={handleBatchDelete}
+              disabled={!selectedRows.length}
+              okText="Sim"
+              cancelText="Nao"
+            >
+              <Tooltip title="Remover serviços selecionados">
                 <Button
-                  icon={<ClearOutlined />}
-                  onClick={handleAdvancedClear}
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={!selectedRows.length}
                 >
-                  Limpar Filtros Avancados
+                  Remover selecionados ({selectedRows.length})
                 </Button>
-              )}
+              </Tooltip>
+            </Popconfirm>
 
-              <ColumnSelector
-                columns={columnConfig}
-                onChange={setColumnConfig}
-                storageKey="services-columns"
-              />
-
-              <Button
-                icon={<DownloadOutlined />}
-                onClick={handleExport}
-              >
-                Exportar CSV
-              </Button>
-
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={() => actionRef.current?.reload()}
-              >
-                Atualizar
-              </Button>
-
-              <Popconfirm
-                title="Remover serviços selecionados?"
-                description="Esta acao removera os serviços selecionados do Consul. Tem certeza?"
-                onConfirm={handleBatchDelete}
-                disabled={!selectedRows.length}
-                okText="Sim"
-                cancelText="Nao"
-              >
-                <Tooltip title="Remover serviços selecionados">
-                  <Button
-                    danger
-                    icon={<DeleteOutlined />}
-                    disabled={!selectedRows.length}
-                  >
-                    Remover selecionados ({selectedRows.length})
-                  </Button>
-                </Tooltip>
-              </Popconfirm>
-
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openCreateModal}
-              >
-                Novo serviço
-              </Button>
-            </Space>
-
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openCreateModal}
+            >
+              Novo serviço
+            </Button>
           </Space>
         </Card>
 
@@ -1142,7 +1180,11 @@ const Services: React.FC = () => {
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
-          scroll={{ x: 1400 }}
+          scroll={{
+            x: 1400,
+            y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
+          }}
+          sticky // Header sticky (fixo no topo ao rolar)
           locale={{ emptyText: 'Nenhum dado disponivel' }}
           options={{ density: true, fullScreen: true, reload: false, setting: false }}
           components={{

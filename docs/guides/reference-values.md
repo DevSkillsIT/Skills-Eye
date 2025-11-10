@@ -53,7 +53,7 @@ Todos os valores são automaticamente normalizados:
 ## 🗄️ Storage em Consul KV
 
 ```
-skills/cm/reference-values/
+skills/eye/reference-values/
 ├── company/
 │   ├── empresa_ramada.json
 │   ├── acme_corp.json

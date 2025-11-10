@@ -568,7 +568,7 @@ const PrometheusConfig: React.FC = () => {
       console.log('[PrometheusConfig] PASSO 2/4: Deletando cache KV de metadata fields...');
       try {
         await axios.delete(`${API_URL}/kv/value`, {
-          params: { key: 'skills/cm/metadata/fields' }
+          params: { key: 'skills/eye/metadata/fields' }
         });
         console.log('[PrometheusConfig] ✓ Cache KV deletado com sucesso');
       } catch (deleteErr) {

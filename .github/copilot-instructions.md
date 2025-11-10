@@ -8,7 +8,7 @@ Full-stack Consul service management platform with modern React frontend and Fas
 ### Backend Structure (FastAPI + Async)
 - **Core Layer**: `backend/core/` contains business logic managers (`consul_manager.py`, `kv_manager.py`, `service_preset_manager.py`)
 - **API Layer**: `backend/api/` contains FastAPI routers with clear separation of concerns
-- **Dual Storage**: Services stored in both Consul's service registry AND KV store under `skills/cm/` namespace
+- **Dual Storage**: Services stored in both Consul's service registry AND KV store under `skills/eye/` namespace
 - **Async Throughout**: All Consul operations use `httpx` async client, avoid sync patterns
 
 ### Frontend Structure (React 19 + TypeScript)
@@ -19,10 +19,10 @@ Full-stack Consul service management platform with modern React frontend and Fas
 
 ### Key Namespace Patterns
 ```
-skills/cm/blackbox/targets/<id>.json     # Blackbox monitoring targets
-skills/cm/blackbox/groups/<id>.json      # Logical groupings  
-skills/cm/services/presets/<id>.json     # Service templates
-skills/cm/audit/YYYY/MM/DD/<ts>.json     # Audit trail
+skills/eye/blackbox/targets/<id>.json     # Blackbox monitoring targets
+skills/eye/blackbox/groups/<id>.json      # Logical groupings  
+skills/eye/services/presets/<id>.json     # Service templates
+skills/eye/audit/YYYY/MM/DD/<ts>.json     # Audit trail
 ```
 
 ## Development Workflows
@@ -129,7 +129,7 @@ python test_phase2.py  # Presets and advanced search
 - **Error Boundaries**: Handle API errors gracefully with user feedback
 
 ## Security Considerations
-- **Namespace Isolation**: All KV operations must use `skills/cm/` prefix
+- **Namespace Isolation**: All KV operations must use `skills/eye/` prefix
 - **Input Validation**: Sanitize all user inputs before Consul operations
 - **Token Protection**: Never log or expose Consul tokens in responses
 - **CORS Configuration**: Maintain restrictive CORS policy for production
