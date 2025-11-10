@@ -448,40 +448,21 @@ const Services: React.FC = () => {
   }, []);
 
   // =========================================================================
-  // PATTERN CONTROLADO - EXATAMENTE como no exemplo do Ant Design
+  // PATTERN NÃO CONTROLADO - Como BlackboxTargets (MAIS RÁPIDO!)
   // =========================================================================
-  // Estados para controlar filtros e ordenação separadamente
-  const [filteredInfo, setFilteredInfo] = useState<Record<string, any>>({});
-  const [sortedInfo, setSortedInfo] = useState<any>({});
+  // REMOVIDO: filteredInfo, sortedInfo, handleTableChange
+  // Deixar Ant Design gerenciar filtros/ordenação internamente
 
-  // Handler para capturar mudanças da tabela (filtros e ordenação)
-  const handleTableChange = useCallback((pagination: any, filters: any, sorter: any) => {
-    setFilteredInfo(filters);
-    setSortedInfo(sorter);
-  }, []);
-
-  // Limpar APENAS filtros (mantém ordenação)
+  // Função simples para limpar APENAS pesquisa (sem tocar em filtros da tabela)
   const handleClearFilters = useCallback(() => {
-    setFilteredInfo({});
-    // ✅ ADICIONAL: Limpar pesquisa de texto
+    // Limpar apenas pesquisa de texto e avançada
     setSearchValue('');
     setSearchInput('');
-    // ✅ ADICIONAL: Limpar pesquisa avançada
     setAdvancedConditions([]);
     setAdvancedOperator('and');
-  }, []);
 
-  // Limpar filtros E ordenação (força reset COMPLETO do Table)
-  const handleClearFiltersAndSort = useCallback(() => {
-    setFilteredInfo({});
-    setSortedInfo({});
-    setFilterResetKey(prev => prev + 1); // ✅ CRÍTICO: Incrementa key para remontar Table
-    // ✅ ADICIONAL: Limpar pesquisa de texto
-    setSearchValue('');
-    setSearchInput('');
-    // ✅ ADICIONAL: Limpar pesquisa avançada
-    setAdvancedConditions([]);
-    setAdvancedOperator('and');
+    // Forçar reset COMPLETO da tabela (remonta componente, limpando filtros internos)
+    setFilterResetKey(prev => prev + 1);
   }, []);
 
   const handleResize = useCallback(
@@ -809,8 +790,7 @@ const Services: React.FC = () => {
         width: 160,
         ellipsis: true,
         sorter: (a, b) => (a.node || '').localeCompare(b.node || ''),
-        sortOrder: sortedInfo.columnKey === 'node' ? sortedInfo.order : null,
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO sortOrder: sortedInfo - modo não controlado
       },
       service: {
         title: 'Serviço Consul',
@@ -819,8 +799,7 @@ const Services: React.FC = () => {
         width: 260,
         ellipsis: true,
         sorter: (a, b) => (a.service || '').localeCompare(b.service || ''),
-        sortOrder: sortedInfo.columnKey === 'service' ? sortedInfo.order : null,
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO sortOrder: sortedInfo - modo não controlado
         render: (_, record) => {
           // Extrair site dos metadata para exibir badge
           const site = record.meta?.site || extractSiteFromMetadata(record.meta || {});
@@ -842,8 +821,7 @@ const Services: React.FC = () => {
         ellipsis: true,
         width: 260,
         sorter: (a, b) => (a.id || '').localeCompare(b.id || ''),
-        sortOrder: sortedInfo.columnKey === 'id' ? sortedInfo.order : null,
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO sortOrder: sortedInfo - modo não controlado
       },
       address: {
         title: 'Endereço',
@@ -852,8 +830,7 @@ const Services: React.FC = () => {
         width: 220,
         ellipsis: true,
         sorter: (a, b) => (a.address || '').localeCompare(b.address || ''),
-        sortOrder: sortedInfo.columnKey === 'address' ? sortedInfo.order : null,
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO sortOrder: sortedInfo - modo não controlado
       },
       port: {
         title: 'Porta',
@@ -862,8 +839,7 @@ const Services: React.FC = () => {
         width: 100,
         align: 'center',
         sorter: (a, b) => (a.port || 0) - (b.port || 0),
-        sortOrder: sortedInfo.columnKey === 'port' ? sortedInfo.order : null,
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO sortOrder: sortedInfo - modo não controlado
       },
       tags: {
         title: 'Tags',
@@ -921,12 +897,9 @@ const Services: React.FC = () => {
       },
     };
 
-    // COLUNAS METADATA DINÂMICAS - COM FILTROS CUSTOMIZADOS
+    // COLUNAS METADATA DINÂMICAS - MODO NÃO CONTROLADO (como BlackboxTargets)
     const metadataColumns: Record<string, ServiceColumn<ServiceTableItem>> = {};
     tableFields.forEach((field) => {
-      // Buscar opções disponíveis para este campo (se existir)
-      const fieldOptions = metadataOptions[field.name] || [];
-
       metadataColumns[field.name] = {
         title: field.display_name,
         key: field.name, // Key obrigatória para identificação
@@ -934,50 +907,18 @@ const Services: React.FC = () => {
         width: field.field_type === 'string' ? 200 : 140,
         ellipsis: true,
         tooltip: field.description,
-
-        // FILTROS - EXATAMENTE como no exemplo do Ant Design (controlado)
-        filters: fieldOptions.map(opt => ({ text: opt, value: opt })),
-        filteredValue: filteredInfo[field.name] || null, // ✅ Controlado por filteredInfo
-        filterSearch: true,
-        onFilter: (value: any, record: ServiceTableItem) => {
-          const fieldValue = record.meta?.[field.name];
-          return fieldValue === value;
-        },
-
-        // ORDENAÇÃO - EXATAMENTE como no exemplo do Ant Design (controlado)
-        sorter: (a: ServiceTableItem, b: ServiceTableItem) => {
-          const aValue = String(a.meta?.[field.name] || '');
-          const bValue = String(b.meta?.[field.name] || '');
-          return aValue.localeCompare(bValue);
-        },
-        sortOrder: sortedInfo.columnKey === field.name ? sortedInfo.order : null, // ✅ Controlado por sortedInfo
-        sortDirections: ['ascend', 'descend'],
+        // REMOVIDO: filters, filteredValue, onFilter, sortOrder
+        // Deixar Ant Design gerenciar internamente = MUITO MAIS RÁPIDO!
       };
     });
 
     // Combinar fixas + dinâmicas
     return { ...fixedColumns, ...metadataColumns };
-  }, [tableFields, handleDelete, openEditModal, metadataOptions]);
-  // OTIMIZAÇÃO: Removido filteredInfo e sortedInfo das deps
-  // Eles mudam frequentemente e não precisam recalcular TODAS as colunas
-  // sortedInfo é aplicado dinamicamente via sortOrder nas colunas
-
-  // Mapa de field → display_name para mostrar nomes amigáveis
-  const fieldDisplayNames = useMemo(() => {
-    const map: Record<string, string> = {
-      node: 'Nó',
-      service: 'Serviço Consul',
-      id: 'ID',
-      address: 'Endereço',
-      port: 'Porta',
-      tags: 'Tags'
-    };
-    // Adicionar campos metadata dinâmicos
-    tableFields.forEach(field => {
-      map[field.name] = field.display_name;
-    });
-    return map;
-  }, [tableFields]);
+  }, [tableFields, handleDelete, openEditModal]);
+  // OTIMIZAÇÃO CRÍTICA: Removido metadataOptions das deps!
+  // metadataOptions muda frequentemente (toda vez que dados carregam)
+  // Mas não precisamos recalcular TODAS as colunas por isso
+  // Filtros/sorts são gerenciados internamente pelo Ant Design (modo não controlado)
 
   const visibleColumns = useMemo(() => {
     return columnConfig
@@ -1077,37 +1018,7 @@ const Services: React.FC = () => {
   );
   return (
     <>
-      {/* CSS customizado para destacar colunas filtradas/ordenadas */}
-      <style>
-        {`
-          /* Coluna com sorter ao passar mouse */
-          .services-table .ant-table-column-has-sorters:hover {
-            background-color: #f0f5ff !important;
-          }
-
-          /* Coluna ORDENADA ATIVA - background bem destacado */
-          .services-table .ant-table-column-sort {
-            background-color: #bae7ff !important;
-            font-weight: 600 !important;
-          }
-
-          /* Header da coluna ordenada - borda lateral azul */
-          .services-table th.ant-table-column-sort {
-            border-left: 4px solid #1890ff !important;
-          }
-
-          /* Ícone de filtro ativo */
-          .services-table .ant-table-filter-trigger.active {
-            color: #1890ff !important;
-            font-weight: bold !important;
-          }
-
-          /* Células da coluna ordenada também destacadas */
-          .services-table td {
-            transition: background-color 0.2s;
-          }
-        `}
-      </style>
+      {/* REMOVIDO: CSS customizado (era parte do pattern controlado) */}
       <PageContainer
         header={{
           title: 'Gerenciamento de Serviços',
@@ -1205,17 +1116,7 @@ const Services: React.FC = () => {
               />
             </Space.Compact>
 
-            {/* Indicadores visuais de filtros/sorters ativos */}
-            {sortedInfo.columnKey && sortedInfo.order && (
-              <Tag color="blue" closable onClose={handleClearFiltersAndSort}>
-                ⬆⬇ Ordenado: {fieldDisplayNames[sortedInfo.columnKey] || sortedInfo.columnKey} ({sortedInfo.order === 'ascend' ? '↑ A-Z' : '↓ Z-A'})
-              </Tag>
-            )}
-            {Object.keys(filteredInfo).filter(k => filteredInfo[k]?.length > 0).length > 0 && (
-              <Tag color="green">
-                🔍 {Object.keys(filteredInfo).filter(k => filteredInfo[k]?.length > 0).length} filtro(s) ativo(s)
-              </Tag>
-            )}
+            {/* REMOVIDO: Indicadores visuais de filtros/ordenação (eram part do pattern controlado) */}
 
             <Button
               icon={<FilterOutlined />}
@@ -1238,17 +1139,9 @@ const Services: React.FC = () => {
             <Button
               icon={<ClearOutlined />}
               onClick={handleClearFilters}
-              title="Limpar apenas os filtros das colunas"
+              title="Limpar pesquisa e resetar tabela"
             >
-              Limpar Filtros
-            </Button>
-
-            <Button
-              icon={<ClearOutlined />}
-              onClick={handleClearFiltersAndSort}
-              title="Limpar filtros e ordenação"
-            >
-              Limpar Filtros e Ordem
+              Limpar e Resetar
             </Button>
 
             <ColumnSelector
@@ -1294,7 +1187,6 @@ const Services: React.FC = () => {
 
         {/* Table - ProTable gerencia loading automaticamente */}
         <ProTable<ServiceTableItem>
-          className="services-table" // Classe para CSS customizado
           key={filterResetKey} // Key para forçar reset de filtros quando limpar
           rowKey="key"
           columns={visibleColumns}
@@ -1302,7 +1194,7 @@ const Services: React.FC = () => {
           actionRef={actionRef}
           request={requestHandler}
           params={{ keyword: searchValue }}
-          onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
+          // REMOVIDO onChange - modo não controlado (como BlackboxTargets)
           pagination={{
             defaultPageSize: 50,
             showSizeChanger: true,
