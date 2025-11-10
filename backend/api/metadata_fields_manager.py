@@ -36,6 +36,14 @@ _servers_cache = {
     "ttl": 300  # 5 minutos em segundos
 }
 
+# NOVO: Cache em memória para fields_config
+# Evita múltiplas leituras do Consul KV (que pode ter latência de rede)
+_fields_config_cache = {
+    "data": None,
+    "timestamp": None,
+    "ttl": 300  # 5 minutos em segundos
+}
+
 # Lock global para evitar múltiplas extrações SSH simultâneas
 _extraction_lock = asyncio.Lock()
 _extraction_in_progress = False
@@ -164,6 +172,12 @@ async def load_fields_config() -> Dict[str, Any]:
     IMPORTANTE: Não usa mais arquivo JSON hardcoded!
     Campos vêm 100% do Prometheus via extração SSH.
 
+    CACHE EM MEMÓRIA (NOVO):
+    - Cache de 5 minutos para evitar leituras repetidas do KV
+    - Reduz latência de rede (KV → Backend)
+    - Primeira requisição: lê do KV (~100-500ms)
+    - Próximas requisições: retorna do cache (<1ms)
+
     FALLBACK AUTOMÁTICO COM LOCK:
     - Se KV vazio, dispara extração SSH sob demanda
     - Usa lock global para evitar múltiplas extrações simultâneas
@@ -171,14 +185,36 @@ async def load_fields_config() -> Dict[str, Any]:
     - Popula KV automaticamente
     - Retorna dados extraídos
     """
-    global _extraction_lock, _extraction_in_progress
+    global _extraction_lock, _extraction_in_progress, _fields_config_cache
 
     try:
+        # PASSO 0: Verificar cache em memória (NOVO)
+        # Se cache válido, retornar imediatamente (<1ms)
+        now = datetime.now()
+        if (_fields_config_cache["data"] is not None and
+            _fields_config_cache["timestamp"] is not None):
+
+            elapsed = (now - _fields_config_cache["timestamp"]).total_seconds()
+            if elapsed < _fields_config_cache["ttl"]:
+                logger.debug(f"[METADATA-FIELDS] ✓ Cache em memória VÁLIDO (idade: {elapsed:.1f}s / TTL: {_fields_config_cache['ttl']}s)")
+                return _fields_config_cache["data"]
+            else:
+                logger.debug(f"[METADATA-FIELDS] Cache em memória EXPIRADO (idade: {elapsed:.1f}s)")
+
+        # PASSO 1: Se cache expirado, ler do Consul KV
         from core.kv_manager import KVManager
 
         kv = KVManager()
         fields_data = await kv.get_json('skills/eye/metadata/fields')
 
+        # PASSO 1.1: Se KV tem dados, atualizar cache em memória e retornar
+        if fields_data:
+            _fields_config_cache["data"] = fields_data
+            _fields_config_cache["timestamp"] = now
+            logger.info(f"[METADATA-FIELDS] ✓ Dados carregados do KV e cacheados em memória (TTL: {_fields_config_cache['ttl']}s)")
+            return fields_data
+
+        # PASSO 2: Se KV vazio, disparar fallback
         if not fields_data:
             logger.warning("[METADATA-FIELDS] KV vazio detectado!")
 
@@ -190,6 +226,9 @@ async def load_fields_config() -> Dict[str, Any]:
 
                 if fields_data:
                     logger.info("[METADATA-FIELDS] KV foi populado por outra requisição. Usando dados existentes.")
+                    # Atualizar cache em memória antes de retornar
+                    _fields_config_cache["data"] = fields_data
+                    _fields_config_cache["timestamp"] = now
                     return fields_data
 
                 logger.info("[METADATA-FIELDS FALLBACK] Disparando extração SSH sob demanda (com lock)...")
@@ -235,6 +274,11 @@ async def load_fields_config() -> Dict[str, Any]:
                         f"[METADATA-FIELDS FALLBACK] ✓ Cache KV populado com {len(fields)} campos. "
                         f"Próximas requisições usarão cache."
                     )
+
+                    # PASSO 2.1: Atualizar cache em memória também
+                    _fields_config_cache["data"] = fields_data
+                    _fields_config_cache["timestamp"] = now
+                    logger.info(f"[METADATA-FIELDS FALLBACK] ✓ Cache em memória atualizado (TTL: {_fields_config_cache['ttl']}s)")
 
                     return fields_data
 
