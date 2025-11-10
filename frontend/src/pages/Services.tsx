@@ -628,20 +628,7 @@ const Services: React.FC = () => {
     [applyAdvancedFilters, searchValue, filterFields],
   );
 
-  // =========================================================================
-  // CARREGAMENTO DE DADOS: useEffect monitora mudanças em filtros/busca
-  // =========================================================================
-  // OTIMIZAÇÃO: Carrega dados em PARALELO com metadata (não bloqueia)
-  // Mas reexecuta quando filterFields carregar para gerar metadataOptions corretos
-  useEffect(() => {
-    // Carregar dados (executa 2x: 1ª logo, 2ª quando filterFields carregar)
-    requestHandler({}, {}, {}).then(result => {
-      if (result.data) {
-        setTableSnapshot(result.data);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFields.length, advancedConditions, advancedOperator, searchValue]); // ✅ filterFields.length dispara quando metadata carregar
+  // REMOVIDO: useEffect manual - ProTable gerencia via request={requestHandler}
 
   const openCreateModal = useCallback(() => {
     setFormMode('create');
@@ -1276,33 +1263,29 @@ const Services: React.FC = () => {
           </Space>
         </Card>
 
-        {/* Table - Com Skeleton durante carregamento inicial */}
-        {tableSnapshot.length === 0 ? (
-          <Card>
-            <Skeleton active paragraph={{ rows: 10 }} />
-          </Card>
-        ) : (
-          <ProTable<ServiceTableItem>
-            className="services-table" // Classe para CSS customizado
-            key={filterResetKey} // Key para forçar reset de filtros quando limpar
-            rowKey="key"
-            columns={visibleColumns}
-            search={false}
-            actionRef={actionRef}
-            dataSource={tableSnapshot}
-            onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
-            pagination={{
-              defaultPageSize: 50,
-              showSizeChanger: true,
-              pageSizeOptions: ['10', '20', '30', '50', '100'],
-            }}
-            scroll={{
-              x: 2000, // Largura fixa maior que a tela para forçar scroll horizontal e fixed columns
-              y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
-            }}
-            sticky // Header sticky (fixo no topo ao rolar)
-            locale={{ emptyText: 'Nenhum dado disponivel' }}
-            options={{ density: true, fullScreen: true, reload: false, setting: false }}
+        {/* Table - ProTable gerencia loading automaticamente */}
+        <ProTable<ServiceTableItem>
+          className="services-table" // Classe para CSS customizado
+          key={filterResetKey} // Key para forçar reset de filtros quando limpar
+          rowKey="key"
+          columns={visibleColumns}
+          search={false}
+          actionRef={actionRef}
+          request={requestHandler}
+          params={{ keyword: searchValue }}
+          onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
+          pagination={{
+            defaultPageSize: 50,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '30', '50', '100'],
+          }}
+          scroll={{
+            x: 2000, // Largura fixa maior que a tela para forçar scroll horizontal e fixed columns
+            y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
+          }}
+          sticky // Header sticky (fixo no topo ao rolar)
+          locale={{ emptyText: 'Nenhum dado disponivel' }}
+          options={{ density: true, fullScreen: true, reload: false, setting: false }}
           components={{
             header: {
               cell: ResizableTitle,
