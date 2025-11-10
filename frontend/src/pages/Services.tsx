@@ -492,8 +492,59 @@ const Services: React.FC = () => {
     [],
   );
 
+  // 🚀 OTIMIZAÇÃO CRÍTICA: Extrair metadataOptions COM MEMOIZAÇÃO
+  // Move loops pesados (O(N×M)) para FORA do requestHandler
+  // Executa UMA VEZ quando tableSnapshot muda, não a cada render
+  const extractedMetadataOptions = useMemo(() => {
+    if (!tableSnapshot.length || !filterFields.length) {
+      return {};
+    }
+
+    console.log('[PERF] Extraindo metadataOptions (operação pesada)...');
+    const startTime = performance.now();
+
+    const optionsSets: Record<string, Set<string>> = {};
+
+    // Inicializar Set para cada filterField
+    filterFields.forEach((field) => {
+      optionsSets[field.name] = new Set<string>();
+    });
+
+    // Extrair valores únicos de TODOS os registros
+    // OTIMIZADO: Agora roda UMA VEZ via useMemo
+    tableSnapshot.forEach((item) => {
+      filterFields.forEach((field) => {
+        const value = item.meta?.[field.name];
+        if (value && typeof value === 'string') {
+          optionsSets[field.name].add(value);
+        }
+      });
+    });
+
+    // Converter Sets para Arrays
+    const options: Record<string, string[]> = {};
+    Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
+      if (fieldName === 'module') {
+        options[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
+      } else {
+        options[fieldName] = Array.from(valueSet);
+      }
+    });
+
+    const elapsed = performance.now() - startTime;
+    console.log(`[PERF] MetadataOptions extraído em ${elapsed.toFixed(0)}ms`);
+
+    return options;
+  }, [tableSnapshot, filterFields]);
+
+  // Sincronizar com state quando mudar
+  useEffect(() => {
+    setMetadataOptions(extractedMetadataOptions);
+    setMetadataLoading(false);
+  }, [extractedMetadataOptions]);
+
   // OTIMIZAÇÃO: Removida função loadMetadataOptions() que fazia N requisições HTTP
-  // Agora extraímos valores únicos diretamente dos dados já carregados no requestHandler
+  // Agora extraímos valores únicos diretamente dos dados já carregados
 
   const requestHandler = useCallback(
     async (
@@ -520,38 +571,8 @@ const Services: React.FC = () => {
           meta: item.meta || {},
         }));
 
-        // OTIMIZAÇÃO: Extrair metadataOptions dinamicamente dos dados JÁ CARREGADOS
-        // Elimina necessidade de N requisições HTTP extras para /api/v1/services/metadata/unique-values
-        const optionsSets: Record<string, Set<string>> = {};
-
-        // Inicializar Set para cada filterField
-        filterFields.forEach((field) => {
-          optionsSets[field.name] = new Set<string>();
-        });
-
-        // Extrair valores únicos de TODOS os registros
-        backendRows.forEach((item: any) => {
-          filterFields.forEach((field) => {
-            const value = item.meta?.[field.name];
-            if (value && typeof value === 'string') {
-              optionsSets[field.name].add(value);
-            }
-          });
-        });
-
-        // Converter Sets para Arrays
-        const options: Record<string, string[]> = {};
-        Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
-          // CASO ESPECIAL: campo 'module' inclui módulos padrão do Blackbox
-          if (fieldName === 'module') {
-            options[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
-          } else {
-            options[fieldName] = Array.from(valueSet);
-          }
-        });
-
-        setMetadataOptions(options);
-        setMetadataLoading(false);
+        // 🚀 OTIMIZAÇÃO: Extração de metadataOptions MOVIDA para useMemo externo
+        // Agora roda UMA VEZ quando tableSnapshot muda, não a cada request!
 
         // Aplicar filtros avançados (se houver)
         // NOTA: Filtros de coluna (filterDropdown) são aplicados automaticamente pelo ProTable
