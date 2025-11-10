@@ -1267,7 +1267,7 @@ const Services: React.FC = () => {
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
           scroll={{
-            x: 'max-content', // Scroll horizontal adaptativo (padrão oficial para fixed columns)
+            x: 2000, // Largura fixa maior que a tela para forçar scroll horizontal e fixed columns
             y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
           }}
           sticky // Header sticky (fixo no topo ao rolar)
