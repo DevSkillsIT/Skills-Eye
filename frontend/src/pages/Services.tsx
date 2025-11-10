@@ -631,21 +631,16 @@ const Services: React.FC = () => {
   // =========================================================================
   // CARREGAMENTO DE DADOS: useEffect monitora mudanças em filtros/busca
   // =========================================================================
-  // Aguarda filterFields carregar, depois carrega dados apenas quando necessário
+  // OTIMIZAÇÃO: Carrega dados em PARALELO com metadata (não bloqueia mais)
   useEffect(() => {
-    // GUARD: Não carregar se filterFields ainda não carregou
-    if (filterFields.length === 0 || filterFieldsLoading) {
-      return;
-    }
-
-    // Carregar dados
+    // Carregar dados imediatamente (não espera metadata)
     requestHandler({}, {}, {}).then(result => {
       if (result.data) {
         setTableSnapshot(result.data);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFieldsLoading, advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
+  }, [advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
 
   const openCreateModal = useCallback(() => {
     setFormMode('create');
@@ -1281,7 +1276,7 @@ const Services: React.FC = () => {
         </Card>
 
         {/* Table - Com Skeleton durante carregamento inicial */}
-        {filterFieldsLoading || (tableSnapshot.length === 0 && filterFields.length === 0) ? (
+        {tableSnapshot.length === 0 ? (
           <Card>
             <Skeleton active paragraph={{ rows: 10 }} />
           </Card>
