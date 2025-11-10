@@ -112,7 +112,8 @@
       "Bash(migration_report.txt)",
       "Bash(restart-app.bat)",
       "Bash(npx eslint:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(playwright install:*)"
     ],
     "deny": [],
     "ask": []
