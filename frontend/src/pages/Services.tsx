@@ -1324,7 +1324,6 @@ const Services: React.FC = () => {
             keys.length ? <span>{`${keys.length} serviços selecionados`}</span> : null
           }
         />
-        )}
       </Space>
 
       <Drawer
