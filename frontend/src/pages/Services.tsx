@@ -802,12 +802,14 @@ const Services: React.FC = () => {
     const fixedColumns: Record<string, ServiceColumn<ServiceTableItem>> = {
       node: {
         title: 'Nó',
+        key: 'node',
         dataIndex: 'node',
         width: 160,
         ellipsis: true,
       },
       service: {
         title: 'Serviço Consul',
+        key: 'service',
         dataIndex: 'service',
         width: 260,
         ellipsis: true,
@@ -826,6 +828,7 @@ const Services: React.FC = () => {
       },
       id: {
         title: 'ID',
+        key: 'id',
         dataIndex: 'id',
         copyable: true,
         ellipsis: true,
@@ -833,18 +836,21 @@ const Services: React.FC = () => {
       },
       address: {
         title: 'Endereço',
+        key: 'address',
         dataIndex: 'address',
         width: 220,
         ellipsis: true,
       },
       port: {
         title: 'Porta',
+        key: 'port',
         dataIndex: 'port',
         width: 100,
         align: 'center',
       },
       tags: {
         title: 'Tags',
+        key: 'tags',
         dataIndex: 'tags',
         width: 220,
         render: (_, record) => (
@@ -857,8 +863,9 @@ const Services: React.FC = () => {
       },
       actions: {
         title: 'Ações',
+        key: 'actions', // Key obrigatória para fixed columns
         valueType: 'option',
-        fixed: 'right',
+        fixed: 'right', // Fixar coluna à direita
         width: 140,
         render: (_, record) => [
           <Tooltip title="Ver detalhes" key={`detail-${record.id}`}>
@@ -905,6 +912,7 @@ const Services: React.FC = () => {
 
       metadataColumns[field.name] = {
         title: field.display_name,
+        key: field.name, // Key obrigatória para identificação
         dataIndex: ['meta', field.name],
         width: field.field_type === 'string' ? 200 : 140,
         ellipsis: true,
@@ -1118,6 +1126,28 @@ const Services: React.FC = () => {
               </Button>
             )}
 
+            <Button
+              icon={<ClearOutlined />}
+              onClick={() => {
+                // Limpar filtros da tabela (mantém ordenação)
+                actionRef.current?.clearFilters?.();
+              }}
+              title="Limpar apenas os filtros das colunas"
+            >
+              Limpar Filtros
+            </Button>
+
+            <Button
+              icon={<ClearOutlined />}
+              onClick={() => {
+                // Limpar TUDO: filtros + ordenação + seleção
+                actionRef.current?.reset?.();
+              }}
+              title="Limpar filtros, ordenação e seleção"
+            >
+              Limpar Tudo
+            </Button>
+
             <ColumnSelector
               columns={columnConfig}
               onChange={setColumnConfig}
@@ -1181,7 +1211,7 @@ const Services: React.FC = () => {
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
           scroll={{
-            x: 1400,
+            x: 'max-content', // Scroll horizontal adaptativo (padrão oficial para fixed columns)
             y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
           }}
           sticky // Header sticky (fixo no topo ao rolar)
