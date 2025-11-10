@@ -8,6 +8,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// StrictMode ativo para detectar erros em desenvolvimento
+// Nota: Causa duplicação de requisições/logs em dev (comportamento normal do React 18+)
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

@@ -74,7 +74,6 @@ import SiteBadge from '../components/SiteBadge';
 import { extractSiteFromMetadata } from '../utils/namingUtils';
 
 const { Option } = Select;
-const { Search } = Input;
 const { Text } = Typography;
 
 const DEFAULT_MODULES = [
@@ -161,6 +160,9 @@ const SERVICE_ID_SANITIZE_REGEX = /[[ \]`~!\\#$^&*=|"{}\':;?\t\n]+/g;
 
 const sanitizeSegment = (value: string) =>
   value.trim().replace(SERVICE_ID_SANITIZE_REGEX, '_');
+
+// REMOVIDO - Não precisa de componente customizado
+// O Ant Design JÁ FAZ a busca automaticamente com filterSearch: true
 
 const composeServiceId = (values: ServiceFormValues) => {
   const parts = [
@@ -288,9 +290,8 @@ const Services: React.FC = () => {
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
 
-  // Estado para ordenação (aplicada em TODOS os dados antes de paginar)
-  const [sortField, setSortField] = useState<string | null>(null);
-  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
+  // Estado para forçar reset de filtros E ordenação (incrementar para limpar TUDO)
+  const [filterResetKey, setFilterResetKey] = useState(0);
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata dinâmicos
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
     const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
@@ -339,7 +340,7 @@ const Services: React.FC = () => {
   const handleSearchSubmit = useCallback(
     (value: string) => {
       setSearchValue(value.trim());
-      actionRef.current?.reload();
+      // useEffect com searchValue nas dependências recarregará automaticamente
     },
     [],
   );
@@ -435,7 +436,7 @@ const Services: React.FC = () => {
       setAdvancedConditions(conditions);
       setAdvancedOperator(logicalOperator === 'or' ? 'or' : 'and');
       setAdvancedOpen(false);
-      actionRef.current?.reload();
+      // useEffect com advancedConditions nas dependências recarregará automaticamente
     },
     [],
   );
@@ -444,19 +445,44 @@ const Services: React.FC = () => {
     setAdvancedConditions([]);
     setAdvancedOperator('and');
     setAdvancedOpen(false);
-    actionRef.current?.reload();
+    // useEffect com advancedConditions nas dependências recarregará automaticamente
   }, []);
 
-  // Handler para capturar mudanças de ordenação da tabela
+  // =========================================================================
+  // PATTERN CONTROLADO - EXATAMENTE como no exemplo do Ant Design
+  // =========================================================================
+  // Estados para controlar filtros e ordenação separadamente
+  const [filteredInfo, setFilteredInfo] = useState<Record<string, any>>({});
+  const [sortedInfo, setSortedInfo] = useState<any>({});
+
+  // Handler para capturar mudanças da tabela (filtros e ordenação)
   const handleTableChange = useCallback((pagination: any, filters: any, sorter: any) => {
-    // Capturar ordenação
-    if (sorter && sorter.field) {
-      setSortField(sorter.field);
-      setSortOrder(sorter.order || null);
-    } else {
-      setSortField(null);
-      setSortOrder(null);
-    }
+    setFilteredInfo(filters);
+    setSortedInfo(sorter);
+  }, []);
+
+  // Limpar APENAS filtros (mantém ordenação)
+  const handleClearFilters = useCallback(() => {
+    setFilteredInfo({});
+    // ✅ ADICIONAL: Limpar pesquisa de texto
+    setSearchValue('');
+    setSearchInput('');
+    // ✅ ADICIONAL: Limpar pesquisa avançada
+    setAdvancedConditions([]);
+    setAdvancedOperator('and');
+  }, []);
+
+  // Limpar filtros E ordenação (força reset COMPLETO do Table)
+  const handleClearFiltersAndSort = useCallback(() => {
+    setFilteredInfo({});
+    setSortedInfo({});
+    setFilterResetKey(prev => prev + 1); // ✅ CRÍTICO: Incrementa key para remontar Table
+    // ✅ ADICIONAL: Limpar pesquisa de texto
+    setSearchValue('');
+    setSearchInput('');
+    // ✅ ADICIONAL: Limpar pesquisa avançada
+    setAdvancedConditions([]);
+    setAdvancedOperator('and');
   }, []);
 
   const handleResize = useCallback(
@@ -469,10 +495,6 @@ const Services: React.FC = () => {
 
   // OTIMIZAÇÃO: Removida função loadMetadataOptions() que fazia N requisições HTTP
   // Agora extraímos valores únicos diretamente dos dados já carregados no requestHandler
-
-  useEffect(() => {
-    actionRef.current?.reload();
-  }, [selectedNode, advancedConditions, advancedOperator]);
 
   // SISTEMA DINÂMICO: buildQueryParams para filtro de nó
   const buildQueryParams = useCallback((): ServiceQuery => {
@@ -509,7 +531,11 @@ const Services: React.FC = () => {
   );
 
   const requestHandler = useCallback(
-    async (params: { current?: number; pageSize?: number; keyword?: string }) => {
+    async (
+      params: { current?: number; pageSize?: number; keyword?: string },
+      sort: Record<string, 'ascend' | 'descend'>,
+      filter: Record<string, React.ReactText[] | null>
+    ) => {
       try {
         // 🚀 USAR ENDPOINT OTIMIZADO - Processamento no backend!
         const queryParams = buildQueryParams();
@@ -626,49 +652,12 @@ const Services: React.FC = () => {
           });
         }
 
-        // PASSO 3: Aplicar ordenação em TODOS os dados (antes de paginar)
-        let sortedRows = searchedRows;
-        if (sortField && sortOrder) {
-          sortedRows = [...searchedRows].sort((a, b) => {
-            // Extrair valor do campo (pode ser campo fixo ou metadata)
-            const getFieldValue = (row: ServiceTableItem, field: string): any => {
-              // Campos fixos
-              if (field === 'node') return row.node || '';
-              if (field === 'service') return row.service || '';
-              if (field === 'id') return row.id || '';
-              if (field === 'address') return row.address || '';
-              if (field === 'port') return row.port || 0;
-              if (field === 'tags') return (row.tags || []).join(',');
-              // Campos metadata
-              return row.meta?.[field] || '';
-            };
-
-            const aValue = getFieldValue(a, sortField);
-            const bValue = getFieldValue(b, sortField);
-
-            // Comparação
-            let comparison = 0;
-            if (typeof aValue === 'string' && typeof bValue === 'string') {
-              comparison = aValue.localeCompare(bValue);
-            } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-              comparison = aValue - bValue;
-            } else {
-              comparison = String(aValue).localeCompare(String(bValue));
-            }
-
-            return sortOrder === 'ascend' ? comparison : -comparison;
-          });
-        }
-
-        setTableSnapshot(sortedRows);
-
-        const current = params?.current ?? 1;
-        const pageSize = params?.pageSize ?? 25;
-        const start = (current - 1) * pageSize;
-        const paginatedRows = sortedRows.slice(start, start + pageSize);
+        // NÃO fazer paginação aqui - deixar o Table fazer automaticamente!
+        // Retornar TODOS os dados filtrados
+        setTableSnapshot(searchedRows);
 
         return {
-          data: paginatedRows,
+          data: searchedRows,
           success: true,
           total: searchedRows.length,
         };
@@ -681,8 +670,28 @@ const Services: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode, sortField, sortOrder, filterFields],
+    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode, filterFields],
   );
+
+  // =========================================================================
+  // OTIMIZAÇÃO: useEffect ÚNICO para carregar dados (evita duplicação)
+  // =========================================================================
+  // Aguarda filterFields carregar, depois carrega dados apenas quando necessário
+  useEffect(() => {
+    // GUARD: Não carregar se filterFields ainda não carregou
+    if (filterFields.length === 0 || filterFieldsLoading) {
+      return;
+    }
+
+    // Carregar dados
+    requestHandler({}, {}, {}).then(result => {
+      if (result.data) {
+        setTableSnapshot(result.data);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterFieldsLoading, selectedNode, advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
+
   const openCreateModal = useCallback(() => {
     setFormMode('create');
     setCurrentRecord(null);
@@ -857,6 +866,9 @@ const Services: React.FC = () => {
         dataIndex: 'node',
         width: 160,
         ellipsis: true,
+        sorter: (a, b) => (a.node || '').localeCompare(b.node || ''),
+        sortOrder: sortedInfo.columnKey === 'node' ? sortedInfo.order : null,
+        sortDirections: ['ascend', 'descend'],
       },
       service: {
         title: 'Serviço Consul',
@@ -864,6 +876,9 @@ const Services: React.FC = () => {
         dataIndex: 'service',
         width: 260,
         ellipsis: true,
+        sorter: (a, b) => (a.service || '').localeCompare(b.service || ''),
+        sortOrder: sortedInfo.columnKey === 'service' ? sortedInfo.order : null,
+        sortDirections: ['ascend', 'descend'],
         render: (_, record) => {
           // Extrair site dos metadata para exibir badge
           const site = record.meta?.site || extractSiteFromMetadata(record.meta || {});
@@ -884,6 +899,9 @@ const Services: React.FC = () => {
         copyable: true,
         ellipsis: true,
         width: 260,
+        sorter: (a, b) => (a.id || '').localeCompare(b.id || ''),
+        sortOrder: sortedInfo.columnKey === 'id' ? sortedInfo.order : null,
+        sortDirections: ['ascend', 'descend'],
       },
       address: {
         title: 'Endereço',
@@ -891,6 +909,9 @@ const Services: React.FC = () => {
         dataIndex: 'address',
         width: 220,
         ellipsis: true,
+        sorter: (a, b) => (a.address || '').localeCompare(b.address || ''),
+        sortOrder: sortedInfo.columnKey === 'address' ? sortedInfo.order : null,
+        sortDirections: ['ascend', 'descend'],
       },
       port: {
         title: 'Porta',
@@ -898,6 +919,9 @@ const Services: React.FC = () => {
         dataIndex: 'port',
         width: 100,
         align: 'center',
+        sorter: (a, b) => (a.port || 0) - (b.port || 0),
+        sortOrder: sortedInfo.columnKey === 'port' ? sortedInfo.order : null,
+        sortDirections: ['ascend', 'descend'],
       },
       tags: {
         title: 'Tags',
@@ -969,109 +993,46 @@ const Services: React.FC = () => {
         ellipsis: true,
         tooltip: field.description,
 
-        // FILTRO CUSTOMIZADO - Filtra opções ao digitar
-        filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
-          const [searchText, setSearchText] = useState('');
-
-          // Filtrar opções baseado no texto digitado
-          const filteredOptions = fieldOptions.filter(opt =>
-            opt.toLowerCase().includes(searchText.toLowerCase())
-          );
-
-          return (
-            <div style={{ padding: 8, width: 300 }}>
-              {/* Input de pesquisa */}
-              <Input
-                placeholder={`Buscar ${field.display_name}`}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                style={{ marginBottom: 8, display: 'block' }}
-                prefix={<SearchOutlined />}
-              />
-
-              {/* Lista de opções FILTRADAS */}
-              <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 8 }}>
-                <Checkbox
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedKeys(filteredOptions);
-                    } else {
-                      setSelectedKeys([]);
-                    }
-                  }}
-                  checked={filteredOptions.length > 0 && selectedKeys.length === filteredOptions.length}
-                  indeterminate={selectedKeys.length > 0 && selectedKeys.length < filteredOptions.length}
-                  style={{ marginBottom: 8 }}
-                >
-                  Selecionar todos
-                </Checkbox>
-                {filteredOptions.map((opt) => (
-                  <div key={opt} style={{ padding: '4px 0' }}>
-                    <Checkbox
-                      checked={selectedKeys.includes(opt)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedKeys([...selectedKeys, opt]);
-                        } else {
-                          setSelectedKeys(selectedKeys.filter((k) => k !== opt));
-                        }
-                      }}
-                    >
-                      {opt}
-                    </Checkbox>
-                  </div>
-                ))}
-                {filteredOptions.length === 0 && (
-                  <div style={{ color: '#999', padding: '8px 0', textAlign: 'center' }}>
-                    Nenhuma opção encontrada
-                  </div>
-                )}
-              </div>
-
-              {/* Botões */}
-              <Space>
-                <Button
-                  type="primary"
-                  size="small"
-                  onClick={() => confirm()}
-                  icon={<SearchOutlined />}
-                >
-                  OK
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    clearFilters?.();
-                    setSearchText('');
-                  }}
-                >
-                  Limpar
-                </Button>
-              </Space>
-            </div>
-          );
-        },
-        filterIcon: (filtered: boolean) => (
-          <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
-        ),
-        onFilter: (value, record) => {
+        // FILTROS - EXATAMENTE como no exemplo do Ant Design (controlado)
+        filters: fieldOptions.map(opt => ({ text: opt, value: opt })),
+        filteredValue: filteredInfo[field.name] || null, // ✅ Controlado por filteredInfo
+        filterSearch: true,
+        onFilter: (value: any, record: ServiceTableItem) => {
           const fieldValue = record.meta?.[field.name];
           return fieldValue === value;
         },
 
-        // ORDENAÇÃO
-        sorter: (a, b) => {
+        // ORDENAÇÃO - EXATAMENTE como no exemplo do Ant Design (controlado)
+        sorter: (a: ServiceTableItem, b: ServiceTableItem) => {
           const aValue = String(a.meta?.[field.name] || '');
           const bValue = String(b.meta?.[field.name] || '');
           return aValue.localeCompare(bValue);
         },
+        sortOrder: sortedInfo.columnKey === field.name ? sortedInfo.order : null, // ✅ Controlado por sortedInfo
         sortDirections: ['ascend', 'descend'],
       };
     });
 
     // Combinar fixas + dinâmicas
     return { ...fixedColumns, ...metadataColumns };
-  }, [tableFields, handleDelete, openEditModal, metadataOptions]);
+  }, [tableFields, handleDelete, openEditModal, metadataOptions, filteredInfo, sortedInfo]);
+
+  // Mapa de field → display_name para mostrar nomes amigáveis
+  const fieldDisplayNames = useMemo(() => {
+    const map: Record<string, string> = {
+      node: 'Nó',
+      service: 'Serviço Consul',
+      id: 'ID',
+      address: 'Endereço',
+      port: 'Porta',
+      tags: 'Tags'
+    };
+    // Adicionar campos metadata dinâmicos
+    tableFields.forEach(field => {
+      map[field.name] = field.display_name;
+    });
+    return map;
+  }, [tableFields]);
 
   const visibleColumns = useMemo(() => {
     return columnConfig
@@ -1083,6 +1044,8 @@ const Services: React.FC = () => {
         return {
           ...col,
           width,
+          // NÃO adicionar sortOrder - deixar Ant Design gerenciar internamente
+          // Caso contrário, trava a alternância ascend → descend → null
           onHeaderCell: (col: any) => ({
             width,
             onResize: handleResize(column.key),
@@ -1150,12 +1113,44 @@ const Services: React.FC = () => {
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
   );
   return (
-    <PageContainer
-      header={{
-        title: 'Gerenciamento de Serviços',
-        subTitle: 'Visualize, filtre e gerencie os serviços registrados no Consul',
-      }}
-    >
+    <>
+      {/* CSS customizado para destacar colunas filtradas/ordenadas */}
+      <style>
+        {`
+          /* Coluna com sorter ao passar mouse */
+          .services-table .ant-table-column-has-sorters:hover {
+            background-color: #f0f5ff !important;
+          }
+
+          /* Coluna ORDENADA ATIVA - background bem destacado */
+          .services-table .ant-table-column-sort {
+            background-color: #bae7ff !important;
+            font-weight: 600 !important;
+          }
+
+          /* Header da coluna ordenada - borda lateral azul */
+          .services-table th.ant-table-column-sort {
+            border-left: 4px solid #1890ff !important;
+          }
+
+          /* Ícone de filtro ativo */
+          .services-table .ant-table-filter-trigger.active {
+            color: #1890ff !important;
+            font-weight: bold !important;
+          }
+
+          /* Células da coluna ordenada também destacadas */
+          .services-table td {
+            transition: background-color 0.2s;
+          }
+        `}
+      </style>
+      <PageContainer
+        header={{
+          title: 'Gerenciamento de Serviços',
+          subTitle: 'Visualize, filtre e gerencie os serviços registrados no Consul',
+        }}
+      >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* Dashboard: NodeSelector + Métricas - LARGURA FIXA, NÃO SEGUE TABELA */}
         <Card styles={{ body: { padding: '10px 16px' } }} style={{ maxWidth: '100%', width: 'fit-content' }}>
@@ -1171,6 +1166,18 @@ const Services: React.FC = () => {
                 style={{ width: 340 }}
                 showAllNodesOption={true}
               />
+            </div>
+
+            {/* Botão Novo Serviço - Alinhado com o Select (não com o label) */}
+            <div style={{ marginTop: 24 }}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openCreateModal}
+                size="large"
+              >
+                Novo serviço
+              </Button>
             </div>
 
             {/* Dashboard - LARGURA FIXA */}
@@ -1224,21 +1231,38 @@ const Services: React.FC = () => {
         {/* Actions */}
         <Card size="small">
           <Space wrap>
-            <Search
-              allowClear
-              placeholder="Buscar por nome, instancia ou ID"
-              enterButton
-              style={{ width: 300 }}
-              value={searchInput}
-              onChange={(event) => {
-                const next = event.target.value;
-                setSearchInput(next);
-                if (!next) {
-                  handleSearchSubmit('');
-                }
-              }}
-              onSearch={handleSearchSubmit}
-            />
+            <Space.Compact style={{ width: 300 }}>
+              <Input
+                allowClear
+                placeholder="Buscar por nome, instancia ou ID"
+                value={searchInput}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setSearchInput(next);
+                  if (!next) {
+                    handleSearchSubmit('');
+                  }
+                }}
+                onPressEnter={() => handleSearchSubmit(searchInput)}
+              />
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={() => handleSearchSubmit(searchInput)}
+              />
+            </Space.Compact>
+
+            {/* Indicadores visuais de filtros/sorters ativos */}
+            {sortedInfo.columnKey && sortedInfo.order && (
+              <Tag color="blue" closable onClose={handleClearFiltersAndSort}>
+                ⬆⬇ Ordenado: {fieldDisplayNames[sortedInfo.columnKey] || sortedInfo.columnKey} ({sortedInfo.order === 'ascend' ? '↑ A-Z' : '↓ Z-A'})
+              </Tag>
+            )}
+            {Object.keys(filteredInfo).filter(k => filteredInfo[k]?.length > 0).length > 0 && (
+              <Tag color="green">
+                🔍 {Object.keys(filteredInfo).filter(k => filteredInfo[k]?.length > 0).length} filtro(s) ativo(s)
+              </Tag>
+            )}
 
             <Button
               icon={<FilterOutlined />}
@@ -1260,10 +1284,7 @@ const Services: React.FC = () => {
 
             <Button
               icon={<ClearOutlined />}
-              onClick={() => {
-                // Limpar filtros da tabela (mantém ordenação)
-                actionRef.current?.clearFilters?.();
-              }}
+              onClick={handleClearFilters}
               title="Limpar apenas os filtros das colunas"
             >
               Limpar Filtros
@@ -1271,12 +1292,7 @@ const Services: React.FC = () => {
 
             <Button
               icon={<ClearOutlined />}
-              onClick={() => {
-                // Limpar TUDO: filtros + ordenação + seleção
-                actionRef.current?.reset?.();
-                setSortField(null);
-                setSortOrder(null);
-              }}
+              onClick={handleClearFiltersAndSort}
               title="Limpar filtros e ordenação"
             >
               Limpar Filtros e Ordem
@@ -1320,28 +1336,21 @@ const Services: React.FC = () => {
                 </Button>
               </Tooltip>
             </Popconfirm>
-
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openCreateModal}
-            >
-              Novo serviço
-            </Button>
           </Space>
         </Card>
 
         {/* Table */}
         <ProTable<ServiceTableItem>
+          className="services-table" // Classe para CSS customizado
+          key={filterResetKey} // Key para forçar reset de filtros quando limpar
           rowKey="key"
           columns={visibleColumns}
           search={false}
           actionRef={actionRef}
-          request={requestHandler}
-          params={{ keyword: searchValue }}
-          onChange={handleTableChange}
+          dataSource={tableSnapshot}
+          onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
           pagination={{
-            defaultPageSize: 25,
+            defaultPageSize: 50,
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '30', '50', '100'],
           }}
@@ -1544,6 +1553,7 @@ const Services: React.FC = () => {
         </Form.Item>
       </ModalForm>
     </PageContainer>
+    </>
   );
 };
 
