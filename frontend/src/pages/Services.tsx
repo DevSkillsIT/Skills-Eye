@@ -8,6 +8,7 @@ import React, {
 import {
   Button,
   Card,
+  Checkbox,
   Col,
   Descriptions,
   Drawer,
@@ -954,7 +955,7 @@ const Services: React.FC = () => {
       },
     };
 
-    // COLUNAS METADATA DINÂMICAS - COM FILTROS NATIVOS ANT DESIGN
+    // COLUNAS METADATA DINÂMICAS - COM FILTROS CUSTOMIZADOS
     const metadataColumns: Record<string, ServiceColumn<ServiceTableItem>> = {};
     tableFields.forEach((field) => {
       // Buscar opções disponíveis para este campo (se existir)
@@ -968,10 +969,88 @@ const Services: React.FC = () => {
         ellipsis: true,
         tooltip: field.description,
 
-        // FILTROS NATIVOS DO ANT DESIGN - Padrão da documentação oficial
-        filters: fieldOptions.map(opt => ({ text: opt, value: opt })),
-        filterMode: 'tree',
-        filterSearch: true, // Habilita busca dentro do dropdown de filtro
+        // FILTRO CUSTOMIZADO - Filtra opções ao digitar
+        filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
+          const [searchText, setSearchText] = useState('');
+
+          // Filtrar opções baseado no texto digitado
+          const filteredOptions = fieldOptions.filter(opt =>
+            opt.toLowerCase().includes(searchText.toLowerCase())
+          );
+
+          return (
+            <div style={{ padding: 8, width: 300 }}>
+              {/* Input de pesquisa */}
+              <Input
+                placeholder={`Buscar ${field.display_name}`}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                style={{ marginBottom: 8, display: 'block' }}
+                prefix={<SearchOutlined />}
+              />
+
+              {/* Lista de opções FILTRADAS */}
+              <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 8 }}>
+                <Checkbox
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedKeys(filteredOptions);
+                    } else {
+                      setSelectedKeys([]);
+                    }
+                  }}
+                  checked={filteredOptions.length > 0 && selectedKeys.length === filteredOptions.length}
+                  indeterminate={selectedKeys.length > 0 && selectedKeys.length < filteredOptions.length}
+                  style={{ marginBottom: 8 }}
+                >
+                  Selecionar todos
+                </Checkbox>
+                {filteredOptions.map((opt) => (
+                  <div key={opt} style={{ padding: '4px 0' }}>
+                    <Checkbox
+                      checked={selectedKeys.includes(opt)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedKeys([...selectedKeys, opt]);
+                        } else {
+                          setSelectedKeys(selectedKeys.filter((k) => k !== opt));
+                        }
+                      }}
+                    >
+                      {opt}
+                    </Checkbox>
+                  </div>
+                ))}
+                {filteredOptions.length === 0 && (
+                  <div style={{ color: '#999', padding: '8px 0', textAlign: 'center' }}>
+                    Nenhuma opção encontrada
+                  </div>
+                )}
+              </div>
+
+              {/* Botões */}
+              <Space>
+                <Button
+                  type="primary"
+                  size="small"
+                  onClick={() => confirm()}
+                  icon={<SearchOutlined />}
+                >
+                  OK
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    clearFilters?.();
+                    setSearchText('');
+                  }}
+                >
+                  Limpar
+                </Button>
+              </Space>
+            </div>
+          );
+        },
         filterIcon: (filtered: boolean) => (
           <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
         ),
