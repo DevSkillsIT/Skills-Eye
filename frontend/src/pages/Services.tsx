@@ -18,6 +18,7 @@ import {
   Popconfirm,
   Row,
   Select,
+  Skeleton,
   Space,
   Statistic,
   Tag,
@@ -674,6 +675,65 @@ const Services: React.FC = () => {
   );
 
   // =========================================================================
+  // OTIMIZAÇÃO P1: Calcular metadataOptions e summary a partir de tableSnapshot
+  // =========================================================================
+  // Evita recalcular toda vez dentro do requestHandler
+  useEffect(() => {
+    if (tableSnapshot.length === 0) return;
+
+    // Extrair valores únicos para filtros
+    const options: Record<string, Set<string>> = {};
+    const DEFAULT_MODULES = ['blackbox_exporter', 'node_exporter', 'windows_exporter'];
+
+    tableSnapshot.forEach((item) => {
+      Object.entries(item.meta || {}).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (!options[key]) options[key] = new Set();
+          options[key].add(String(value));
+        }
+      });
+    });
+
+    // Converter Sets para Arrays e adicionar módulos padrão
+    const finalOptions: Record<string, string[]> = {};
+    Object.entries(options).forEach(([fieldName, valueSet]) => {
+      if (fieldName === 'module') {
+        finalOptions[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
+      } else {
+        finalOptions[fieldName] = Array.from(valueSet);
+      }
+    });
+
+    setMetadataOptions(finalOptions);
+
+    // Calcular summary
+    const nextSummary = tableSnapshot.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        const envKey = String(item.meta?.env || item.meta?.tipo_monitoramento || 'desconhecido');
+        acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
+        const moduleKey = String(item.meta?.module || 'desconhecido');
+        acc.byModule[moduleKey] = (acc.byModule[moduleKey] || 0) + 1;
+        const companyKey = String(item.meta?.company || 'desconhecido');
+        acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
+        const nodeKey = String(item.node || 'desconhecido');
+        acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
+        (item.tags || []).forEach(tag => acc.uniqueTags.add(tag));
+        return acc;
+      },
+      {
+        total: 0,
+        byEnv: {} as Record<string, number>,
+        byModule: {} as Record<string, number>,
+        byCompany: {} as Record<string, number>,
+        byNode: {} as Record<string, number>,
+        uniqueTags: new Set<string>()
+      },
+    );
+    setSummary(nextSummary);
+  }, [tableSnapshot]);
+
+  // =========================================================================
   // OTIMIZAÇÃO: useEffect ÚNICO para carregar dados (evita duplicação)
   // =========================================================================
   // Aguarda filterFields carregar, depois carrega dados apenas quando necessário
@@ -1153,7 +1213,10 @@ const Services: React.FC = () => {
       >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* Dashboard: NodeSelector + Métricas - LARGURA FIXA, NÃO SEGUE TABELA */}
-        <Card styles={{ body: { padding: '10px 16px' } }} style={{ maxWidth: '100%', width: 'fit-content' }}>
+        <Card
+          styles={{ body: { padding: '10px 16px' } }}
+          style={{ maxWidth: '100%', width: 'fit-content', minHeight: 60 }}
+        >
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
             {/* NodeSelector */}
             <div style={{ width: 340 }}>
@@ -1339,28 +1402,33 @@ const Services: React.FC = () => {
           </Space>
         </Card>
 
-        {/* Table */}
-        <ProTable<ServiceTableItem>
-          className="services-table" // Classe para CSS customizado
-          key={filterResetKey} // Key para forçar reset de filtros quando limpar
-          rowKey="key"
-          columns={visibleColumns}
-          search={false}
-          actionRef={actionRef}
-          dataSource={tableSnapshot}
-          onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
-          pagination={{
-            defaultPageSize: 50,
-            showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '30', '50', '100'],
-          }}
-          scroll={{
-            x: 2000, // Largura fixa maior que a tela para forçar scroll horizontal e fixed columns
-            y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
-          }}
-          sticky // Header sticky (fixo no topo ao rolar)
-          locale={{ emptyText: 'Nenhum dado disponivel' }}
-          options={{ density: true, fullScreen: true, reload: false, setting: false }}
+        {/* Table - Com Skeleton durante carregamento inicial */}
+        {filterFieldsLoading || (tableSnapshot.length === 0 && filterFields.length === 0) ? (
+          <Card>
+            <Skeleton active paragraph={{ rows: 10 }} />
+          </Card>
+        ) : (
+          <ProTable<ServiceTableItem>
+            className="services-table" // Classe para CSS customizado
+            key={filterResetKey} // Key para forçar reset de filtros quando limpar
+            rowKey="key"
+            columns={visibleColumns}
+            search={false}
+            actionRef={actionRef}
+            dataSource={tableSnapshot}
+            onChange={handleTableChange} // ✅ CRÍTICO: Captura filtros e ordenação
+            pagination={{
+              defaultPageSize: 50,
+              showSizeChanger: true,
+              pageSizeOptions: ['10', '20', '30', '50', '100'],
+            }}
+            scroll={{
+              x: 2000, // Largura fixa maior que a tela para forçar scroll horizontal e fixed columns
+              y: 'calc(100vh - 450px)' // Header fixo - altura fixa para scroll vertical
+            }}
+            sticky // Header sticky (fixo no topo ao rolar)
+            locale={{ emptyText: 'Nenhum dado disponivel' }}
+            options={{ density: true, fullScreen: true, reload: false, setting: false }}
           components={{
             header: {
               cell: ResizableTitle,
@@ -1399,6 +1467,7 @@ const Services: React.FC = () => {
             keys.length ? <span>{`${keys.length} serviços selecionados`}</span> : null
           }
         />
+        )}
       </Space>
 
       <Drawer
