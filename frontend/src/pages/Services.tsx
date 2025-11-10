@@ -631,16 +631,17 @@ const Services: React.FC = () => {
   // =========================================================================
   // CARREGAMENTO DE DADOS: useEffect monitora mudanças em filtros/busca
   // =========================================================================
-  // OTIMIZAÇÃO: Carrega dados em PARALELO com metadata (não bloqueia mais)
+  // OTIMIZAÇÃO: Carrega dados em PARALELO com metadata (não bloqueia)
+  // Mas reexecuta quando filterFields carregar para gerar metadataOptions corretos
   useEffect(() => {
-    // Carregar dados imediatamente (não espera metadata)
+    // Carregar dados (executa 2x: 1ª logo, 2ª quando filterFields carregar)
     requestHandler({}, {}, {}).then(result => {
       if (result.data) {
         setTableSnapshot(result.data);
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
+  }, [filterFields.length, advancedConditions, advancedOperator, searchValue]); // ✅ filterFields.length dispara quando metadata carregar
 
   const openCreateModal = useCallback(() => {
     setFormMode('create');
