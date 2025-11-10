@@ -8,19 +8,15 @@ import React, {
 import {
   Button,
   Card,
-  Checkbox,
-  Col,
   Descriptions,
   Drawer,
   Form,
   Input,
   message,
   Popconfirm,
-  Row,
   Select,
   Skeleton,
   Space,
-  Statistic,
   Tag,
   Tooltip,
   Typography,
@@ -31,7 +27,6 @@ import {
   BankOutlined,
   ClearOutlined,
   CloudOutlined,
-  CloudServerOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -51,7 +46,6 @@ import {
   ProFormDigit,
   ProFormSelect,
   ProFormText,
-  ProFormTextArea,
   ProTable,
 } from '@ant-design/pro-components';
 import { useSearchParams } from 'react-router-dom';
@@ -546,7 +540,7 @@ const Services: React.FC = () => {
         const { data: backendRows, summary: backendSummary } = response.data;
 
         // Converter para formato esperado pela tabela
-        let rows: ServiceTableItem[] = backendRows.map((item: any) => ({
+        const rows: ServiceTableItem[] = backendRows.map((item: any) => ({
           key: item.key,
           id: item.id,
           node: item.node,
