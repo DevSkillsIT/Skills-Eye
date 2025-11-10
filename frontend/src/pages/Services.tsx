@@ -5,7 +5,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { debounce } from 'lodash-es';
 import {
   Button,
   Card,
@@ -673,97 +672,60 @@ const Services: React.FC = () => {
   // OTIMIZAÇÃO P1: Calcular metadataOptions e summary a partir de tableSnapshot
   // =========================================================================
   // Evita recalcular toda vez dentro do requestHandler
-  // =========================================================================
-  // OTIMIZAÇÃO P1.1: Debounce de cálculos pesados de metadata
-  // =========================================================================
-  // PROBLEMA IDENTIFICADO:
-  // - useEffect anterior executava O(n×m) operações a CADA mudança em tableSnapshot
-  // - Criava ~3,300 objetos temporários (Sets + Arrays) causando 18 eventos GC
-  // - 2 state updates = 2 re-renders = Layout Shift
-  //
-  // SOLUÇÃO:
-  // - Debounce de 150ms agrupa múltiplas mudanças em 1 execução
-  // - Reduz GC events de 18 para ~5 (-72%)
-  // - Reduz re-renders desnecessários
-  // - Paint operations estimado: 122 → 40 (-67%)
-  // =========================================================================
-  const calculateMetadataOptions = useMemo(
-    () =>
-      debounce((data: ServiceTableItem[]) => {
-        // GUARD: Não processar array vazio
-        if (data.length === 0) return;
-
-        // PASSO 1: Extrair valores únicos para filtros
-        const options: Record<string, Set<string>> = {};
-        const DEFAULT_MODULES = ['blackbox_exporter', 'node_exporter', 'windows_exporter'];
-
-        data.forEach((item) => {
-          Object.entries(item.meta || {}).forEach(([key, value]) => {
-            if (value !== null && value !== undefined && value !== '') {
-              if (!options[key]) options[key] = new Set();
-              options[key].add(String(value));
-            }
-          });
-        });
-
-        // PASSO 2: Converter Sets para Arrays e adicionar módulos padrão
-        const finalOptions: Record<string, string[]> = {};
-        Object.entries(options).forEach(([fieldName, valueSet]) => {
-          if (fieldName === 'module') {
-            finalOptions[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
-          } else {
-            finalOptions[fieldName] = Array.from(valueSet);
-          }
-        });
-
-        // PASSO 3: Atualizar state de metadataOptions
-        setMetadataOptions(finalOptions);
-
-        // PASSO 4: Calcular summary (totalizadores)
-        const nextSummary = data.reduce(
-          (acc, item) => {
-            acc.total += 1;
-            const envKey = String(item.meta?.env || item.meta?.tipo_monitoramento || 'desconhecido');
-            acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
-            const moduleKey = String(item.meta?.module || 'desconhecido');
-            acc.byModule[moduleKey] = (acc.byModule[moduleKey] || 0) + 1;
-            const companyKey = String(item.meta?.company || 'desconhecido');
-            acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
-            const nodeKey = String(item.node || 'desconhecido');
-            acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
-            (item.tags || []).forEach((tag) => acc.uniqueTags.add(tag));
-            return acc;
-          },
-          {
-            total: 0,
-            byEnv: {} as Record<string, number>,
-            byModule: {} as Record<string, number>,
-            byCompany: {} as Record<string, number>,
-            byNode: {} as Record<string, number>,
-            uniqueTags: new Set<string>(),
-          }
-        );
-
-        // PASSO 5: Atualizar state de summary
-        setSummary(nextSummary);
-
-        // LOG para debug: Verificar que executa apenas 1x (não múltiplas)
-        console.log(
-          `[Services] ✅ Metadata calculada (debounced): ${data.length} serviços, ${Object.keys(finalOptions).length} campos`
-        );
-      }, 150), // Delay de 150ms - Agrupa mudanças rápidas em 1 execução
-    [] // Dependências vazias - Função criada 1x no mount
-  );
-
-  // useEffect para disparar cálculo quando tableSnapshot mudar
   useEffect(() => {
-    calculateMetadataOptions(tableSnapshot);
+    if (tableSnapshot.length === 0) return;
 
-    // CLEANUP: Cancelar debounce pendente ao desmontar
-    return () => {
-      calculateMetadataOptions.cancel();
-    };
-  }, [tableSnapshot, calculateMetadataOptions]);
+    // Extrair valores únicos para filtros
+    const options: Record<string, Set<string>> = {};
+    const DEFAULT_MODULES = ['blackbox_exporter', 'node_exporter', 'windows_exporter'];
+
+    tableSnapshot.forEach((item) => {
+      Object.entries(item.meta || {}).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+          if (!options[key]) options[key] = new Set();
+          options[key].add(String(value));
+        }
+      });
+    });
+
+    // Converter Sets para Arrays e adicionar módulos padrão
+    const finalOptions: Record<string, string[]> = {};
+    Object.entries(options).forEach(([fieldName, valueSet]) => {
+      if (fieldName === 'module') {
+        finalOptions[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
+      } else {
+        finalOptions[fieldName] = Array.from(valueSet);
+      }
+    });
+
+    setMetadataOptions(finalOptions);
+
+    // Calcular summary
+    const nextSummary = tableSnapshot.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        const envKey = String(item.meta?.env || item.meta?.tipo_monitoramento || 'desconhecido');
+        acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
+        const moduleKey = String(item.meta?.module || 'desconhecido');
+        acc.byModule[moduleKey] = (acc.byModule[moduleKey] || 0) + 1;
+        const companyKey = String(item.meta?.company || 'desconhecido');
+        acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
+        const nodeKey = String(item.node || 'desconhecido');
+        acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
+        (item.tags || []).forEach(tag => acc.uniqueTags.add(tag));
+        return acc;
+      },
+      {
+        total: 0,
+        byEnv: {} as Record<string, number>,
+        byModule: {} as Record<string, number>,
+        byCompany: {} as Record<string, number>,
+        byNode: {} as Record<string, number>,
+        uniqueTags: new Set<string>()
+      },
+    );
+    setSummary(nextSummary);
+  }, [tableSnapshot]);
 
   // =========================================================================
   // OTIMIZAÇÃO: useEffect ÚNICO para carregar dados (evita duplicação)
