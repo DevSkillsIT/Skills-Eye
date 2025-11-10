@@ -110,7 +110,9 @@
       "Bash(docs/KV_USAGE_ANALYSIS.txt)",
       "Bash(npx tsc:*)",
       "Bash(migration_report.txt)",
-      "Bash(restart-app.bat)"
+      "Bash(restart-app.bat)",
+      "Bash(npx eslint:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

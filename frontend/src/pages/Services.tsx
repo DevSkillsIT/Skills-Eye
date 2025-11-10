@@ -1286,11 +1286,12 @@ const Services: React.FC = () => {
           sticky // Header sticky (fixo no topo ao rolar)
           locale={{ emptyText: 'Nenhum dado disponivel' }}
           options={{ density: true, fullScreen: true, reload: false, setting: false }}
-          components={{
-            header: {
-              cell: ResizableTitle,
-            },
-          }}
+          // TESTE: ResizableTitle comentado para medir impacto na performance
+          // components={{
+          //   header: {
+          //     cell: ResizableTitle,
+          //   },
+          // }}
           expandable={{
             expandedRowRender: (record) => (
               <Descriptions size="small" column={2} bordered style={{ margin: 0 }}>
