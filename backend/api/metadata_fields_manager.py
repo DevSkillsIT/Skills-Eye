@@ -236,7 +236,6 @@ async def load_fields_config() -> Dict[str, Any]:
 
                 try:
                     from api.prometheus_config import multi_config
-                    from datetime import datetime
 
                     logger.info("[METADATA-FIELDS FALLBACK] Iniciando extração via AsyncSSH + TAR...")
                     extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
