@@ -52,16 +52,13 @@ import { useSearchParams } from 'react-router-dom';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
 import AdvancedSearchPanel, { type SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
-import { NodeSelector, type ConsulNode } from '../components/NodeSelector';
 import { consulAPI } from '../services/api';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
 import TagsInput from '../components/TagsInput';
 import type {
-  ConsulServiceRecord,
   ServiceMeta,
   ServiceCreatePayload,
-  ServiceQuery,
 } from '../services/api';
 import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMetadataFields';
 import FormFieldRenderer from '../components/FormFieldRenderer';
@@ -255,7 +252,6 @@ const Services: React.FC = () => {
   // SISTEMA DINÂMICO: metadataOptions para preencher filtros das colunas
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
-  const [selectedNode, setSelectedNode] = useState<string>('all');
   const [detailRecord, setDetailRecord] = useState<ServiceTableItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
@@ -491,40 +487,6 @@ const Services: React.FC = () => {
   // OTIMIZAÇÃO: Removida função loadMetadataOptions() que fazia N requisições HTTP
   // Agora extraímos valores únicos diretamente dos dados já carregados no requestHandler
 
-  // SISTEMA DINÂMICO: buildQueryParams para filtro de nó
-  const buildQueryParams = useCallback((): ServiceQuery => {
-    const params: ServiceQuery = {} as ServiceQuery;
-    // 'all' = todos os nós (não envia filtro de nó específico)
-    if (selectedNode && selectedNode !== 'all') {
-      params.node_addr = selectedNode;
-    }
-    return params;
-  }, [selectedNode]);
-
-  const flattenServices = useCallback(
-    (data: Record<string, Record<string, ConsulServiceRecord>>) => {
-      const rows: ServiceTableItem[] = [];
-      Object.entries(data || {}).forEach(([nodeName, services]) => {
-        Object.entries(services || {}).forEach(([serviceId, rawService]) => {
-          const service = rawService || ({} as ConsulServiceRecord);
-          rows.push({
-            key: `${nodeName}::${serviceId}`,
-            id: serviceId,
-            node: nodeName,
-            nodeAddr: undefined, // Campo opcional - endereço do nó (não mais usado)
-            service: service.Service || '',
-            tags: service.Tags || [],
-            address: service.Address,
-            port: service.Port,
-            meta: (service.Meta || {}) as ServiceMeta,
-          });
-        });
-      });
-      return rows;
-    },
-    [],
-  );
-
   const requestHandler = useCallback(
     async (
       params: { current?: number; pageSize?: number; keyword?: string },
@@ -533,10 +495,8 @@ const Services: React.FC = () => {
     ) => {
       try {
         // 🚀 USAR ENDPOINT OTIMIZADO - Processamento no backend!
-        const queryParams = buildQueryParams();
-        const nodeAddr = queryParams.node_addr === 'ALL' ? undefined : queryParams.node_addr;
-
-        const response = await consulAPI.getServicesInstancesOptimized(false, nodeAddr);
+        // Buscar TODOS os serviços - filtro de nó será feito client-side
+        const response = await consulAPI.getServicesInstancesOptimized(false, undefined);
         const { data: backendRows, summary: backendSummary } = response.data;
 
         // Converter para formato esperado pela tabela
@@ -665,70 +625,11 @@ const Services: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, buildQueryParams, flattenServices, searchValue, selectedNode, filterFields],
+    [applyAdvancedFilters, searchValue, filterFields],
   );
 
   // =========================================================================
-  // OTIMIZAÇÃO P1: Calcular metadataOptions e summary a partir de tableSnapshot
-  // =========================================================================
-  // Evita recalcular toda vez dentro do requestHandler
-  useEffect(() => {
-    if (tableSnapshot.length === 0) return;
-
-    // Extrair valores únicos para filtros
-    const options: Record<string, Set<string>> = {};
-    const DEFAULT_MODULES = ['blackbox_exporter', 'node_exporter', 'windows_exporter'];
-
-    tableSnapshot.forEach((item) => {
-      Object.entries(item.meta || {}).forEach(([key, value]) => {
-        if (value !== null && value !== undefined && value !== '') {
-          if (!options[key]) options[key] = new Set();
-          options[key].add(String(value));
-        }
-      });
-    });
-
-    // Converter Sets para Arrays e adicionar módulos padrão
-    const finalOptions: Record<string, string[]> = {};
-    Object.entries(options).forEach(([fieldName, valueSet]) => {
-      if (fieldName === 'module') {
-        finalOptions[fieldName] = Array.from(new Set([...DEFAULT_MODULES, ...valueSet]));
-      } else {
-        finalOptions[fieldName] = Array.from(valueSet);
-      }
-    });
-
-    setMetadataOptions(finalOptions);
-
-    // Calcular summary
-    const nextSummary = tableSnapshot.reduce(
-      (acc, item) => {
-        acc.total += 1;
-        const envKey = String(item.meta?.env || item.meta?.tipo_monitoramento || 'desconhecido');
-        acc.byEnv[envKey] = (acc.byEnv[envKey] || 0) + 1;
-        const moduleKey = String(item.meta?.module || 'desconhecido');
-        acc.byModule[moduleKey] = (acc.byModule[moduleKey] || 0) + 1;
-        const companyKey = String(item.meta?.company || 'desconhecido');
-        acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
-        const nodeKey = String(item.node || 'desconhecido');
-        acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
-        (item.tags || []).forEach(tag => acc.uniqueTags.add(tag));
-        return acc;
-      },
-      {
-        total: 0,
-        byEnv: {} as Record<string, number>,
-        byModule: {} as Record<string, number>,
-        byCompany: {} as Record<string, number>,
-        byNode: {} as Record<string, number>,
-        uniqueTags: new Set<string>()
-      },
-    );
-    setSummary(nextSummary);
-  }, [tableSnapshot]);
-
-  // =========================================================================
-  // OTIMIZAÇÃO: useEffect ÚNICO para carregar dados (evita duplicação)
+  // CARREGAMENTO DE DADOS: useEffect monitora mudanças em filtros/busca
   // =========================================================================
   // Aguarda filterFields carregar, depois carrega dados apenas quando necessário
   useEffect(() => {
@@ -744,7 +645,7 @@ const Services: React.FC = () => {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFieldsLoading, selectedNode, advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
+  }, [filterFieldsLoading, advancedConditions, advancedOperator, searchValue]); // ✅ searchValue dispara recarregamento
 
   const openCreateModal = useCallback(() => {
     setFormMode('create');
@@ -776,11 +677,7 @@ const Services: React.FC = () => {
   const { deleteResource, deleteBatch } = useConsulDelete({
     deleteFn: async (payload: any) => {
       // Adapter para API de Services (usa serviceId + params)
-      const nodeAddrParam =
-        payload.node_addr ||
-        (selectedNode && selectedNode !== 'all'
-          ? selectedNode
-          : undefined);
+      const nodeAddrParam = payload.node_addr;
 
       const params =
         nodeAddrParam && nodeAddrParam !== ''
@@ -1206,27 +1103,14 @@ const Services: React.FC = () => {
         }}
       >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* Dashboard: NodeSelector + Métricas - LARGURA FIXA, NÃO SEGUE TABELA */}
+        {/* Dashboard: Métricas - LARGURA FIXA, NÃO SEGUE TABELA */}
         <Card
           styles={{ body: { padding: '10px 16px' } }}
           style={{ maxWidth: '100%', width: 'fit-content', minHeight: 60 }}
         >
           <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-            {/* NodeSelector */}
-            <div style={{ width: 340 }}>
-              <Typography.Text strong style={{ fontSize: '12px', display: 'block', marginBottom: 6 }}>
-                Nó do Consul
-              </Typography.Text>
-              <NodeSelector
-                value={selectedNode}
-                onChange={(nodeAddr) => setSelectedNode(nodeAddr)}
-                style={{ width: 340 }}
-                showAllNodesOption={true}
-              />
-            </div>
-
-            {/* Botão Novo Serviço - Alinhado com o Select (não com o label) */}
-            <div style={{ marginTop: 24 }}>
+            {/* Botão Novo Serviço */}
+            <div>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
