@@ -240,6 +240,14 @@ const mapRecordToFormValues = (record: ServiceTableItem): ServiceFormValues => {
 const Services: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
 
+  // 🔍 LOGS DE PERFORMANCE - Diagnóstico de re-renders
+  const renderCount = useRef(0);
+  useEffect(() => {
+    renderCount.current += 1;
+    const now = performance.now();
+    console.log(`[RENDER #${renderCount.current}] Services component rendered at ${now.toFixed(0)}ms`);
+  });
+
   // SISTEMA DINÂMICO: Carregar campos metadata do backend
   const { tableFields, loading: tableFieldsLoading } = useTableFields('services');
   const { formFields, loading: formFieldsLoading } = useFormFields('services');
@@ -949,7 +957,10 @@ const Services: React.FC = () => {
 
     // Combinar fixas + dinâmicas
     return { ...fixedColumns, ...metadataColumns };
-  }, [tableFields, handleDelete, openEditModal, metadataOptions, filteredInfo, sortedInfo]);
+  }, [tableFields, handleDelete, openEditModal, metadataOptions]);
+  // OTIMIZAÇÃO: Removido filteredInfo e sortedInfo das deps
+  // Eles mudam frequentemente e não precisam recalcular TODAS as colunas
+  // sortedInfo é aplicado dinamicamente via sortOrder nas colunas
 
   // Mapa de field → display_name para mostrar nomes amigáveis
   const fieldDisplayNames = useMemo(() => {
@@ -987,7 +998,25 @@ const Services: React.FC = () => {
         };
       })
       .filter(Boolean) as ServiceColumn<ServiceTableItem>[];
-  }, [columnConfig, columnMap, columnWidths, handleResize]);
+  }, [columnConfig, columnMap, columnWidths]);
+  // OTIMIZAÇÃO: Removido handleResize das deps (ele nunca muda)
+  // columnWidths ainda necessário porque afeta o width real das colunas
+
+  // 🔍 LOGS DE PERFORMANCE - Monitorar recalculações
+  useEffect(() => {
+    console.log('[PERF] columnMap recalculado', {
+      tableFieldsCount: tableFields.length,
+      metadataOptionsKeys: Object.keys(metadataOptions).length,
+    });
+  }, [columnMap]);
+
+  useEffect(() => {
+    console.log('[PERF] visibleColumns recalculado', {
+      count: visibleColumns.length,
+      columnConfigCount: columnConfig.length,
+      columnWidthsCount: Object.keys(columnWidths).length,
+    });
+  }, [visibleColumns]);
 
   const handleExport = useCallback(() => {
     if (!tableSnapshot.length) {
@@ -1286,12 +1315,11 @@ const Services: React.FC = () => {
           sticky // Header sticky (fixo no topo ao rolar)
           locale={{ emptyText: 'Nenhum dado disponivel' }}
           options={{ density: true, fullScreen: true, reload: false, setting: false }}
-          // TESTE: ResizableTitle comentado para medir impacto na performance
-          // components={{
-          //   header: {
-          //     cell: ResizableTitle,
-          //   },
-          // }}
+          components={{
+            header: {
+              cell: ResizableTitle,
+            },
+          }}
           expandable={{
             expandedRowRender: (record) => (
               <Descriptions size="small" column={2} bordered style={{ margin: 0 }}>
