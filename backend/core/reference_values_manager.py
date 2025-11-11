@@ -79,30 +79,111 @@ class ReferenceValuesManager:
         """
         Normaliza valor para Title Case (primeira letra de cada palavra em maiúscula).
 
+        VALIDAÇÕES:
+        - Remove caracteres de controle (newlines, tabs, null bytes)
+        - Remove caracteres invisíveis (zero-width, etc)
+        - Colapsa múltiplos espaços em um único
+        - Valida que valor não fica vazio após limpeza
+
         Examples:
             "empresa ramada" → "Empresa Ramada"
             "SAO PAULO" → "Sao Paulo"
             "acme-corp" → "Acme-Corp"
+            "empresa\n\nramada" → ValueError (caracteres inválidos)
 
         Args:
             value: Valor original
 
         Returns:
             Valor normalizado em Title Case
+
+        Raises:
+            ValueError: Se valor contém apenas caracteres inválidos ou fica vazio
         """
         if not value:
             return value
 
-        # Remove espaços extras
+        # Remover caracteres de controle (0x00-0x1F e 0x7F-0x9F)
+        # Inclui: newlines, tabs, null bytes, etc
+        value = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', value)
+
+        # Remover múltiplos espaços (colapsar em um único)
+        value = re.sub(r'\s+', ' ', value)
+
+        # Strip espaços das pontas
         value = value.strip()
 
-        # Title Case
-        # Preserva hífens e underscores
+        # Validar que não ficou vazio
+        if not value:
+            raise ValueError("Valor não pode ser vazio após normalização (continha apenas caracteres inválidos)")
+
+        # Title Case (preserva hífens e underscores)
         return value.title()
 
     # =========================================================================
     # CRUD - Reference Values
     # =========================================================================
+
+    async def _create_or_ensure_value_internal(
+        self,
+        field_name: str,
+        value: str,
+        user: str = "system",
+        metadata: Optional[Dict[str, Any]] = None,
+        fail_if_exists: bool = False
+    ) -> Tuple[bool, str, str]:
+        """
+        Método interno unificado para criar ou garantir que valor existe.
+
+        Args:
+            field_name: Nome do campo
+            value: Valor a ser criado/garantido
+            user: Usuário
+            metadata: Metadata opcional
+            fail_if_exists: Se True, retorna erro se valor já existe (create_value)
+                           Se False, retorna sucesso se valor já existe (ensure_value)
+
+        Returns:
+            Tuple de (created_or_success, normalized_value, message)
+        """
+        if not value or not field_name:
+            return False, value, "Valor ou campo vazio"
+
+        # Normalizar
+        normalized = self.normalize_value(value)
+
+        # Verificar se já existe
+        existing = await self.get_value(field_name, normalized)
+
+        if existing:
+            if fail_if_exists:
+                # create_value: retorna erro
+                logger.warning(f"[{field_name}] Tentativa de criar valor duplicado: '{normalized}'")
+                return False, normalized, f"❌ Valor '{normalized}' já existe para campo '{field_name}'. Valores duplicados não são permitidos!"
+            else:
+                # ensure_value: retorna sucesso (já existe)
+                return False, normalized, f"Valor '{normalized}' já existe"
+
+        # Criar novo registro
+        value_data = {
+            "field_name": field_name,
+            "value": normalized,
+            "original_value": value,
+            "created_at": datetime.utcnow().isoformat(),
+            "created_by": user,
+            "usage_count": 0,
+            "last_used_at": None,
+            "metadata": metadata or {},
+            "change_history": []
+        }
+
+        success = await self._put_value(field_name, normalized, value_data, user)
+
+        if success:
+            msg_suffix = "cadastrado automaticamente" if not fail_if_exists else "criado com sucesso"
+            return True, normalized, f"Valor '{normalized}' {msg_suffix}"
+
+        return False, normalized, "Erro ao criar/cadastrar valor"
 
     async def ensure_value(
         self,
@@ -131,47 +212,13 @@ class ReferenceValuesManager:
             - normalized_value: Valor normalizado (Title Case)
             - message: Mensagem de sucesso/erro
         """
-        if not value or not field_name:
-            return False, value, "Valor ou campo vazio"
-
-        # Normalizar valor
-        normalized = self.normalize_value(value)
-
-        # Verificar se já existe
-        existing = await self.get_value(field_name, normalized)
-
-        if existing:
-            # Já existe, apenas retorna normalizado
-            return False, normalized, f"Valor '{normalized}' já existe"
-
-        # Criar novo registro
-        value_data = {
-            "field_name": field_name,
-            "value": normalized,
-            "original_value": value,  # Valor original digitado pelo usuário
-            "created_at": datetime.utcnow().isoformat(),
-            "created_by": user,
-            "usage_count": 0,  # Será incrementado quando usado
-            "last_used_at": None,
-            "metadata": metadata or {},
-            "change_history": []  # Histórico individual de mudanças (não sobrescreve)
-        }
-
-        success = await self._put_value(field_name, normalized, value_data, user)
-
-        if success:
-            # AUDIT LOG DESABILITADO: reference_value auto-cadastro não precisa de auditoria
-            # Motivo: Gera 96.7% dos audit logs com crescimento exponencial
-            # await self.kv.log_audit_event(
-            #     action="CREATE",
-            #     resource_type="reference_value",
-            #     resource_id=f"{field_name}/{normalized}",
-            #     user=user,
-            #     details={"field": field_name, "value": normalized}
-            # )
-            return True, normalized, f"Valor '{normalized}' cadastrado automaticamente"
-
-        return False, normalized, "Erro ao cadastrar valor"
+        return await self._create_or_ensure_value_internal(
+            field_name=field_name,
+            value=value,
+            user=user,
+            metadata=metadata,
+            fail_if_exists=False  # ensure_value aceita valores existentes
+        )
 
     async def create_value(
         self,
@@ -195,45 +242,16 @@ class ReferenceValuesManager:
         Returns:
             Tuple de (success, message)
         """
-        if not value or not field_name:
-            return False, "Valor ou campo vazio"
+        created, normalized, message = await self._create_or_ensure_value_internal(
+            field_name=field_name,
+            value=value,
+            user=user,
+            metadata=metadata,
+            fail_if_exists=True  # create_value falha se valor já existe
+        )
 
-        # Normalizar
-        normalized = self.normalize_value(value)
-
-        # VALIDAÇÃO DUPLICADOS: Verificar se já existe (CRÍTICO!)
-        existing = await self.get_value(field_name, normalized)
-        if existing:
-            logger.warning(f"[{field_name}] Tentativa de criar valor duplicado: '{normalized}'")
-            return False, f"❌ Valor '{normalized}' já existe para campo '{field_name}'. Valores duplicados não são permitidos!"
-
-        # Criar registro
-        value_data = {
-            "field_name": field_name,
-            "value": normalized,
-            "original_value": value,
-            "created_at": datetime.utcnow().isoformat(),
-            "created_by": user,
-            "usage_count": 0,
-            "last_used_at": None,
-            "metadata": metadata or {},
-            "change_history": []  # Histórico individual de mudanças (não sobrescreve)
-        }
-
-        success = await self._put_value(field_name, normalized, value_data, user)
-
-        if success:
-            # AUDIT LOG DESABILITADO: reference_value manual creation não precisa de auditoria
-            # await self.kv.log_audit_event(
-            #     action="CREATE",
-            #     resource_type="reference_value",
-            #     resource_id=f"{field_name}/{normalized}",
-            #     user=user,
-            #     details={"field": field_name, "value": normalized, "source": "manual"}
-            # )
-            return True, f"Valor '{normalized}' criado com sucesso"
-
-        return False, "Erro ao criar valor"
+        # Retornar apenas success e message (create_value retorna 2 valores)
+        return (created, message)
 
     async def get_value(self, field_name: str, value: str) -> Optional[Dict]:
         """
@@ -259,16 +277,23 @@ class ReferenceValuesManager:
 
         return None
 
-    async def list_values(self, field_name: str, include_stats: bool = False) -> List[Dict]:
+    async def list_values(
+        self,
+        field_name: str,
+        include_stats: bool = False,
+        sort_by: Optional[str] = "value"
+    ) -> List[Dict]:
         """
         Lista todos os valores de um campo (carrega array do JSON único).
 
         Args:
             field_name: Nome do campo (company, localizacao, etc)
             include_stats: Se True, inclui estatísticas de uso
+            sort_by: Campo para ordenação (value, usage_count, created_at)
+                    None = não ordena (retorna na ordem do array)
 
         Returns:
-            Lista de valores ordenados alfabeticamente
+            Lista de valores ordenados conforme sort_by
         """
         key = self._build_key(field_name)
 
@@ -289,8 +314,15 @@ class ReferenceValuesManager:
                         "created_by": item.get("created_by"),
                     })
 
-        # Ordenar alfabeticamente
-        values.sort(key=lambda x: x["value"])
+        # Ordenar conforme sort_by
+        if sort_by:
+            if sort_by == "value":
+                values.sort(key=lambda x: x.get("value", ""))
+            elif sort_by == "usage_count":
+                values.sort(key=lambda x: x.get("usage_count", 0), reverse=True)
+            elif sort_by == "created_at":
+                values.sort(key=lambda x: x.get("created_at", ""))
+            # Se sort_by for inválido, ignora e retorna sem ordenar
 
         return values
 
@@ -336,14 +368,6 @@ class ReferenceValuesManager:
         success = await self._put_value(field_name, normalized, existing, user)
 
         if success:
-            # AUDIT LOG DESABILITADO: reference_value updates não precisam de auditoria
-            # await self.kv.log_audit_event(
-            #     action="UPDATE",
-            #     resource_type="reference_value",
-            #     resource_id=f"{field_name}/{normalized}",
-            #     user=user,
-            #     details={"field": field_name, "value": normalized, "updates": updates}
-            # )
             return True, f"Valor '{normalized}' atualizado com sucesso"
 
         return False, "Erro ao atualizar valor"
@@ -499,31 +523,22 @@ class ReferenceValuesManager:
 
         try:
             # Buscar TODOS os serviços
-            logger.info(f"[_bulk_update_services] Buscando todos os serviços do Consul...")
             services_response = await self.consul.get_services()
 
-            logger.info(f"[_bulk_update_services] Response type: {type(services_response)}")
-            logger.info(f"[_bulk_update_services] Response keys: {services_response.keys() if isinstance(services_response, dict) else 'N/A'}")
-
             if not services_response:
-                logger.warning(f"[_bulk_update_services] Nenhum serviço encontrado (response vazio)")
+                logger.warning(f"[_bulk_update_services] Nenhum serviço encontrado")
                 return 0, 0
 
-            # services_response É UM DICIONÁRIO {service_id: service_data}
-            # NÃO tem 'services' key!
-            logger.info(f"[_bulk_update_services] Total de serviços encontrados: {len(services_response)}")
+            logger.info(f"[_bulk_update_services] Buscando serviços que usam '{old_value}' no campo '{field_name}' ({len(services_response)} serviços no total)")
 
-            # Iterar sobre todos os serviços DIRETAMENTE
+            # Iterar sobre todos os serviços
             for svc_id, service in services_response.items():
                     meta = service.get('Meta', {})
-
-                    # Verificar se este serviço usa o valor antigo
                     field_value = meta.get(field_name)
 
-                    logger.info(f"[_bulk_update_services] Verificando serviço {svc_id}: {field_name}={field_value}")
-
+                    # Logar APENAS quando encontrar serviço que usa o valor
                     if field_value and self.normalize_value(str(field_value)) == old_value:
-                        logger.info(f"[_bulk_update_services] ✓ Serviço {svc_id} USA o valor antigo! Atualizando...")
+                        logger.info(f"[_bulk_update_services] Atualizando serviço '{svc_id}': {field_name}='{old_value}' → '{new_value}'")
 
                         try:
                             # Atualizar APENAS o campo que mudou no Meta
@@ -621,7 +636,6 @@ class ReferenceValuesManager:
             success = await self.kv.put_json(key, new_array, metadata)
 
             if success:
-                # AUDIT LOG DESABILITADO: reference_value deletes não precisam de auditoria
                 return True, f"Valor '{normalized}' deletado com sucesso"
 
             return False, "Erro ao salvar array atualizado"
@@ -736,28 +750,25 @@ class ReferenceValuesManager:
             # Buscar todos os serviços
             services_response = await self.consul.get_services()
 
-            if not services_response or 'services' not in services_response:
+            if not services_response:
                 return 0
 
             count = 0
 
-            # Iterar sobre todos os serviços
-            for service_list in services_response['services'].values():
-                if not isinstance(service_list, list):
-                    continue
+            # Iterar sobre todos os serviços (mesma estrutura do _bulk_update_services)
+            # services_response É UM DICIONÁRIO {service_id: service_data}
+            for svc_id, service in services_response.items():
+                meta = service.get('Meta', {})
 
-                for service in service_list:
-                    meta = service.get('Meta', {})
+                # Verificar se o valor está presente
+                field_value = meta.get(field_name)
 
-                    # Verificar se o valor está presente
-                    field_value = meta.get(field_name)
+                if field_value:
+                    # Normalizar valor do serviço para comparação
+                    normalized_service_value = self.normalize_value(str(field_value))
 
-                    if field_value:
-                        # Normalizar valor do serviço para comparação
-                        normalized_service_value = self.normalize_value(str(field_value))
-
-                        if normalized_service_value == value:
-                            count += 1
+                    if normalized_service_value == value:
+                        count += 1
 
             return count
 

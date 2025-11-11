@@ -166,13 +166,14 @@ async def create_value(
 @router.get("/{field_name}", include_in_schema=True)
 async def list_values(
     field_name: str,
-    include_stats: bool = Query(False, description="Incluir estatísticas de uso")
+    include_stats: bool = Query(False, description="Incluir estatísticas de uso"),
+    sort_by: str = Query("value", description="Ordenar por: value, usage_count, created_at")
 ):
     """
     Lista todos os valores de um campo.
 
     Example:
-        GET /api/v1/reference-values/company?include_stats=true
+        GET /api/v1/reference-values/company?include_stats=true&sort_by=usage_count
 
         Response:
         {
@@ -199,7 +200,11 @@ async def list_values(
     """
     manager = ReferenceValuesManager()
 
-    values = await manager.list_values(field_name, include_stats=include_stats)
+    values = await manager.list_values(
+        field_name,
+        include_stats=include_stats,
+        sort_by=sort_by
+    )
 
     return {
         "success": True,
