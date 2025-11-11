@@ -114,30 +114,94 @@ async def _prewarm_metadata_fields_cache():
             f"{successful_servers}/{total_servers} servidores"
         )
 
-        # PASSO 4: Salvar no Consul KV para acesso rápido
+        # PASSO 4: MERGE INTELIGENTE - Preservar customizações do usuário
         kv_manager = KVManager()
+
+        # Carregar configuração EXISTENTE do KV (se houver)
+        existing_config = await kv_manager.get_json('skills/eye/metadata/fields')
+        existing_fields_map = {}
+
+        if existing_config and 'fields' in existing_config:
+            # Criar mapa de campos existentes (key = field.name)
+            existing_fields_map = {
+                f['name']: f for f in existing_config['fields']
+            }
+            logger.info(f"[PRE-WARM] 📦 Campos existentes no KV: {len(existing_fields_map)}")
+        else:
+            logger.info("[PRE-WARM] 🆕 KV vazio - primeira população")
+
+        # MERGE: Combinar campos extraídos com customizações existentes
+        merged_fields = []
+        new_fields_count = 0
+        preserved_count = 0
+
+        for extracted_field in fields:
+            field_name = extracted_field.name
+            field_dict = extracted_field.to_dict()
+
+            if field_name in existing_fields_map:
+                # CAMPO EXISTE: PRESERVAR CUSTOMIZAÇÕES DO USUÁRIO
+                existing_field = existing_fields_map[field_name]
+
+                # Campos a PRESERVAR (customizações do usuário)
+                user_customization_fields = [
+                    'available_for_registration',
+                    'display_name',
+                    'category',
+                    'description',
+                    'order',
+                    'required',
+                    'editable',
+                    'show_in_table',
+                    'show_in_dashboard',
+                    'show_in_form',
+                    'show_in_services',
+                    'show_in_exporters',
+                    'show_in_blackbox',
+                ]
+
+                for custom_field in user_customization_fields:
+                    if custom_field in existing_field:
+                        field_dict[custom_field] = existing_field[custom_field]
+
+                preserved_count += 1
+                logger.debug(f"[PRE-WARM] ✅ '{field_name}' - customizações preservadas")
+            else:
+                # CAMPO NOVO: USAR VALORES PADRÃO (available_for_registration=false)
+                new_fields_count += 1
+                logger.info(f"[PRE-WARM] 🆕 Campo NOVO: '{field_name}' (auto-cadastro desabilitado)")
+
+            merged_fields.append(field_dict)
+
+        # Salvar campos MERGED no KV
         await kv_manager.put_json(
             key='skills/eye/metadata/fields',
             value={
                 'version': '2.0.0',
                 'last_updated': datetime.now().isoformat(),
                 'source': 'prewarm_startup',
-                'total_fields': len(fields),
-                'fields': [f.to_dict() for f in fields],
+                'total_fields': len(merged_fields),
+                'fields': merged_fields,  # ← AGORA USA CAMPOS MERGED!
                 'extraction_status': {
                     'total_servers': total_servers,
                     'successful_servers': successful_servers,
                     'server_status': extraction_result.get('server_status', []),
+                },
+                'merge_info': {
+                    'new_fields': new_fields_count,
+                    'preserved_fields': preserved_count,
+                    'total_merged': len(merged_fields),
                 }
             },
-            metadata={'auto_updated': True, 'source': 'startup_prewarm'}
+            metadata={'auto_updated': True, 'source': 'startup_prewarm_merged'}
         )
 
         logger.info(
-            f"[PRE-WARM] ✓ Cache populado no KV: {len(fields)} campos salvos. "
-            f"Próximas requisições serão instantâneas (<2s)!"
+            f"[PRE-WARM] ✓ Cache atualizado com MERGE: {len(merged_fields)} campos "
+            f"({preserved_count} preservados, {new_fields_count} novos). "
+            f"Customizações mantidas! ✨"
         )
-        print(f"[PRE-WARM] ✓ SUCESSO: Cache KV populado com {len(fields)} campos")
+        print(f"[PRE-WARM] ✓ SUCESSO: Merge completo - {preserved_count} customizações preservadas, {new_fields_count} campos novos")
 
         # Marcar como concluído com sucesso
         _prewarm_status['completed'] = True
