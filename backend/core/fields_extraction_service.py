@@ -43,7 +43,7 @@ class MetadataField:
     category: str = "extra"  # Categoria (infrastructure, basic, device, extra)
     editable: bool = True  # Se pode ser editado
     enabled: bool = True  # Se está habilitado
-    available_for_registration: bool = True  # Se disponível para registro
+    available_for_registration: bool = False  # Se disponível para registro (PADRÃO: DESABILITADO)
     validation_regex: Optional[str] = None  # Regex de validação (deprecated)
     validation: Optional[Dict[str, Any]] = None  # Validação (objeto)
     default_value: Optional[Any] = None  # Valor padrão

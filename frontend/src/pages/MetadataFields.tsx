@@ -912,10 +912,14 @@ const MetadataFieldsPage: React.FC = () => {
       title: 'Visibilidade',
       width: 150,
       render: (_, record) => (
-        <Space size={4}>
+        <Space size={4} wrap>
           {record.show_in_table && <Tag color="blue">Tabela</Tag>}
           {record.show_in_dashboard && <Tag color="green">Dashboard</Tag>}
           {record.show_in_form && <Tag color="orange">Form</Tag>}
+          {record.available_for_registration && <Tag color="purple">Auto-Cadastro</Tag>}
+          {!record.show_in_table && !record.show_in_dashboard && !record.show_in_form && !record.available_for_registration && (
+            <Tag color="default">Nenhuma</Tag>
+          )}
         </Space>
       ),
     },
@@ -1551,8 +1555,40 @@ const MetadataFieldsPage: React.FC = () => {
                     />
                     <ProFormSwitch
                       name="available_for_registration"
-                      label="Auto-Cadastro"
-                      tooltip="Permite cadastrar novos valores em Reference Values. Se desabilitado, campo terá valores pré-definidos (options)."
+                      label={
+                        <Space>
+                          Auto-Cadastro
+                          <Tooltip
+                            title={
+                              <div style={{ maxWidth: 350 }}>
+                                <div style={{ fontWeight: 'bold', marginBottom: 8 }}>ℹ️ O que é Auto-Cadastro?</div>
+                                <div style={{ marginBottom: 8 }}>
+                                  Quando <strong>HABILITADO</strong>:
+                                  <ul style={{ paddingLeft: 20, marginTop: 4 }}>
+                                    <li>Campo aparece na página <strong>Reference Values</strong></li>
+                                    <li>Novos valores são <strong>cadastrados automaticamente</strong> ao salvar formulários</li>
+                                    <li>Usuário pode gerenciar valores existentes (editar, deletar, renomear)</li>
+                                    <li>Ideal para campos dinâmicos (ex: empresa, cidade, provedor)</li>
+                                  </ul>
+                                </div>
+                                <div>
+                                  Quando <strong>DESABILITADO</strong>:
+                                  <ul style={{ paddingLeft: 20, marginTop: 4 }}>
+                                    <li>Campo <strong>NÃO</strong> aparece em Reference Values</li>
+                                    <li>Valores devem ser pré-definidos em <strong>"Opções"</strong></li>
+                                    <li>Usuário escolhe apenas entre valores fixos (dropdown)</li>
+                                    <li>Ideal para campos com valores controlados (ex: env: prod/dev/staging)</li>
+                                  </ul>
+                                </div>
+                              </div>
+                            }
+                            placement="right"
+                          >
+                            <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'help' }} />
+                          </Tooltip>
+                        </Space>
+                      }
+                      tooltip="Clique no ℹ️ para mais informações"
                     />
                   </Space>
                 </>

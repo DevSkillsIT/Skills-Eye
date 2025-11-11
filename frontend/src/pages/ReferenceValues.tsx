@@ -20,6 +20,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useConsulDelete } from '../hooks/useConsulDelete';
 import {
   PageContainer,
@@ -60,6 +61,7 @@ import {
   DatabaseOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useReferenceValues } from '../hooks/useReferenceValues';
 import axios from 'axios';
@@ -106,6 +108,8 @@ interface ReferenceValue {
 }
 
 const ReferenceValuesPage: React.FC = () => {
+  const navigate = useNavigate();
+
   // Estados para dados dinâmicos carregados da API
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [allFields, setAllFields] = useState<FieldInfo[]>([]);
@@ -393,6 +397,14 @@ const ReferenceValuesPage: React.FC = () => {
       title="Configuração de Valores de Referência"
       subTitle="Gerencie todos os valores usados nos autocompletes do sistema"
       extra={[
+        <Button
+          key="manage"
+          icon={<SettingOutlined />}
+          onClick={() => navigate('/metadata-fields')}
+          type="default"
+        >
+          Gerenciar Campos
+        </Button>,
         <Button
           key="reload"
           icon={<ReloadOutlined />}
