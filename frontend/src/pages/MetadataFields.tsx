@@ -1589,6 +1589,50 @@ const MetadataFieldsPage: React.FC = () => {
                         </Space>
                       }
                       tooltip="Clique no ℹ️ para mais informações"
+                      fieldProps={{
+                        onChange: (checked: boolean) => {
+                          Modal.info({
+                            title: checked ? '✅ Auto-Cadastro HABILITADO' : '⛔ Auto-Cadastro DESABILITADO',
+                            width: 500,
+                            content: (
+                              <div>
+                                <div style={{ marginBottom: 16, fontSize: 16 }}>
+                                  {checked ? (
+                                    <div>
+                                      <div style={{ marginBottom: 12 }}>
+                                        <strong>O que vai acontecer:</strong>
+                                      </div>
+                                      <ul style={{ paddingLeft: 20 }}>
+                                        <li>Campo <strong>aparecerá</strong> na página Reference Values</li>
+                                        <li>Novos valores serão <strong>cadastrados automaticamente</strong> ao salvar formulários</li>
+                                        <li>Usuários poderão gerenciar valores (editar, deletar, renomear)</li>
+                                      </ul>
+                                      <div style={{ marginTop: 12, padding: 12, background: '#e6f7ff', borderLeft: '3px solid #1890ff' }}>
+                                        <strong>💡 Ideal para:</strong> Campos dinâmicos como empresa, cidade, provedor
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <div style={{ marginBottom: 12 }}>
+                                        <strong>O que vai acontecer:</strong>
+                                      </div>
+                                      <ul style={{ paddingLeft: 20 }}>
+                                        <li>Campo <strong>NÃO aparecerá</strong> em Reference Values</li>
+                                        <li>Valores devem ser pré-definidos em <strong>"Opções"</strong></li>
+                                        <li>Usuários escolhem apenas entre valores fixos (dropdown)</li>
+                                      </ul>
+                                      <div style={{ marginTop: 12, padding: 12, background: '#fff7e6', borderLeft: '3px solid #faad14' }}>
+                                        <strong>💡 Ideal para:</strong> Campos controlados como env (prod/dev/staging)
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ),
+                            okText: 'Entendi',
+                          });
+                        },
+                      }}
                     />
                   </Space>
                 </>

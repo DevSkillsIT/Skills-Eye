@@ -22,6 +22,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useConsulDelete } from '../hooks/useConsulDelete';
+import CategoryManagementModal from '../components/CategoryManagementModal';
 import {
   PageContainer,
   ProCard,
@@ -117,6 +118,7 @@ const ReferenceValuesPage: React.FC = () => {
   const [availableFields, setAvailableFields] = useState<FieldInfo[]>([]);
   const [loadingConfig, setLoadingConfig] = useState<boolean>(true);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
 
   // Estados da página
   const [selectedField, setSelectedField] = useState<string>('');
@@ -400,10 +402,10 @@ const ReferenceValuesPage: React.FC = () => {
         <Button
           key="manage"
           icon={<SettingOutlined />}
-          onClick={() => navigate('/metadata-fields')}
+          onClick={() => setCategoryModalOpen(true)}
           type="default"
         >
-          Gerenciar Campos
+          Gerenciar Categorias
         </Button>,
         <Button
           key="reload"
@@ -673,6 +675,16 @@ const ReferenceValuesPage: React.FC = () => {
           tooltip="Metadata adicional em formato JSON. Exemplo: {&quot;estado&quot;: &quot;SP&quot;, &quot;regiao&quot;: &quot;Sudeste&quot;}"
         />
       </ModalForm>
+
+      {/* Modal de Gerenciamento de Categorias */}
+      <CategoryManagementModal
+        open={categoryModalOpen}
+        onCancel={() => {
+          setCategoryModalOpen(false);
+          // Recarregar categorias após fechar modal
+          loadConfig();
+        }}
+      />
     </PageContainer>
   );
 };

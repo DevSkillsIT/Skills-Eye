@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 from core.reference_values_manager import ReferenceValuesManager
+from core.category_manager import CategoryManager
 
 router = APIRouter()
 
@@ -84,6 +85,48 @@ class ValueResponse(BaseModel):
     usage_count: int = 0
     last_used_at: Optional[str] = None
     metadata: Dict[str, Any] = {}
+
+
+class CreateCategoryRequest(BaseModel):
+    """Request para criar categoria"""
+    key: str = Field(..., description="ID único (lowercase, sem espaços)")
+    label: str = Field(..., description="Nome exibido na aba")
+    icon: str = Field("📝", description="Emoji/ícone da aba")
+    description: str = Field("", description="Descrição da categoria")
+    order: int = Field(99, description="Ordem de exibição")
+    color: str = Field("default", description="Cor Ant Design (blue, cyan, purple, etc)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "key": "monitoring",
+                "label": "Monitoramento",
+                "icon": "📊",
+                "description": "Campos relacionados a monitoramento",
+                "order": 7,
+                "color": "green"
+            }
+        }
+
+
+class UpdateCategoryRequest(BaseModel):
+    """Request para atualizar categoria"""
+    label: Optional[str] = Field(None, description="Nome exibido")
+    icon: Optional[str] = Field(None, description="Emoji/ícone")
+    description: Optional[str] = Field(None, description="Descrição")
+    order: Optional[int] = Field(None, description="Ordem")
+    color: Optional[str] = Field(None, description="Cor")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "label": "Monitoramento Avançado",
+                "icon": "📈",
+                "description": "Campos de monitoramento e observabilidade",
+                "order": 5,
+                "color": "cyan"
+            }
+        }
 
 
 # ============================================================================
@@ -168,72 +211,171 @@ async def list_categories():
     """
     Lista todas as categorias disponíveis para organizar campos em abas.
 
-    Retorna metadados de cada categoria (label, icon, description, order).
-    Categorias vêm do campo 'field_category' em Reference Values (dinâmico).
+    DINÂMICO: Categorias são carregadas do Consul KV (skills/eye/metadata/categories.json).
+    Se KV vazio, retorna categorias padrão como fallback.
 
-    Se não houver valores cadastrados, retorna categorias padrão.
+    Categorias organizam campos em abas temáticas na página Reference Values.
     """
-    # Categorias padrão (fallback se não houver cadastradas)
-    default_categories = [
-        {
-            "key": "basic",
-            "label": "Básico",
-            "icon": "📝",
-            "description": "Campos básicos e obrigatórios",
-            "order": 1,
-        },
-        {
-            "key": "infrastructure",
-            "label": "Infraestrutura",
-            "icon": "☁️",
-            "description": "Campos relacionados à infraestrutura e cloud",
-            "order": 2,
-        },
-        {
-            "key": "device",
-            "label": "Dispositivo",
-            "icon": "💻",
-            "description": "Campos de hardware e dispositivos",
-            "order": 3,
-        },
-        {
-            "key": "location",
-            "label": "Localização",
-            "icon": "📍",
-            "description": "Campos de localização geográfica",
-            "order": 4,
-        },
-        {
-            "key": "network",
-            "label": "Rede",
-            "icon": "🌐",
-            "description": "Campos de configuração de rede",
-            "order": 5,
-        },
-        {
-            "key": "security",
-            "label": "Segurança",
-            "icon": "🔒",
-            "description": "Campos relacionados à segurança",
-            "order": 6,
-        },
-        {
-            "key": "extra",
-            "label": "Extras",
-            "icon": "➕",
-            "description": "Campos adicionais e opcionais",
-            "order": 99,
-        },
-    ]
-
-    # TODO FUTURO: Carregar categorias dinâmicas de reference_values/field_category
-    # Por enquanto, retorna categorias padrão
-    # Quando usuário cadastrar categorias em field_category, esse endpoint buscará de lá
+    manager = CategoryManager()
+    categories = await manager.get_all_categories()
 
     return {
         "success": True,
-        "total": len(default_categories),
-        "categories": default_categories
+        "total": len(categories),
+        "categories": categories
+    }
+
+
+@router.post("/categories", include_in_schema=True)
+async def create_category(
+    request: CreateCategoryRequest,
+    user: str = Query("system", description="Usuário criando categoria")
+):
+    """
+    Cria nova categoria.
+
+    VALIDAÇÕES:
+    - Key único (não pode duplicar)
+    - Key deve ser lowercase, sem espaços
+    - Label obrigatório
+
+    Example:
+        POST /api/v1/reference-values/categories
+        {
+            "key": "monitoring",
+            "label": "Monitoramento",
+            "icon": "📊",
+            "description": "Campos de monitoramento",
+            "order": 7,
+            "color": "green"
+        }
+    """
+    manager = CategoryManager()
+
+    success, message = await manager.create_category(
+        key=request.key,
+        label=request.label,
+        icon=request.icon,
+        description=request.description,
+        order=request.order,
+        color=request.color,
+        user=user
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@router.post("/categories/reset", include_in_schema=True)
+async def reset_categories_to_defaults(
+    user: str = Query("system", description="Usuário executando reset")
+):
+    """
+    Restaura categorias padrão (apaga customizações).
+
+    CUIDADO: Esta operação remove TODAS as categorias customizadas!
+    Útil para resetar após testes ou quando categorias ficarem inconsistentes.
+    """
+    manager = CategoryManager()
+
+    success, message = await manager.reset_to_defaults(user=user)
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@router.put("/categories/{key}", include_in_schema=True)
+async def update_category(
+    key: str,
+    request: UpdateCategoryRequest,
+    user: str = Query("system", description="Usuário atualizando")
+):
+    """
+    Atualiza categoria existente.
+
+    IMPORTANTE: Não permite alterar 'key' (ID da categoria).
+    Para renomear key, delete a categoria antiga e crie uma nova.
+
+    Example:
+        PUT /api/v1/reference-values/categories/monitoring
+        {
+            "label": "Monitoramento Avançado",
+            "icon": "📈",
+            "order": 5
+        }
+    """
+    manager = CategoryManager()
+
+    # Montar dict com apenas campos não-None
+    updates = {}
+    if request.label is not None:
+        updates['label'] = request.label
+    if request.icon is not None:
+        updates['icon'] = request.icon
+    if request.description is not None:
+        updates['description'] = request.description
+    if request.order is not None:
+        updates['order'] = request.order
+    if request.color is not None:
+        updates['color'] = request.color
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
+
+    success, message = await manager.update_category(
+        key=key,
+        updates=updates,
+        user=user
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {
+        "success": True,
+        "message": message
+    }
+
+
+@router.delete("/categories/{key}", include_in_schema=True)
+async def delete_category(
+    key: str,
+    user: str = Query("system", description="Usuário deletando"),
+    force: bool = Query(False, description="Forçar deleção mesmo se em uso")
+):
+    """
+    Deleta categoria.
+
+    PROTEÇÃO: Bloqueia deleção se categoria tem campos associados.
+    Use force=true para forçar deleção.
+
+    Example:
+        DELETE /api/v1/reference-values/categories/monitoring?force=false
+    """
+    manager = CategoryManager()
+
+    success, message = await manager.delete_category(
+        key=key,
+        user=user,
+        force=force
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {
+        "success": True,
+        "message": message
     }
 
 
