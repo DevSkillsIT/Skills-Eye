@@ -39,6 +39,7 @@ import {
   Tooltip,
   Popconfirm,
   message,
+  Modal,
   Statistic,
   Row,
   Col,
@@ -226,6 +227,38 @@ const ReferenceValuesPage: React.FC = () => {
   useEffect(() => {
     loadConfig();
   }, []); // Executa apenas uma vez ao montar
+
+  // Verificar se não há campos disponíveis e mostrar modal explicativo
+  useEffect(() => {
+    if (!loadingConfig && !configError && availableFields.length === 0) {
+      Modal.warning({
+        title: '⚠️ Nenhum Campo Disponível para Reference Values',
+        width: 600,
+        content: (
+          <div>
+            <p>Não há campos habilitados para auto-cadastro de valores de referência.</p>
+
+            <p style={{ marginTop: 16 }}><strong>O que fazer?</strong></p>
+            <ol>
+              <li>Acesse a página <strong>Metadata Fields</strong></li>
+              <li>Escolha os campos que deseja gerenciar valores</li>
+              <li>Clique em <strong>Editar</strong> no campo</li>
+              <li>Ative o toggle <strong>Auto-Cadastro</strong></li>
+              <li>Salve e retorne para esta página</li>
+            </ol>
+
+            <p style={{ marginTop: 16, color: '#faad14' }}>
+              💡 <strong>Dica:</strong> Campos como "company", "cidade", "fabricante" são bons candidatos!
+            </p>
+          </div>
+        ),
+        okText: 'Ir para Metadata Fields',
+        onOk: () => {
+          navigate('/metadata-fields');
+        },
+      });
+    }
+  }, [loadingConfig, configError, availableFields, navigate]);
 
   // Campo selecionado info (agora dinâmico)
   const selectedFieldInfo = availableFields.find((f) => f.name === selectedField);
