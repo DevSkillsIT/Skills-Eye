@@ -6,7 +6,8 @@
  */
 import React, { useRef, useState } from 'react';
 import { Modal, message, Popconfirm, Tag, Space, Input, InputNumber, Select, Tooltip } from 'antd';
-import { ProTable, ActionType, ProColumns, ModalForm, ProFormText, ProFormDigit, ProFormTextArea, ProForm } from '@ant-design/pro-components';
+import { ProTable, ActionType, ModalForm, ProFormText, ProFormDigit, ProFormTextArea, ProForm } from '@ant-design/pro-components';
+import type { ProColumns } from '@ant-design/pro-components';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UndoOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { categoryAPI, CategoryInfo } from '../services/api';
 
