@@ -610,6 +610,32 @@ async def list_servers():
             else:
                 display_name = hostname
 
+            # BUSCAR EXTERNAL LABELS DO KV (salvos em skills/eye/metadata/fields -> extraction_status -> server_status)
+            # External labels são extraídos do prometheus.yml (global.external_labels) e salvos junto com os campos
+            external_labels = {}
+            try:
+                from core.kv_manager import KVManager
+                kv = KVManager()
+
+                # Buscar dados consolidados que incluem server_status com external_labels
+                metadata_fields_data = await kv.get_json('skills/eye/metadata/fields')
+
+                if metadata_fields_data:
+                    # Extrair server_status que contém external_labels de cada servidor
+                    extraction_status = metadata_fields_data.get('extraction_status', {})
+                    server_status_list = extraction_status.get('server_status', [])
+
+                    # Procurar o servidor correspondente pelo hostname
+                    for server_info in server_status_list:
+                        if server_info.get('hostname') == hostname:
+                            external_labels = server_info.get('external_labels', {})
+                            logger.debug(f"External labels para {hostname} encontrados no KV: {len(external_labels)} labels")
+                            break
+                else:
+                    logger.debug(f"KV skills/eye/metadata/fields não encontrado - external_labels não disponíveis")
+            except Exception as ex_label_error:
+                logger.debug(f"Não foi possível buscar external labels para {hostname}: {ex_label_error}")
+
             servers.append({
                 "id": f"{hostname}:{port}",
                 "hostname": hostname,
@@ -617,7 +643,8 @@ async def list_servers():
                 "username": username,
                 "type": server_type,
                 "consul_node_name": consul_node_name,
-                "display_name": display_name
+                "display_name": display_name,
+                "external_labels": external_labels  # ← ADICIONADO!
             })
 
         if not servers:

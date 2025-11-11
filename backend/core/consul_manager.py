@@ -156,10 +156,21 @@ class ConsulManager:
             instances: List[Dict] = []
 
             for entry in data:
+                node = entry.get("Node", {})
                 service = entry.get("Service", {})
                 checks = entry.get("Checks", [])
 
                 instance_meta = {
+                    # Campos UpperCase para compatibilidade com convert_to_table_items
+                    "ID": service.get("ID"),
+                    "Service": service.get("Service"),
+                    "Node": node.get("Node"),
+                    "Address": node.get("Address"),  # Node address
+                    "ServiceAddress": service.get("Address"),  # Service address
+                    "Port": service.get("Port"),
+                    "Tags": service.get("Tags") or [],
+                    "Meta": service.get("Meta") or {},
+                    # Campos adicionais (lowercase mantidos para compatibilidade)
                     "id": service.get("ID"),
                     "name": service.get("Service"),
                     "tags": service.get("Tags") or [],

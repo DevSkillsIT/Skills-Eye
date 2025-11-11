@@ -212,6 +212,10 @@ export function useTableFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
@@ -236,6 +240,10 @@ export function useFormFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_form === true)
@@ -260,6 +268,10 @@ export function useFilterFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_filter === true)

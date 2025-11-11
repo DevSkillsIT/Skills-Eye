@@ -826,10 +826,20 @@ class MultiConfigManager:
 
                     # Parse YAML e extrair campos
                     yaml_service = YamlConfigService()
+                    host_external_labels = {}  # Guardar external_labels encontrados
+
                     for filename, content in all_files.items():
                         try:
                             from io import StringIO
                             config = yaml_service.yaml.load(StringIO(content))
+
+                            # Extrair external_labels do prometheus.yml (seção global)
+                            if 'global' in config and 'prometheus.yml' in filename.lower():
+                                global_section = config.get('global', {})
+                                external_labels = global_section.get('external_labels', {})
+                                if external_labels:
+                                    host_external_labels = external_labels
+                                    logger.info(f"[P2] External labels extraídos de {host.hostname}: {len(external_labels)} labels")
 
                             # Extrair jobs
                             if 'scrape_configs' in config:
@@ -852,6 +862,7 @@ class MultiConfigManager:
                         'fields_count': len(local_fields_map),
                         'fields_map': local_fields_map,
                         'duration_ms': duration_ms,
+                        'external_labels': host_external_labels,  # ADICIONADO!
                     })
 
                     logger.info(f"[P2] ✓ {host.hostname}: {len(all_files)} arquivos, {len(local_fields_map)} campos em {duration_ms}ms")
@@ -877,6 +888,8 @@ class MultiConfigManager:
                     'fields_count': r['fields_count'],
                     'error': r.get('error'),
                     'duration_ms': r['duration_ms'],
+                    'port': r.get('port', 22),
+                    'external_labels': r.get('external_labels', {}),  # ADICIONADO!
                 }
                 for r in server_results
             ]
