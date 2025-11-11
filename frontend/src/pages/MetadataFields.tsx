@@ -50,8 +50,8 @@ import {
   Collapse,
   Checkbox,
   Popover,
-  Form,
 } from 'antd';
+import type { CategoryInfo } from '../services/api';
 
 const { Text, Paragraph } = Typography;
 import {
@@ -75,7 +75,6 @@ import axios from 'axios';
 import { metadataFieldsAPI, consulAPI } from '../services/api';
 // metadataDynamicAPI removido - campos vêm 100% do Prometheus agora
 import type { PreviewFieldChangeResponse } from '../services/api';
-import ReferenceValueInput from '../components/ReferenceValueInput';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
@@ -189,6 +188,7 @@ interface MetadataField {
   category: string;
   editable: boolean;
   validation_regex?: string;
+  available_for_registration?: boolean;  // ← Auto-cadastro em Reference Values
   sync_status?: 'synced' | 'outdated' | 'missing' | 'error';  // ← FASE 1: Status de sincronização
   sync_message?: string;  // ← FASE 1: Mensagem do status
   prometheus_target_label?: string;  // ← FASE 1: Label usado no Prometheus
@@ -215,6 +215,10 @@ const MetadataFieldsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('meta-fields');  // Aba ativa
   const [externalLabels, setExternalLabels] = useState<Record<string, string>>({});  // External labels do servidor
   const [loadingExternalLabels, setLoadingExternalLabels] = useState(false);
+
+  // Estado para categorias dinâmicas (carregadas da API)
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
 
   // Hook para DELETE de campos metadata - REMOVIDO (página agora é SOMENTE LEITURA)
   // const { deleteResource: deleteFieldResource } = useConsulDelete({
@@ -359,6 +363,26 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
+  const fetchCategories = async () => {
+    setLoadingCategories(true);
+    try {
+      const response = await axios.get(`${API_URL}/reference-values/categories`, {
+        timeout: 10000,
+      });
+      if (response.data.success && response.data.categories) {
+        setCategories(response.data.categories);
+        console.log(`[METADATA-FIELDS] ✅ ${response.data.categories.length} categorias carregadas`);
+      }
+    } catch (error: any) {
+      console.error('[METADATA-FIELDS] Erro ao carregar categorias:', error);
+      message.error('Erro ao carregar categorias: ' + (error.response?.data?.detail || error.message));
+      // Fallback vazio (permitir digitar manualmente)
+      setCategories([]);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
   const fetchSyncStatus = async (serverId: string) => {
     if (!serverId) return;
 
@@ -457,7 +481,7 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
-  // Carregamento inicial: servidores + campos + sync status (UMA VEZ APENAS)
+  // Carregamento inicial: servidores + campos + categorias + sync status (UMA VEZ APENAS)
   useEffect(() => {
     const initializeData = async () => {
       // PASSO 1: Carregar servidores
@@ -466,6 +490,9 @@ const MetadataFieldsPage: React.FC = () => {
       // PASSO 2: Carregar campos (UMA VEZ - não depende do servidor selecionado)
       // fetchFields() busca de todos os servidores e carrega configs do KV
       await fetchFields();
+
+      // PASSO 2.5: Carregar categorias (para o dropdown de categoria no edit modal)
+      await fetchCategories();
 
       // PASSO 3: Após carregar servidores e campos, carregar external_labels e sync status do servidor selecionado
       // IMPORTANTE: selectedServer já foi setado por fetchServers() no passo 1
@@ -542,26 +569,24 @@ const MetadataFieldsPage: React.FC = () => {
     if (!editingField) return;
 
     try {
-      // PASSO 1: Auto-cadastrar categoria (retroalimentação)
-      if (values.category) {
-        try {
-          await axios.post(`${API_URL}/reference-values/ensure`, {
-            field_name: 'field_category',
-            value: values.category
-          });
-        } catch (err) {
-          console.warn('Erro ao auto-cadastrar categoria:', err);
-          // Não bloqueia edição do campo se falhar
-        }
-      }
+      // NOTA: Categorias são gerenciadas via modal "Gerenciar Categorias"
+      // Não fazemos auto-cadastro aqui. Se usuário digitar categoria nova,
+      // ela será salva no campo mas não criará categoria completa (com icon, order, etc).
+      // Para criar categoria completa, usar Reference Values > Gerenciar Categorias.
 
-      // PASSO 2: Salvar CONFIGURAÇÕES DO CAMPO no JSON principal metadata/fields
+      // Salvar CONFIGURAÇÕES DO CAMPO no JSON principal metadata/fields
       // IMPORTANTE: Salva apenas configurações de UI (display_name, category, show_in_*, etc)
       // NÃO edita o prometheus.yml (para isso, use página PrometheusConfig)
+
+      // CORREÇÃO: mode="tags" retorna array, mas category deve ser string
+      const categoryValue = Array.isArray(values.category)
+        ? values.category[0] // Pegar apenas primeiro valor
+        : values.category;
+
       const configToSave = {
         display_name: values.display_name,
         description: values.description,
-        category: values.category,
+        category: categoryValue,
         field_type: values.field_type,
         order: values.order,
         required: values.required,
@@ -1480,18 +1505,25 @@ const MetadataFieldsPage: React.FC = () => {
                       />
                     </Col>
                     <Col span={12}>
-                      <Form.Item
+                      <ProFormSelect
                         name="category"
                         label="Categoria"
                         rules={[{ required: true, message: 'Informe a categoria' }]}
-                        tooltip="Digite uma categoria existente ou crie uma nova. Valores novos são cadastrados automaticamente via retroalimentação."
-                      >
-                        <ReferenceValueInput
-                          fieldName="field_category"
-                          placeholder="infrastructure, basic, device..."
-                          required
-                        />
-                      </Form.Item>
+                        placeholder="Selecione ou digite nova categoria..."
+                        tooltip="Selecione uma categoria existente ou digite uma nova. Categorias são gerenciadas em Reference Values > Gerenciar Categorias."
+                        fieldProps={{
+                          loading: loadingCategories,
+                          showSearch: true,
+                          mode: 'tags', // Permite criar nova categoria digitando
+                          maxCount: 1, // Apenas uma categoria por campo
+                          filterOption: (input, option) =>
+                            (option?.label ?? '').toLowerCase().includes(input.toLowerCase()),
+                        }}
+                        options={categories.map((cat) => ({
+                          label: `${cat.icon || ''} ${cat.label}`.trim(),
+                          value: cat.key,
+                        }))}
+                      />
                     </Col>
                   </Row>
 
