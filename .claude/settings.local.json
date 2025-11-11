@@ -130,7 +130,11 @@
       "Bash(wsl git config:*)",
       "Bash(wsl ls:*)",
       "Bash(wsl bash:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(find:*)",
+      "Bash(python3:*)",
+      "Bash(source venv/bin/activate)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []

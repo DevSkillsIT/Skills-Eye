@@ -98,8 +98,8 @@ const PageVisibilityPopover: React.FC<PageVisibilityPopoverProps> = ({ record, o
       if (fieldToUpdate === 'exporters') payload.show_in_exporters = newValue;
       if (fieldToUpdate === 'blackbox') payload.show_in_blackbox = newValue;
 
-      // Salvar configuração no Consul KV
-      await axios.put(`${API_URL}/kv/metadata/field-config/${record.name}`, payload);
+      // Salvar no JSON principal metadata/fields (fonte única da verdade)
+      await axios.patch(`${API_URL}/metadata-fields/${record.name}`, payload);
 
       // Atualizar estado local via callback do pai
       onUpdate(record.name, payload);
@@ -555,7 +555,7 @@ const MetadataFieldsPage: React.FC = () => {
         }
       }
 
-      // PASSO 2: Salvar CONFIGURAÇÕES DO CAMPO no Consul KV
+      // PASSO 2: Salvar CONFIGURAÇÕES DO CAMPO no JSON principal metadata/fields
       // IMPORTANTE: Salva apenas configurações de UI (display_name, category, show_in_*, etc)
       // NÃO edita o prometheus.yml (para isso, use página PrometheusConfig)
       const configToSave = {
@@ -575,7 +575,7 @@ const MetadataFieldsPage: React.FC = () => {
         show_in_blackbox: values.show_in_blackbox ?? true,
       };
 
-      await axios.put(`${API_URL}/kv/metadata/field-config/${editingField.name}`, configToSave);
+      await axios.patch(`${API_URL}/metadata-fields/${editingField.name}`, configToSave);
 
       // PASSO 3: Atualizar estado local DIRETAMENTE (não recarrega do Prometheus)
       setFields(prevFields =>

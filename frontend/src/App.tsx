@@ -52,79 +52,100 @@ const App: React.FC = () => {
       icon: <DashboardOutlined />,
     },
     {
-      path: '/services',
-      name: 'Servicos',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/service-groups',
-      name: 'Grupos de Servicos',
-      icon: <AppstoreOutlined />,
-    },
-    {
-      path: '/hosts',
-      name: 'Hosts',
-      icon: <HddOutlined />,
-    },
-    {
-      path: '/exporters',
-      name: 'Exporters',
-      icon: <CloudServerOutlined />,
-    },
-    {
-      path: '/blackbox',
-      name: 'Alvos Blackbox',
+      path: '/monitoramento',
+      name: 'Monitoramento',
       icon: <RadarChartOutlined />,
+      children: [
+        {
+          path: '/services',
+          name: 'Services',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/service-groups',
+          name: 'Grupos de Serviços',
+          icon: <AppstoreOutlined />,
+        },
+        {
+          path: '/hosts',
+          name: 'Hosts',
+          icon: <HddOutlined />,
+        },
+        {
+          path: '/exporters',
+          name: 'Exporters',
+          icon: <CloudServerOutlined />,
+        },
+        {
+          path: '/blackbox',
+          name: 'Alvos Blackbox',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/blackbox-groups',
+          name: 'Grupos Blackbox',
+          icon: <AppstoreAddOutlined />,
+        },
+        {
+          path: '/presets',
+          name: 'Presets de Serviços',
+          icon: <AppstoreOutlined />,
+        },
+      ],
     },
     {
-      path: '/blackbox-groups',
-      name: 'Grupos Blackbox',
-      icon: <AppstoreAddOutlined />,
-    },
-    {
-      path: '/presets',
-      name: 'Presets de Servicos',
-      icon: <AppstoreOutlined />,
-    },
-    {
-      path: '/prometheus-config',
-      name: 'Config Prometheus',
-      icon: <SettingOutlined />,
-    },
-    {
-      path: '/metadata-fields',
-      name: 'Campos Metadata',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/kv-browser',
-      name: 'Armazenamento KV',
-      icon: <FolderOutlined />,
-    },
-    {
-      path: '/audit-log',
-      name: 'Log de Auditoria',
-      icon: <HistoryOutlined />,
-    },
-    {
-      path: '/installer',
-      name: 'Instalar Exporters',
-      icon: <ToolOutlined />,
-    },
-    {
-      path: '/monitoring-types',
-      name: 'Tipos de Monitoramento',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/reference-values',
-      name: 'Valores de Referência',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/settings',
+      path: '/configuracoes',
       name: 'Configurações',
       icon: <SettingOutlined />,
+      children: [
+        {
+          path: '/metadata-fields',
+          name: 'Campos Metadata',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/prometheus-config',
+          name: 'Prometheus Config',
+          icon: <SettingOutlined />,
+        },
+        {
+          path: '/monitoring-types',
+          name: 'Tipos de Monitoramento',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/reference-values',
+          name: 'Valores de Referência',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/settings',
+          name: 'Sites e External Labels',
+          icon: <CloudServerOutlined />,
+        },
+      ],
+    },
+    {
+      path: '/ferramentas',
+      name: 'Ferramentas',
+      icon: <ToolOutlined />,
+      children: [
+        {
+          path: '/kv-browser',
+          name: 'Armazenamento KV',
+          icon: <FolderOutlined />,
+        },
+        {
+          path: '/audit-log',
+          name: 'Log de Auditoria',
+          icon: <HistoryOutlined />,
+        },
+        {
+          path: '/installer',
+          name: 'Instalar Exporters',
+          icon: <ToolOutlined />,
+        },
+      ],
     },
   ];
 

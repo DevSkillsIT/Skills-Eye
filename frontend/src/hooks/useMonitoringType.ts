@@ -1,7 +1,7 @@
 /**
- * Hook para carregar monitoring types configuration-driven
+ * Hook para carregar monitoring types extraídos DINAMICAMENTE do Prometheus
  *
- * Busca schemas JSON do backend e retorna com cache
+ * Extrai tipos diretamente dos scrape_configs do prometheus.yml (100% dinâmico!)
  */
 
 import { useState, useEffect } from 'react';
@@ -70,14 +70,14 @@ export function useMonitoringType(
       setLoading(true);
       setError(null);
 
-      let endpoint = '/api/v1/monitoring-types';
+      let endpoint = '/api/v1/monitoring-types-dynamic/from-prometheus';
 
       if (category && typeId) {
         // Buscar tipo específico
-        endpoint = `/api/v1/monitoring-types/${category}/${typeId}`;
+        endpoint = `/api/v1/monitoring-types-dynamic/from-prometheus/${category}/${typeId}`;
       } else if (category) {
         // Buscar categoria completa
-        endpoint = `/api/v1/monitoring-types/${category}`;
+        endpoint = `/api/v1/monitoring-types-dynamic/from-prometheus/${category}`;
       }
       // Senão, busca todas as categorias (endpoint padrão)
 
@@ -134,7 +134,7 @@ export function useAllMonitoringTypes() {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get<MonitoringCategoriesResponse>('/api/v1/monitoring-types');
+      const response = await axios.get<MonitoringCategoriesResponse>('/api/v1/monitoring-types-dynamic/from-prometheus');
 
       if (response.data.success) {
         setCategories(response.data.categories);

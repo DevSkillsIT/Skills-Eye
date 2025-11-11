@@ -157,7 +157,10 @@ export interface UseReferenceValuesReturn {
   /** Deleta valor (bloqueia se em uso) */
   deleteValue: (value: string, force?: boolean) => Promise<boolean>;
 
-  /** Recarrega lista de valores */
+  /** Renomeia valor (preserva referências) */
+  renameValue: (oldValue: string, newValue: string) => Promise<boolean>;
+
+  /** Recarrega lista de valores (limpa cache) */
   refreshValues: () => Promise<void>;
 }
 
@@ -403,6 +406,53 @@ export function useReferenceValues(
   );
 
   /**
+   * Renomeia valor existente (PRESERVA REFERÊNCIAS)
+   */
+  const renameValue = useCallback(
+    async (oldValue: string, newValue: string): Promise<boolean> => {
+      if (!oldValue || !newValue || !fieldName) {
+        return false;
+      }
+
+      try {
+        await axios.patch(
+          `${API_URL}/reference-values/${fieldName}/${encodeURIComponent(oldValue)}/rename`,
+          null,
+          {
+            params: { new_value: newValue },
+            timeout: 10000
+          }
+        );
+
+        // Invalidar cache e recarregar lista
+        delete globalCache[fieldName];
+        await loadValues();
+        return true;
+      } catch (err: any) {
+        console.error(`Erro ao renomear valor ${oldValue} → ${newValue} em ${fieldName}:`, err);
+        throw new Error(err.response?.data?.detail || 'Erro ao renomear valor');
+      }
+    },
+    [fieldName, loadValues]
+  );
+
+  /**
+   * Recarrega valores FORÇANDO limpeza de cache
+   */
+  const refreshValues = useCallback(async () => {
+    console.log(`[RefreshValues] 🔄 Botão RECARREGAR clicado para campo: ${fieldName}`);
+    console.log(`[RefreshValues] 🗑️  Limpando cache do campo: ${fieldName}`);
+
+    // CRÍTICO: Limpar cache ANTES de carregar
+    delete globalCache[fieldName];
+
+    console.log(`[RefreshValues] 📡 Fazendo requisição HTTP para buscar valores atualizados...`);
+    await loadValues();
+
+    console.log(`[RefreshValues] ✅ Valores recarregados com sucesso!`);
+  }, [fieldName, loadValues]);
+
+  /**
    * Auto-load ao montar componente
    */
   useEffect(() => {
@@ -419,7 +469,8 @@ export function useReferenceValues(
     ensureValue,
     createValue,
     deleteValue,
-    refreshValues: loadValues
+    renameValue,
+    refreshValues
   };
 }
 

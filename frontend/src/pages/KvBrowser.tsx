@@ -46,6 +46,8 @@ interface KVEntry {
   type: 'json' | 'text';
   raw: any;
   size: number;
+  createIndex?: number;
+  modifyIndex?: number;
 }
 
 const DEFAULT_PREFIX = 'skills/eye/';
@@ -89,9 +91,13 @@ const KvBrowser: React.FC = () => {
         // IMPORTANTE: Remove validação de prefixo para permitir navegação livre
         const response = await consulAPI.getKVTree(currentPrefix || '');
         const data = response.data as KVTreeResponse;
-        const rows: KVEntry[] = Object.entries(data.data || {}).map(([key, value]) => {
+        const rows: KVEntry[] = Object.entries(data.data || {}).map(([key, item]: [string, any]) => {
           let type: KVEntry['type'] = 'text';
           let preview = '';
+
+          // Backend agora retorna: {value: ..., metadata: {CreateIndex, ModifyIndex, ...}}
+          const value = item.value !== undefined ? item.value : item; // Fallback para formato antigo
+          const metadata = item.metadata || {};
           const rawValue = value;
 
           // PASSO 1.1: Detectar tipo do valor
@@ -113,6 +119,8 @@ const KvBrowser: React.FC = () => {
             type,
             raw: rawValue,
             size: new Blob([JSON.stringify(value)]).size, // Tamanho aproximado em bytes
+            createIndex: metadata.CreateIndex,
+            modifyIndex: metadata.ModifyIndex,
           };
         });
         setEntries(rows);
@@ -323,6 +331,35 @@ const KvBrowser: React.FC = () => {
         },
       },
       {
+        title: 'Versão',
+        dataIndex: 'modifyIndex',
+        width: 140,
+        sorter: (a, b) => (a.modifyIndex || 0) - (b.modifyIndex || 0),
+        render: (_: unknown, record: KVEntry) => {
+          if (!record.modifyIndex) return '-';
+          const isModified = record.modifyIndex !== record.createIndex;
+          const edits = record.modifyIndex - (record.createIndex || 0);
+          return (
+            <Tooltip title={
+              isModified
+                ? `Modificado ${edits} vez(es) - Versão ${record.modifyIndex}`
+                : `Original - Versão ${record.createIndex}`
+            }>
+              <Space size={4} direction="vertical" style={{ width: '100%' }}>
+                <Tag color={isModified ? 'orange' : 'green'} style={{ margin: 0, width: 'fit-content' }}>
+                  v{record.modifyIndex}
+                </Tag>
+                {isModified && edits > 0 && (
+                  <Tag color="blue" style={{ fontSize: '10px', margin: 0, width: 'fit-content' }}>
+                    {edits} ediç{edits === 1 ? 'ão' : 'ões'}
+                  </Tag>
+                )}
+              </Space>
+            </Tooltip>
+          );
+        },
+      },
+      {
         title: 'Pré-visualização',
         dataIndex: 'preview',
         ellipsis: true,
@@ -406,7 +443,14 @@ const KvBrowser: React.FC = () => {
         >
           Exportar JSON
         </Button>,
-        <Button key="refresh" icon={<ReloadOutlined />} onClick={() => fetchTree(prefix)}>
+        <Button
+          key="refresh"
+          icon={<ReloadOutlined />}
+          onClick={() => {
+            console.log(`[KvBrowser] 🔄 Botão ATUALIZAR clicado - Prefixo atual: "${prefix}"`);
+            fetchTree(prefix);
+          }}
+        >
           Atualizar
         </Button>,
         <Button key="create" type="primary" icon={<PlusOutlined />} onClick={() => openEditor()}>
@@ -500,11 +544,21 @@ const KvBrowser: React.FC = () => {
         loading={loading}
         search={false}
         pagination={{
-          pageSize: 50, // CORREÇÃO: Padrão 50 itens por página
+          defaultPageSize: 20,
+          defaultCurrent: 1,
+          pageSizeOptions: [10, 20, 50, 100, 200],
           showSizeChanger: true,
           showQuickJumper: true,
-          showTotal: (total) => `Total: ${total} chaves`,
-          pageSizeOptions: ['10', '20', '50', '100', '200'],
+          showTotal: (total, range) => {
+            console.log(`[KvBrowser] 📊 Paginação renderizada: ${range[0]}-${range[1]} de ${total} itens`);
+            return `${range[0]}-${range[1]} de ${total} chaves`;
+          },
+          onChange: (page, pageSize) => {
+            console.log(`[KvBrowser] 📄 Página mudou para: ${page} (tamanho: ${pageSize})`);
+          },
+          onShowSizeChange: (current, size) => {
+            console.log(`[KvBrowser] 📏 Tamanho alterado para: ${size} itens/página`);
+          },
         }}
         columns={columns}
         dataSource={filteredEntries}

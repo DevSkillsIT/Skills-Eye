@@ -135,6 +135,7 @@ const ReferenceValuesPage: React.FC = () => {
     ensureValue,
     createValue,
     deleteValue,
+    renameValue,
     refreshValues,
   } = useReferenceValues({
     fieldName: selectedField,
@@ -295,7 +296,10 @@ const ReferenceValuesPage: React.FC = () => {
         <Button
           key="reload"
           icon={<ReloadOutlined />}
-          onClick={() => refreshValues()}
+          onClick={() => {
+            console.log(`[ReferenceValues] 🔄 Botão RECARREGAR clicado - Campo selecionado: ${selectedField}`);
+            refreshValues();
+          }}
           loading={loading}
         >
           Recarregar
@@ -468,6 +472,67 @@ const ReferenceValuesPage: React.FC = () => {
         width={600}
         modalProps={{
           destroyOnHidden: true,
+        }}
+      >
+        <ProFormText
+          name="value"
+          label="Valor"
+          placeholder={`Digite o novo valor para ${selectedFieldInfo?.label}`}
+          rules={[
+            { required: true, message: 'Valor é obrigatório' },
+            { min: 1, message: 'Valor muito curto' },
+            { max: 200, message: 'Valor muito longo (máximo 200 caracteres)' },
+          ]}
+          tooltip="O valor será automaticamente normalizado (primeira letra maiúscula)"
+          fieldProps={{
+            prefix: selectedFieldInfo?.icon,
+            maxLength: 200,
+          }}
+        />
+        <ProFormTextArea
+          name="metadata"
+          label="Metadata (JSON - Opcional)"
+          placeholder='{"key": "value"}'
+          fieldProps={{
+            rows: 4,
+            placeholder: 'Adicione metadata adicional em formato JSON (opcional)',
+          }}
+          tooltip="Metadata adicional em formato JSON. Exemplo: {&quot;estado&quot;: &quot;SP&quot;, &quot;regiao&quot;: &quot;Sudeste&quot;}"
+        />
+      </ModalForm>
+
+      {/* Modal: Editar Valor */}
+      <ModalForm
+        title={`✏️ Editar Valor - ${selectedFieldInfo?.label}`}
+        open={editModalOpen}
+        onOpenChange={(open) => {
+          setEditModalOpen(open);
+          if (!open) setEditingValue(null);
+        }}
+        onFinish={async (formData: { value: string; metadata?: string }) => {
+          try {
+            if (editingValue) {
+              // CRÍTICO: Usa renameValue para PRESERVAR REFERÊNCIAS
+              await renameValue(editingValue.value, formData.value);
+              message.success(`Valor renomeado de "${editingValue.value}" para "${formData.value}" (referências preservadas)`);
+              setEditModalOpen(false);
+              setEditingValue(null);
+              await refreshValues();
+            }
+            return true;
+          } catch (err: any) {
+            const errorMsg = err.message || 'Erro ao renomear valor';
+            message.error(errorMsg);
+            return false;
+          }
+        }}
+        width={600}
+        modalProps={{
+          destroyOnHidden: true,
+        }}
+        initialValues={{
+          value: editingValue?.value || '',
+          metadata: editingValue?.metadata ? JSON.stringify(editingValue.metadata, null, 2) : '',
         }}
       >
         <ProFormText

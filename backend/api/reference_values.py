@@ -276,6 +276,44 @@ async def update_value(
     }
 
 
+@router.patch("/{field_name}/{old_value}/rename", include_in_schema=True)
+async def rename_value(
+    field_name: str,
+    old_value: str,
+    new_value: str = Query(..., description="Novo valor"),
+    user: str = Query("system", description="Usuário renomeando")
+):
+    """
+    Renomeia um valor existente (PRESERVA REFERÊNCIAS).
+
+    IMPORTANTE:
+    - Atualiza apenas o campo 'value' no JSON
+    - Mantém metadata, created_at, usage_count
+    - NÃO quebra referências existentes
+
+    Exemplo:
+    - old_value: "Paraguacu"
+    - new_value: "Paraguaçu Paulista"
+    - Resultado: Valor renomeado, todas as referências preservadas
+    """
+    manager = ReferenceValuesManager()
+
+    success, message = await manager.rename_value(
+        field_name=field_name,
+        old_value=old_value,
+        new_value=new_value,
+        user=user
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    return {
+        "success": True,
+        "message": message
+    }
+
+
 @router.delete("/{field_name}/{value}", include_in_schema=True)
 async def delete_value(
     field_name: str,

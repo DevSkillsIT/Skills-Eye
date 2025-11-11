@@ -68,6 +68,10 @@ class MetadataFieldModel(BaseModel):
     category: str = Field("extra", description="Categoria do campo")
     editable: bool = Field(True, description="Pode ser editado")
     validation_regex: Optional[str] = Field(None, description="Regex de validação")
+    # Campos de visibilidade por página (anteriormente em field-config/)
+    show_in_services: bool = Field(True, description="Mostrar na página Services")
+    show_in_exporters: bool = Field(True, description="Mostrar na página Exporters")
+    show_in_blackbox: bool = Field(True, description="Mostrar na página Blackbox")
 
 
 class CategoryModel(BaseModel):
@@ -1680,7 +1684,7 @@ async def create_field(request: AddFieldRequest):
 
 @router.put("/{field_name}")
 async def update_field(field_name: str, field_data: MetadataFieldModel):
-    """Atualiza campo existente"""
+    """Atualiza campo existente (substituição completa)"""
     config = await load_fields_config()
 
     # Buscar campo
@@ -1704,6 +1708,51 @@ async def update_field(field_name: str, field_data: MetadataFieldModel):
         "success": True,
         "message": f"Campo '{field_name}' atualizado com sucesso",
         "field": updated_field
+    }
+
+
+@router.patch("/{field_name}")
+async def partial_update_field(field_name: str, updates: Dict[str, Any] = Body(...)):
+    """
+    Atualiza parcialmente um campo existente (apenas campos enviados).
+
+    Útil para atualizar show_in_services, show_in_exporters, show_in_blackbox
+    sem precisar enviar todo o objeto MetadataFieldModel.
+
+    Example:
+        PATCH /api/v1/metadata-fields/company
+        {
+            "show_in_services": true,
+            "show_in_exporters": false
+        }
+    """
+    config = await load_fields_config()
+
+    # Buscar campo
+    field = get_field_by_name(config, field_name)
+    if not field:
+        raise HTTPException(status_code=404, detail=f"Campo '{field_name}' não encontrado")
+
+    # Atualizar apenas os campos enviados
+    for key, value in updates.items():
+        if key == 'name':
+            # Não permitir mudar o nome (usaria como chave primária)
+            raise HTTPException(status_code=400, detail="Não é permitido alterar o nome do campo")
+        field[key] = value
+
+    # Salvar (substituir campo no array)
+    for i, f in enumerate(config['fields']):
+        if f['name'] == field_name:
+            config['fields'][i] = field
+            break
+
+    # Salvar
+    await save_fields_config(config)
+
+    return {
+        "success": True,
+        "message": f"Campo '{field_name}' atualizado com sucesso",
+        "field": field
     }
 
 
