@@ -147,6 +147,7 @@ async def _prewarm_metadata_fields_cache():
                 user_customization_fields = [
                     'available_for_registration',
                     'display_name',
+                    'field_type',  # ← Preservar tipo customizado pelo usuário
                     'category',
                     'description',
                     'order',

@@ -266,26 +266,27 @@ Campos habilitados:
 ## 📝 NOTAS IMPORTANTES
 
 ### Campos Preservados (Customizações do Usuário)
-- `available_for_registration`
-- `display_name`
-- `category`
-- `description`
-- `order`
-- `required`
-- `editable`
-- `show_in_table`
-- `show_in_dashboard`
-- `show_in_form`
-- `show_in_services`
-- `show_in_exporters`
-- `show_in_blackbox`
+- `available_for_registration` (Auto-Cadastro)
+- `display_name` (Nome de Exibição)
+- `field_type` (Tipo - string, select, number) ✨ **ADICIONADO**
+- `category` (Categoria)
+- `description` (Descrição)
+- `order` (Ordem)
+- `required` (Obrigatório)
+- `editable` (Editável)
+- `show_in_table` (Visibilidade em Tabela)
+- `show_in_dashboard` (Visibilidade em Dashboard)
+- `show_in_form` (Visibilidade em Formulário)
+- `show_in_services` (Visibilidade em Services)
+- `show_in_exporters` (Visibilidade em Exporters)
+- `show_in_blackbox` (Visibilidade em Blackbox)
 
 ### Campos Técnicos (Sempre Atualizados do Prometheus)
-- `name`
-- `source_label`
-- `field_type`
-- `prometheus_target_label`
-- `metadata_source_label`
+- `name` (Nome Técnico - identificador único)
+- `source_label` (Label metadata do Consul)
+- `prometheus_target_label` (Label usado no Prometheus)
+- `metadata_source_label` (Source label do Consul)
+- `sync_status` (Status de sincronização com Prometheus)
 
 ---
 
