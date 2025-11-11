@@ -10,7 +10,7 @@ Este módulo fornece endpoints para:
 
 from fastapi import APIRouter, HTTPException, Body, Query
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, cast, Tuple
+from typing import List, Dict, Any, Optional, cast, Tuple, Union
 from pathlib import Path
 import logging
 import asyncio
@@ -65,7 +65,7 @@ class MetadataFieldModel(BaseModel):
     show_in_form: bool = Field(True, description="Mostrar em formulários")
     options: Optional[List[str]] = Field(None, description="Opções para select")
     order: int = Field(0, description="Ordem de exibição")
-    category: str = Field("extra", description="Categoria do campo")
+    category: Union[str, List[str]] = Field("extra", description="Categoria(s) do campo - aceita string única ou lista para múltiplas categorias")
     editable: bool = Field(True, description="Pode ser editado")
     validation_regex: Optional[str] = Field(None, description="Regex de validação")
     # Campos de visibilidade por página (anteriormente em field-config/)

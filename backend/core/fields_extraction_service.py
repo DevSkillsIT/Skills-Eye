@@ -10,7 +10,7 @@ Este módulo analisa os relabel_configs do Prometheus e identifica:
 Estes campos são usados para gerar formulários dinâmicos no frontend.
 """
 
-from typing import Dict, List, Set, Optional, Any
+from typing import Dict, List, Set, Optional, Any, Union
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 import logging
@@ -40,7 +40,7 @@ class MetadataField:
     show_in_blackbox: bool = True  # Se aparece na página Blackbox
     show_in_filter: bool = True  # Se aparece nos filtros
     order: int = 999  # Ordem de exibição
-    category: str = "extra"  # Categoria (infrastructure, basic, device, extra)
+    category: Union[str, List[str]] = "extra"  # Categoria(s) - aceita string única ou lista para múltiplas
     editable: bool = True  # Se pode ser editado
     enabled: bool = True  # Se está habilitado
     available_for_registration: bool = False  # Se disponível para registro (PADRÃO: DESABILITADO)

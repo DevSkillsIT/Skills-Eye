@@ -185,7 +185,7 @@ interface MetadataField {
   show_in_blackbox?: boolean;
   options?: string[];
   order: number;
-  category: string;
+  category: string | string[];  // ← Suporta uma ou múltiplas categorias
   editable: boolean;
   validation_regex?: string;
   available_for_registration?: boolean;  // ← Auto-cadastro em Reference Values
@@ -578,15 +578,12 @@ const MetadataFieldsPage: React.FC = () => {
       // IMPORTANTE: Salva apenas configurações de UI (display_name, category, show_in_*, etc)
       // NÃO edita o prometheus.yml (para isso, use página PrometheusConfig)
 
-      // CORREÇÃO: mode="tags" retorna array, mas category deve ser string
-      const categoryValue = Array.isArray(values.category)
-        ? values.category[0] // Pegar apenas primeiro valor
-        : values.category;
-
+      // SUPORTE A MÚLTIPLAS CATEGORIAS: mode="tags" retorna array
+      // Um campo pode participar de múltiplas categorias (será exibido em várias abas em Reference Values)
       const configToSave = {
         display_name: values.display_name,
         description: values.description,
-        category: categoryValue,
+        category: values.category,  // ← Agora aceita string[] (múltiplas categorias)
         field_type: values.field_type,
         order: values.order,
         required: values.required,
@@ -1508,14 +1505,13 @@ const MetadataFieldsPage: React.FC = () => {
                       <ProFormSelect
                         name="category"
                         label="Categoria"
-                        rules={[{ required: true, message: 'Informe a categoria' }]}
-                        placeholder="Selecione ou digite nova categoria..."
-                        tooltip="Selecione uma categoria existente ou digite uma nova. Categorias são gerenciadas em Reference Values > Gerenciar Categorias."
+                        rules={[{ required: true, message: 'Informe ao menos uma categoria' }]}
+                        placeholder="Selecione ou digite novas categorias..."
+                        tooltip="Selecione categorias existentes ou digite novas. Um campo pode pertencer a múltiplas categorias. Categorias são gerenciadas em Reference Values > Gerenciar Categorias."
                         fieldProps={{
                           loading: loadingCategories,
                           showSearch: true,
-                          mode: 'tags', // Permite criar nova categoria digitando
-                          maxCount: 1, // Apenas uma categoria por campo
+                          mode: 'tags', // Permite criar nova categoria digitando e selecionar múltiplas
                           filterOption: (input, option) =>
                             (option?.label ?? '').toLowerCase().includes(input.toLowerCase()),
                         }}
