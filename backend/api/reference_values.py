@@ -371,26 +371,45 @@ async def delete_value(
 @router.get("/", include_in_schema=True)
 async def list_all_fields():
     """
-    Lista todos os campos que suportam reference values.
+    Lista todos os campos que suportam reference values (DINÂMICO).
 
     Retorna lista dos campos metadata com available_for_registration: true.
+    Campos são carregados DINAMICAMENTE do Consul KV (extraídos do Prometheus via SSH).
+
+    IMPORTANTE: Este endpoint agora é 100% dinâmico!
+    - Campos vêm do Prometheus (não hardcoded)
+    - Filtra por available_for_registration=true
+    - Cache de 5 minutos (via load_fields_config)
+
+    Para adicionar/remover campos:
+    1. Adicione campo no prometheus.yml
+    2. Sistema extrai automaticamente via SSH
+    3. Edite campo em Metadata Fields → ative "Auto-Cadastro"
+    4. Campo aparece automaticamente aqui!
     """
-    # Campos suportados (extraídos do Prometheus com available_for_registration: true)
+    from api.metadata_fields_manager import load_fields_config
+
+    # Carregar campos do Consul KV (com cache de 5min)
+    config = await load_fields_config()
+    all_fields = config.get('fields', [])
+
+    # Filtrar apenas campos com available_for_registration=true
     supported_fields = [
-        {"name": "company", "display_name": "Empresa", "description": "Nome da empresa"},
-        {"name": "grupo_monitoramento", "display_name": "Grupo Monitoramento", "description": "Grupo de monitoramento (projeto)"},
-        {"name": "localizacao", "display_name": "Localização", "description": "Localização física ou lógica"},
-        {"name": "tipo", "display_name": "Tipo", "description": "Tipo do dispositivo ou serviço"},
-        {"name": "modelo", "display_name": "Modelo", "description": "Modelo do dispositivo"},
-        {"name": "cod_localidade", "display_name": "Código da Localidade", "description": "Código identificador da localidade"},
-        {"name": "tipo_dispositivo_abrev", "display_name": "Tipo Dispositivo (Abrev)", "description": "Tipo do dispositivo (abreviado)"},
-        {"name": "cidade", "display_name": "Cidade", "description": "Cidade onde está localizado"},
-        {"name": "provedor", "display_name": "Provedor", "description": "Provedor de serviços (ISP, cloud, etc)"},
-        {"name": "vendor", "display_name": "Fornecedor", "description": "Fornecedor do serviço ou infraestrutura (AWS, Azure, GCP, etc)"},
-        {"name": "fabricante", "display_name": "Fabricante", "description": "Fabricante do hardware/dispositivo (Dell, HP, Cisco, etc)"},
-        {"name": "field_category", "display_name": "Categoria de Campo", "description": "Categoria para organizar campos metadata (infrastructure, basic, device, extra, network, security, etc)"},
-        {"name": "service_tag", "display_name": "Tag de Serviço", "description": "Tags dos serviços Consul (array de strings: linux, monitoring, production, etc)"},
+        {
+            "name": field.get('name'),
+            "display_name": field.get('display_name'),
+            "description": field.get('description', ''),
+            "category": field.get('category', ''),
+            "required": field.get('required', False),
+            "editable": field.get('editable', True),
+            "field_type": field.get('field_type', 'string'),
+        }
+        for field in all_fields
+        if field.get('available_for_registration', False) is True
     ]
+
+    # Ordenar por order (mesmo padrão do metadata-fields)
+    supported_fields.sort(key=lambda f: f.get('order', 999))
 
     return {
         "success": True,

@@ -569,6 +569,7 @@ const MetadataFieldsPage: React.FC = () => {
         show_in_dashboard: values.show_in_dashboard,
         show_in_form: values.show_in_form,
         editable: values.editable,
+        available_for_registration: values.available_for_registration ?? false,  // NOVO: Auto-cadastro em Reference Values
         // show_in_* para filtros de página (Services, Exporters, Blackbox, futuras...)
         show_in_services: values.show_in_services ?? true,
         show_in_exporters: values.show_in_exporters ?? true,
@@ -1536,7 +1537,7 @@ const MetadataFieldsPage: React.FC = () => {
                     </Col>
                   </Row>
 
-                  {/* LINHA 2: Switches Obrigatório + Editável */}
+                  {/* LINHA 2: Switches Obrigatório + Editável + Auto-Cadastro */}
                   <Space size="large" style={{ width: '100%', justifyContent: 'space-between' }}>
                     <ProFormSwitch
                       name="required"
@@ -1547,6 +1548,11 @@ const MetadataFieldsPage: React.FC = () => {
                       name="editable"
                       label="Editável"
                       tooltip="Usuário pode editar o valor após criação"
+                    />
+                    <ProFormSwitch
+                      name="available_for_registration"
+                      label="Auto-Cadastro"
+                      tooltip="Permite cadastrar novos valores em Reference Values. Se desabilitado, campo terá valores pré-definidos (options)."
                     />
                   </Space>
                 </>
