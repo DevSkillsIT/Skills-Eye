@@ -152,78 +152,79 @@ const ReferenceValuesPage: React.FC = () => {
     },
   });
 
-  // Carregar configuração dinâmica de campos e categorias da API
-  useEffect(() => {
-    const loadConfiguration = async () => {
-      try {
-        setLoadingConfig(true);
-        setConfigError(null);
+  // Função para carregar configuração (pode ser chamada externamente)
+  const loadConfig = async () => {
+    try {
+      setLoadingConfig(true);
+      setConfigError(null);
 
-        // Carregar categorias e campos em paralelo
-        const [categoriesRes, fieldsRes] = await Promise.all([
-          axios.get('http://localhost:5000/api/v1/reference-values/categories'),
-          axios.get('http://localhost:5000/api/v1/reference-values/'),
-        ]);
+      // Carregar categorias e campos em paralelo
+      const [categoriesRes, fieldsRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/v1/reference-values/categories'),
+        axios.get('http://localhost:5000/api/v1/reference-values/'),
+      ]);
 
-        if (!categoriesRes.data.success || !fieldsRes.data.success) {
-          throw new Error('Erro ao carregar configuração');
-        }
-
-        const loadedCategories: CategoryInfo[] = categoriesRes.data.categories;
-        const loadedFields: FieldInfo[] = fieldsRes.data.fields;
-
-        // Ordenar categorias por order
-        loadedCategories.sort((a, b) => a.order - b.order);
-
-        // Agrupar campos por categoria (um campo pode estar em múltiplas)
-        const categoriesMap: Record<string, FieldCategoryData> = {};
-
-        loadedCategories.forEach((cat) => {
-          categoriesMap[cat.key] = {
-            label: cat.label,
-            icon: cat.icon,
-            description: cat.description,
-            fields: [],
-          };
-        });
-
-        // Adicionar campos às categorias (campo pode aparecer em múltiplas)
-        loadedFields.forEach((field) => {
-          field.categories.forEach((catKey) => {
-            if (categoriesMap[catKey]) {
-              categoriesMap[catKey].fields.push(field);
-            }
-          });
-        });
-
-        // Ordenar campos dentro de cada categoria por order
-        Object.values(categoriesMap).forEach((cat) => {
-          cat.fields.sort((a, b) => a.order - b.order);
-        });
-
-        setCategories(loadedCategories);
-        setAllFields(loadedFields);
-        setFieldCategories(categoriesMap);
-        setAvailableFields(loadedFields);
-
-        // Definir primeiro campo como selecionado
-        if (loadedFields.length > 0 && !selectedField) {
-          setSelectedField(loadedFields[0].name);
-        }
-
-        console.log('[ReferenceValues] ✅ Configuração dinâmica carregada:', {
-          categories: loadedCategories.length,
-          fields: loadedFields.length,
-        });
-      } catch (err: any) {
-        console.error('[ReferenceValues] ❌ Erro ao carregar configuração:', err);
-        setConfigError(err.message || 'Erro ao carregar configuração');
-      } finally {
-        setLoadingConfig(false);
+      if (!categoriesRes.data.success || !fieldsRes.data.success) {
+        throw new Error('Erro ao carregar configuração');
       }
-    };
 
-    loadConfiguration();
+      const loadedCategories: CategoryInfo[] = categoriesRes.data.categories;
+      const loadedFields: FieldInfo[] = fieldsRes.data.fields;
+
+      // Ordenar categorias por order
+      loadedCategories.sort((a, b) => a.order - b.order);
+
+      // Agrupar campos por categoria (um campo pode estar em múltiplas)
+      const categoriesMap: Record<string, FieldCategoryData> = {};
+
+      loadedCategories.forEach((cat) => {
+        categoriesMap[cat.key] = {
+          label: cat.label,
+          icon: cat.icon,
+          description: cat.description,
+          fields: [],
+        };
+      });
+
+      // Adicionar campos às categorias (campo pode aparecer em múltiplas)
+      loadedFields.forEach((field) => {
+        field.categories.forEach((catKey) => {
+          if (categoriesMap[catKey]) {
+            categoriesMap[catKey].fields.push(field);
+          }
+        });
+      });
+
+      // Ordenar campos dentro de cada categoria por order
+      Object.values(categoriesMap).forEach((cat) => {
+        cat.fields.sort((a, b) => a.order - b.order);
+      });
+
+      setCategories(loadedCategories);
+      setAllFields(loadedFields);
+      setFieldCategories(categoriesMap);
+      setAvailableFields(loadedFields);
+
+      // Definir primeiro campo como selecionado (apenas se ainda não tem)
+      if (loadedFields.length > 0 && !selectedField) {
+        setSelectedField(loadedFields[0].name);
+      }
+
+      console.log('[ReferenceValues] ✅ Configuração dinâmica carregada:', {
+        categories: loadedCategories.length,
+        fields: loadedFields.length,
+      });
+    } catch (err: any) {
+      console.error('[ReferenceValues] ❌ Erro ao carregar configuração:', err);
+      setConfigError(err.message || 'Erro ao carregar configuração');
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  // Carregar configuração dinâmica de campos e categorias da API ao montar
+  useEffect(() => {
+    loadConfig();
   }, []); // Executa apenas uma vez ao montar
 
   // Campo selecionado info (agora dinâmico)

@@ -6,10 +6,11 @@
  */
 import React, { useRef, useState } from 'react';
 import { Modal, message, Popconfirm, Tag, Space, Input, InputNumber, Select, Tooltip } from 'antd';
-import { ProTable, ActionType, ModalForm, ProFormText, ProFormDigit, ProFormTextArea, ProForm } from '@ant-design/pro-components';
-import type { ProColumns } from '@ant-design/pro-components';
+import { ProTable, ModalForm, ProFormText, ProFormDigit, ProFormTextArea, ProForm } from '@ant-design/pro-components';
+import type { ProColumns, ActionType } from '@ant-design/pro-components';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UndoOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { categoryAPI, CategoryInfo } from '../services/api';
+import { categoryAPI } from '../services/api';
+import type { CategoryInfo } from '../services/api';
 
 interface CategoryManagementModalProps {
   open: boolean;
@@ -244,6 +245,9 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
           dateFormatter="string"
           headerTitle="Categorias Cadastradas"
           toolBarRender={() => [
+            // OCULTO TEMPORARIAMENTE - Botão perigoso, pode ser reativado no futuro se necessário
+            // Descomentar as linhas abaixo para habilitar "Restaurar Padrão"
+            /*
             <Popconfirm
               key="reset"
               title="Resetar categorias?"
@@ -264,6 +268,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
                 <UndoOutlined /> Restaurar Padrão
               </a>
             </Popconfirm>,
+            */
             <a key="reload" onClick={() => actionRef.current?.reload()}>
               <ReloadOutlined /> Recarregar
             </a>,
