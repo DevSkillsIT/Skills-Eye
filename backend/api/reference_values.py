@@ -163,6 +163,80 @@ async def create_value(
     }
 
 
+@router.get("/categories", include_in_schema=True)
+async def list_categories():
+    """
+    Lista todas as categorias disponíveis para organizar campos em abas.
+
+    Retorna metadados de cada categoria (label, icon, description, order).
+    Categorias vêm do campo 'field_category' em Reference Values (dinâmico).
+
+    Se não houver valores cadastrados, retorna categorias padrão.
+    """
+    # Categorias padrão (fallback se não houver cadastradas)
+    default_categories = [
+        {
+            "key": "basic",
+            "label": "Básico",
+            "icon": "📝",
+            "description": "Campos básicos e obrigatórios",
+            "order": 1,
+        },
+        {
+            "key": "infrastructure",
+            "label": "Infraestrutura",
+            "icon": "☁️",
+            "description": "Campos relacionados à infraestrutura e cloud",
+            "order": 2,
+        },
+        {
+            "key": "device",
+            "label": "Dispositivo",
+            "icon": "💻",
+            "description": "Campos de hardware e dispositivos",
+            "order": 3,
+        },
+        {
+            "key": "location",
+            "label": "Localização",
+            "icon": "📍",
+            "description": "Campos de localização geográfica",
+            "order": 4,
+        },
+        {
+            "key": "network",
+            "label": "Rede",
+            "icon": "🌐",
+            "description": "Campos de configuração de rede",
+            "order": 5,
+        },
+        {
+            "key": "security",
+            "label": "Segurança",
+            "icon": "🔒",
+            "description": "Campos relacionados à segurança",
+            "order": 6,
+        },
+        {
+            "key": "extra",
+            "label": "Extras",
+            "icon": "➕",
+            "description": "Campos adicionais e opcionais",
+            "order": 99,
+        },
+    ]
+
+    # TODO FUTURO: Carregar categorias dinâmicas de reference_values/field_category
+    # Por enquanto, retorna categorias padrão
+    # Quando usuário cadastrar categorias em field_category, esse endpoint buscará de lá
+
+    return {
+        "success": True,
+        "total": len(default_categories),
+        "categories": default_categories
+    }
+
+
 @router.get("/{field_name}", include_in_schema=True)
 async def list_values(
     field_name: str,
@@ -393,20 +467,54 @@ async def list_all_fields():
     config = await load_fields_config()
     all_fields = config.get('fields', [])
 
+    # Mapeamento de categoria → icon e color padrão
+    # Usado quando campo não tem icon/color customizado
+    CATEGORY_DEFAULTS = {
+        'basic': {'icon': '📝', 'color': 'blue'},
+        'infrastructure': {'icon': '☁️', 'color': 'cyan'},
+        'device': {'icon': '💻', 'color': 'purple'},
+        'location': {'icon': '📍', 'color': 'orange'},
+        'network': {'icon': '🌐', 'color': 'geekblue'},
+        'security': {'icon': '🔒', 'color': 'red'},
+        'extra': {'icon': '➕', 'color': 'default'},
+    }
+
     # Filtrar apenas campos com available_for_registration=true
-    supported_fields = [
-        {
+    supported_fields = []
+    for field in all_fields:
+        if field.get('available_for_registration', False) is not True:
+            continue
+
+        # Converter category (string ou array) em lista de categorias
+        category_raw = field.get('category', 'extra')
+        if isinstance(category_raw, str):
+            # Suporta múltiplas categorias separadas por vírgula: "basic,device"
+            categories = [c.strip() for c in category_raw.split(',') if c.strip()]
+        elif isinstance(category_raw, list):
+            categories = category_raw
+        else:
+            categories = ['extra']
+
+        # Se não tem categoria, usa 'extra'
+        if not categories:
+            categories = ['extra']
+
+        # Pegar icon e color (usa customizado ou padrão da primeira categoria)
+        primary_category = categories[0]
+        defaults = CATEGORY_DEFAULTS.get(primary_category, {'icon': '📝', 'color': 'default'})
+
+        supported_fields.append({
             "name": field.get('name'),
             "display_name": field.get('display_name'),
             "description": field.get('description', ''),
-            "category": field.get('category', ''),
+            "categories": categories,  # ARRAY de categorias (pode estar em múltiplas abas)
+            "icon": field.get('icon', defaults['icon']),  # Icon customizado ou padrão
+            "color": field.get('color', defaults['color']),  # Color customizado ou padrão
             "required": field.get('required', False),
             "editable": field.get('editable', True),
             "field_type": field.get('field_type', 'string'),
-        }
-        for field in all_fields
-        if field.get('available_for_registration', False) is True
-    ]
+            "order": field.get('order', 999),
+        })
 
     # Ordenar por order (mesmo padrão do metadata-fields)
     supported_fields.sort(key=lambda f: f.get('order', 999))

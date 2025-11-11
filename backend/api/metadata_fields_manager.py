@@ -1749,6 +1749,13 @@ async def partial_update_field(field_name: str, updates: Dict[str, Any] = Body(.
     # Salvar
     await save_fields_config(config)
 
+    # CRÍTICO: Invalidar cache para que mudanças apareçam imediatamente
+    # Sem isso, /api/v1/reference-values/ retorna cache antigo por até 5 minutos
+    global _fields_config_cache
+    _fields_config_cache["data"] = None
+    _fields_config_cache["timestamp"] = None
+    logger.info(f"[CACHE] Cache de fields_config invalidado após atualização de '{field_name}'")
+
     return {
         "success": True,
         "message": f"Campo '{field_name}' atualizado com sucesso",
