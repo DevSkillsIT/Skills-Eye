@@ -8,11 +8,20 @@ import React, { useRef, useState } from 'react';
 import { Modal, message, Popconfirm, Tag, Space, Input, InputNumber, Select, Tooltip } from 'antd';
 import { ProTable, ActionType, ProColumns, ModalForm, ProFormText, ProFormDigit, ProFormTextArea, ProForm } from '@ant-design/pro-components';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, UndoOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { categoryAPI, CategoryInfo, CategoryCreateRequest } from '../services/api';
+import { categoryAPI, CategoryInfo } from '../services/api';
 
 interface CategoryManagementModalProps {
   open: boolean;
   onCancel: () => void;
+}
+
+interface CategoryFormData {
+  key: string;
+  label: string;
+  icon?: string;
+  description?: string;
+  order?: number;
+  color?: string;
 }
 
 const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open, onCancel }) => {
@@ -135,7 +144,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
     },
   ];
 
-  const handleCreateCategory = async (values: CategoryCreateRequest) => {
+  const handleCreateCategory = async (values: CategoryFormData) => {
     try {
       const response = await categoryAPI.createCategory(values, 'admin');
       if (response.data.success) {
