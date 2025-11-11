@@ -31,6 +31,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
   const [editingCategory, setEditingCategory] = useState<CategoryInfo | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [reloading, setReloading] = useState(false);
 
   // Cores disponíveis do Ant Design
   const AVAILABLE_COLORS = [
@@ -269,8 +270,22 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
               </a>
             </Popconfirm>,
             */
-            <a key="reload" onClick={() => actionRef.current?.reload()}>
-              <ReloadOutlined /> Recarregar
+            <a
+              key="reload"
+              onClick={async () => {
+                setReloading(true);
+                try {
+                  await actionRef.current?.reload();
+                  message.success('Categorias recarregadas com sucesso!');
+                } catch (error) {
+                  message.error('Erro ao recarregar categorias');
+                } finally {
+                  setReloading(false);
+                }
+              }}
+              style={{ opacity: reloading ? 0.6 : 1, pointerEvents: reloading ? 'none' : 'auto' }}
+            >
+              <ReloadOutlined spin={reloading} /> {reloading ? 'Recarregando...' : 'Recarregar'}
             </a>,
             <a
               key="create"
