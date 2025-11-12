@@ -1597,6 +1597,14 @@ async def list_fields(
 
     # Continuar com lógica normal de leitura do KV
     config = await load_fields_config()
+
+    # PROTEÇÃO: Validar se config não é None
+    if not config:
+        raise HTTPException(
+            status_code=503,
+            detail="Configuração de campos não disponível. O sistema pode estar inicializando ou houve erro na extração."
+        )
+
     fields = config.get('fields', [])
 
     # Aplicar filtros
@@ -2032,7 +2040,11 @@ async def force_extract_fields(
 
         # PASSO 1: Limpar cache global para forçar nova extração
         global _fields_config_cache
-        _fields_config_cache = None
+        _fields_config_cache = {
+            "data": None,
+            "timestamp": None,
+            "ttl": 300
+        }
         logger.info("[FORCE-EXTRACT] Cache limpo")
 
         # PASSO 2: Carregar config EXISTENTE do KV (para preservar customizações)
@@ -2149,6 +2161,29 @@ async def force_extract_fields(
             raise HTTPException(status_code=500, detail="Falha ao salvar campos no KV")
 
         logger.info(f"[FORCE-EXTRACT] ✅ Extração concluída: {new_fields_count} novos, {preserved_count} preservados")
+
+        # PASSO 6: Atualizar cache em memória (para próximas requisições GET)
+        config_data = {
+            'version': '2.0.0',
+            'last_updated': datetime.now().isoformat(),
+            'source': 'manual_force_extract',
+            'total_fields': len(merged_fields),
+            'fields': merged_fields,
+            'extraction_status': {
+                'total_servers': total_servers,
+                'successful_servers': successful_servers,
+                'server_status': extraction_result.get('server_status', []),
+            },
+            'merge_info': {
+                'new_fields': new_fields_count,
+                'preserved_fields': preserved_count,
+                'total_merged': len(merged_fields),
+            }
+        }
+
+        _fields_config_cache["data"] = config_data
+        _fields_config_cache["timestamp"] = datetime.now()
+        logger.info("[FORCE-EXTRACT] ✓ Cache em memória atualizado")
 
         # Retornar resultado
         new_field_names = [f['name'] for f in merged_fields if f['name'] not in existing_fields_map]
