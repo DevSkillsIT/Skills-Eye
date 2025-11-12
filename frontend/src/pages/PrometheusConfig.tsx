@@ -14,6 +14,7 @@ import {
 import type { ProColumns } from '@ant-design/pro-components';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
 import ResizableTitle from '../components/ResizableTitle';
+import ExtractionProgressModal from '../components/ExtractionProgressModal';
 import {
   Card,
   Table,
@@ -3034,190 +3035,19 @@ const PrometheusConfig: React.FC = () => {
         ]}
       />
 
-      {/* Modal de Progresso de Extração dos Campos Metadata */}
-      <Modal
-        title={
-          <Space>
-            {loadingFields ? (
-              <LoadingOutlined style={{ color: '#1890ff' }} spin />
-            ) : fromCache ? (
-              <ThunderboltOutlined style={{ color: '#52c41a' }} />
-            ) : (
-              <CheckCircleOutlined style={{ color: '#52c41a' }} />
-            )}
-            <span>
-              {loadingFields
-                ? 'Extraindo Arquivos e Campos Metadata dos Servidores...'
-                : fromCache
-                ? 'Configurações Carregadas (Cache)'
-                : `Extração Concluída (${successfulServers}/${totalServers} servidores)`}
-            </span>
-          </Space>
-        }
-        open={progressModalVisible}
-        onCancel={() => setProgressModalVisible(false)}
-        width={700}
-        footer={
-          <Space>
-            <Button
-              onClick={() => setProgressModalVisible(false)}
-              disabled={loadingFields}
-            >
-              OK
-            </Button>
-            <Button
-              type="primary"
-              icon={<ReloadOutlined />}
-              onClick={async () => {
-                setProgressModalVisible(false);
-                await loadPrometheusFieldsForceRefresh();
-              }}
-              disabled={loadingFields}
-            >
-              Atualizar Dados
-            </Button>
-          </Space>
-        }
-      >
-        <div style={{ marginBottom: 16 }}>
-          {loadingFields ? (
-            <Alert
-              message="Processando servidores..."
-              description="Conectando via SSH e extraindo campos metadata de cada servidor. Isso pode levar alguns segundos."
-              type="info"
-              showIcon
-              icon={<SyncOutlined spin />}
-            />
-          ) : fromCache ? (
-            <Alert
-              message={
-                <Space>
-                  <ThunderboltOutlined />
-                  Dados carregados do cache instantaneamente
-                </Space>
-              }
-              description="Todos os servidores já foram processados anteriormente. Nenhuma conexão SSH foi necessária."
-              type="success"
-              showIcon
-            />
-          ) : fieldsError ? (
-            <Alert
-              message="Erro ao carregar campos"
-              description={fieldsError}
-              type="error"
-              showIcon
-            />
-          ) : successfulServers === totalServers ? (
-            <Alert
-              message={
-                <Space>
-                  <CheckCircleOutlined />
-                  Todos os servidores processados com sucesso
-                </Space>
-              }
-              description={`Extraídos ${totalFields} campos únicos de ${totalServers} servidores.`}
-              type="success"
-              showIcon
-            />
-          ) : (
-            <Alert
-              message={
-                <Space>
-                  <WarningOutlined />
-                  Alguns servidores falharam
-                </Space>
-              }
-              description={`${successfulServers} de ${totalServers} servidores processados com sucesso. Verifique os detalhes abaixo.`}
-              type="warning"
-              showIcon
-            />
-          )}
-        </div>
-
-        {/* Timeline com Status de Cada Servidor */}
-        {serverStatus.length > 0 && (
-          <div>
-            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 14 }}>
-              Status dos Servidores:
-            </div>
-            <Timeline
-              items={serverStatus.map((server: ServerStatus) => {
-                // Determinar se servidor está sendo processado
-                const isProcessing = loadingFields && server.duration_ms === 0 && !server.success && !server.error;
-
-                return {
-                  color: isProcessing ? 'blue' : server.success ? 'green' : 'red',
-                  dot: isProcessing ? (
-                    <LoadingOutlined style={{ fontSize: 16 }} spin />
-                  ) : server.success ? (
-                    <CheckCircleOutlined style={{ fontSize: 16 }} />
-                  ) : (
-                    <CloseCircleOutlined style={{ fontSize: 16 }} />
-                  ),
-                  children: (
-                    <div>
-                      <Space>
-                        <CloudServerOutlined />
-                        <strong>{server.hostname}</strong>
-                        {isProcessing ? (
-                          <Tag color="processing" icon={<SyncOutlined spin />}>
-                            Processando...
-                          </Tag>
-                        ) : server.from_cache ? (
-                          <Tag color="cyan" icon={<ThunderboltOutlined />}>
-                            Cache
-                          </Tag>
-                        ) : server.success ? (
-                          <Tag color="green">Sucesso</Tag>
-                        ) : (
-                          <Tag color="red">Falha</Tag>
-                        )}
-                        {server.duration_ms > 0 && (
-                          <Tag icon={<ClockCircleOutlined />}>
-                            {server.duration_ms}ms
-                          </Tag>
-                        )}
-                      </Space>
-                      <div style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
-                        {isProcessing ? (
-                          <span style={{ color: '#1890ff' }}>
-                            Conectando via SSH e extraindo campos metadata...
-                          </span>
-                        ) : server.success ? (
-                          server.from_cache ? (
-                            <span style={{ color: '#52c41a' }}>
-                              Dados carregados do cache (processado anteriormente)
-                            </span>
-                          ) : (
-                            <>
-                              {server.files_count} arquivos processados,{' '}
-                              {server.fields_count} campos novos encontrados
-                            </>
-                          )
-                        ) : (
-                          <span style={{ color: '#ff4d4f' }}>
-                            <WarningOutlined /> Erro:{' '}
-                            {server.error || 'Servidor offline ou inacessível'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ),
-                };
-              })}
-            />
-          </div>
-        )}
-
-        {loadingFields && serverStatus.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <Spin size="large" />
-            <div style={{ marginTop: 16, color: '#666' }}>
-              Iniciando extração dos servidores...
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modal de Progresso de Extração (COMPONENTE COMPARTILHADO) */}
+      <ExtractionProgressModal
+        visible={progressModalVisible}
+        onClose={() => setProgressModalVisible(false)}
+        onRefresh={loadPrometheusFieldsForceRefresh}
+        loading={loadingFields}
+        fromCache={fromCache}
+        successfulServers={successfulServers}
+        totalServers={totalServers}
+        serverStatus={serverStatus}
+        totalFields={totalFields}
+        error={fieldsError}
+      />
 
       {/* Modal de Visualização dos Target Mappings */}
       <Modal
