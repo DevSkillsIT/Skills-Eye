@@ -89,6 +89,11 @@ class FieldsConfigResponse(BaseModel):
     total: int
     version: str
     last_updated: str
+    # Campos adicionais para modal de progresso (opcional)
+    from_cache: bool = False
+    server_status: List[Dict[str, Any]] = []
+    total_servers: int = 0
+    successful_servers: int = 0
 
 
 class AddFieldRequest(BaseModel):
@@ -1607,13 +1612,21 @@ async def list_fields(
     # Ordenar por order
     fields.sort(key=lambda f: f.get('order', 999))
 
+    # Buscar informações de extraction_status se existir (para modal de progresso)
+    extraction_status = config.get('extraction_status', {})
+
     return FieldsConfigResponse(
         success=True,
         fields=fields,
         categories=config.get('categories', {}),
         total=len(fields),
         version=config.get('version', '1.0.0'),
-        last_updated=config.get('last_updated', '')
+        last_updated=config.get('last_updated', ''),
+        # Adicionar informações do extraction_status para modal
+        from_cache=extraction_status.get('from_cache', False),
+        server_status=extraction_status.get('server_status', []),
+        total_servers=extraction_status.get('total_servers', 0),
+        successful_servers=extraction_status.get('successful_servers', 0)
     )
 
 
