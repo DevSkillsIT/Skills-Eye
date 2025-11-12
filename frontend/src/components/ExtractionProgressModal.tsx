@@ -119,26 +119,26 @@ const ExtractionProgressModal: React.FC<ExtractionProgressModalProps> = ({
               }}
               disabled={loading}
               style={{
-                background: loading ? '#d9d9d9' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                background: loading ? '#d9d9d9' : 'linear-gradient(135deg, #4169e1 0%, #1e3a8a 100%)',
                 border: 'none',
                 borderRadius: '8px',
                 height: '44px',
                 padding: '0 24px',
                 fontWeight: 600,
                 fontSize: '15px',
-                boxShadow: loading ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.4)',
+                boxShadow: loading ? 'none' : '0 4px 12px rgba(65, 105, 225, 0.4)',
                 transition: 'all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1)',
               }}
               onMouseEnter={(e) => {
                 if (!loading) {
                   e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(65, 105, 225, 0.6)';
                 }
               }}
               onMouseLeave={(e) => {
                 if (!loading) {
                   e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(65, 105, 225, 0.4)';
                 }
               }}
             >
