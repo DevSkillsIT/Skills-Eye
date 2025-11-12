@@ -50,6 +50,7 @@ import {
   Collapse,
   Checkbox,
   Popover,
+  Timeline,
 } from 'antd';
 import type { CategoryInfo } from '../services/api';
 
@@ -267,6 +268,34 @@ const MetadataFieldsPage: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [drawerField, setDrawerField] = useState<MetadataField | null>(null);
 
+  // Modal de progresso de extração (igual ao PrometheusConfig)
+  const [progressModalVisible, setProgressModalVisible] = useState(false);
+  const [fieldsData, setFieldsData] = useState<{
+    fromCache: boolean;
+    loading: boolean;
+    successfulServers: number;
+    totalServers: number;
+    serverStatus: Array<{
+      hostname: string;
+      success: boolean;
+      from_cache: boolean;
+      files_count: number;
+      fields_count: number;
+      error?: string | null;
+      duration_ms: number;
+    }>;
+    totalFields: number;
+    fieldsError: string | null;
+  }>({
+    fromCache: false,
+    loading: false,
+    successfulServers: 0,
+    totalServers: 0,
+    serverStatus: [],
+    totalFields: 0,
+    fieldsError: null,
+  });
+
   // Callback para atualizar campo específico no estado (usado pelo Popover)
   const handleFieldUpdate = (fieldName: string, updates: Partial<MetadataField>) => {
     setFields(prevFields =>
@@ -279,10 +308,24 @@ const MetadataFieldsPage: React.FC = () => {
   };
 
   const fetchFields = async () => {
+    // RESETAR estados ANTES de abrir o modal
+    setFieldsData(prev => ({
+      ...prev,
+      loading: true,
+      fromCache: false,
+      successfulServers: 0,
+      totalServers: 0,
+      serverStatus: [],
+      totalFields: 0,
+      fieldsError: null,
+    }));
+
+    // Abrir modal com estados limpos
+    setProgressModalVisible(true);
     setLoading(true);
+
     try {
       // USAR ENDPOINT OTIMIZADO QUE JÁ FAZ MERGE NO BACKEND
-      // Evita fazer 56+ requisições HTTP paralelas (um por campo)
       // CACHE-BUSTING: Adicionar timestamp para evitar cache do navegador
       const response = await axios.get(`${API_URL}/metadata-fields/?_t=${Date.now()}`, {
         timeout: 30000,
@@ -295,21 +338,51 @@ const MetadataFieldsPage: React.FC = () => {
       if (response.data.success) {
         const fields = response.data.fields.map((field: any) => ({
           ...field,
-          // Garantir defaults para campos que podem estar ausentes
           show_in_services: field.show_in_services ?? true,
           show_in_exporters: field.show_in_exporters ?? true,
           show_in_blackbox: field.show_in_blackbox ?? true,
         }));
 
-        console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos carregados (1 requisição)`);
+        console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos carregados`);
+
+        // Detectar se veio do cache
+        const fromCache = response.data.from_cache || false;
+        const serverStatus = response.data.server_status || [];
+        const successfulServers = response.data.successful_servers || 0;
+        const totalServers = response.data.total_servers || 0;
+
         setFields(fields);
+
+        // Atualizar estado do modal
+        setFieldsData({
+          fromCache,
+          loading: false,
+          successfulServers,
+          totalServers,
+          serverStatus,
+          totalFields: fields.length,
+          fieldsError: null,
+        });
+
+        if (fromCache) {
+          console.log('[METADATA-FIELDS] ⚡ Campos carregados do CACHE (sem SSH)');
+        } else {
+          console.log(`[METADATA-FIELDS] 🔌 Campos extraídos via SSH de ${totalServers} servidores`);
+        }
       }
     } catch (error: any) {
-      if (error.code === 'ECONNABORTED') {
-        message.error('Tempo esgotado ao carregar campos');
-      } else {
-        message.error('Erro ao carregar campos: ' + (error.response?.data?.detail || error.message));
-      }
+      const errorMsg = error.code === 'ECONNABORTED'
+        ? 'Tempo esgotado ao carregar campos'
+        : 'Erro ao carregar campos: ' + (error.response?.data?.detail || error.message);
+
+      message.error(errorMsg);
+
+      // Atualizar estado com erro
+      setFieldsData(prev => ({
+        ...prev,
+        loading: false,
+        fieldsError: errorMsg,
+      }));
     } finally {
       setLoading(false);
     }
@@ -509,7 +582,15 @@ const MetadataFieldsPage: React.FC = () => {
     try {
       setLoadingForceExtract(true);
 
-      const serverName = servers.find(s => s.id === selectedServer)?.display_name || selectedServer;
+      // Buscar servidor no array para pegar o hostname (sem porta)
+      const server = servers.find(s => s.id === selectedServer);
+      if (!server) {
+        message.error('Servidor não encontrado');
+        setLoadingForceExtract(false);
+        return;
+      }
+
+      const serverName = server.display_name || server.hostname;
 
       message.loading({
         content: `Extraindo campos do servidor ${serverName} via SSH...`,
@@ -518,7 +599,7 @@ const MetadataFieldsPage: React.FC = () => {
       });
 
       const response = await axios.post(`${API_URL}/metadata-fields/force-extract`, {
-        server_id: selectedServer  // ← Passar servidor selecionado
+        server_id: server.hostname  // ← CRÍTICO: Passar HOSTNAME (não ID com porta)
       }, {
         timeout: 60000 // 60 segundos (SSH pode demorar)
       });
@@ -2100,6 +2181,182 @@ const MetadataFieldsPage: React.FC = () => {
           </div>
         )}
       </Drawer>
+
+      {/* Modal de Progresso de Extração (IGUAL AO PROMETHEUS CONFIG) */}
+      <Modal
+        title={
+          <Space>
+            {fieldsData.loading ? (
+              <LoadingOutlined style={{ color: '#1890ff' }} spin />
+            ) : fieldsData.fromCache ? (
+              <ThunderboltOutlined style={{ color: '#52c41a' }} />
+            ) : (
+              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+            )}
+            <span>
+              {fieldsData.loading
+                ? 'Extraindo Campos Metadata dos Servidores...'
+                : fieldsData.fromCache
+                ? 'Configurações Carregadas (Cache)'
+                : `Extração Concluída (${fieldsData.successfulServers}/${fieldsData.totalServers} servidores)`}
+            </span>
+          </Space>
+        }
+        open={progressModalVisible}
+        onCancel={() => setProgressModalVisible(false)}
+        width={700}
+        footer={
+          <Space>
+            <Button
+              onClick={() => setProgressModalVisible(false)}
+              disabled={fieldsData.loading}
+            >
+              OK
+            </Button>
+            <Button
+              type="primary"
+              icon={<ReloadOutlined />}
+              onClick={async () => {
+                setProgressModalVisible(false);
+                // ATUALIZAR DADOS: Forçar extração de TODOS os servidores
+                await fetchFields();
+              }}
+              disabled={fieldsData.loading}
+            >
+              Atualizar Dados
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ marginBottom: 16 }}>
+          {fieldsData.loading ? (
+            <Alert
+              message="Processando servidores..."
+              description="Conectando via SSH e extraindo campos metadata de cada servidor. Isso pode levar alguns segundos."
+              type="info"
+              showIcon
+              icon={<SyncOutlined spin />}
+            />
+          ) : fieldsData.fromCache ? (
+            <Alert
+              message={
+                <Space>
+                  <ThunderboltOutlined />
+                  Dados carregados do cache instantaneamente
+                </Space>
+              }
+              description="Todos os servidores já foram processados anteriormente. Nenhuma conexão SSH foi necessária."
+              type="success"
+              showIcon
+            />
+          ) : fieldsData.fieldsError ? (
+            <Alert
+              message="Erro ao carregar campos"
+              description={fieldsData.fieldsError}
+              type="error"
+              showIcon
+            />
+          ) : fieldsData.successfulServers === fieldsData.totalServers ? (
+            <Alert
+              message={
+                <Space>
+                  <CheckCircleOutlined />
+                  Todos os servidores processados com sucesso
+                </Space>
+              }
+              description={`Extraídos ${fieldsData.totalFields} campos únicos de ${fieldsData.totalServers} servidores.`}
+              type="success"
+              showIcon
+            />
+          ) : (
+            <Alert
+              message={
+                <Space>
+                  <WarningOutlined />
+                  Alguns servidores falharam
+                </Space>
+              }
+              description={`${fieldsData.successfulServers} de ${fieldsData.totalServers} servidores processados com sucesso. Verifique os detalhes abaixo.`}
+              type="warning"
+              showIcon
+            />
+          )}
+        </div>
+
+        {/* Timeline com Status de Cada Servidor */}
+        {fieldsData.serverStatus.length > 0 && (
+          <div>
+            <div style={{ marginBottom: 12, fontWeight: 500, fontSize: 14 }}>
+              Status dos Servidores:
+            </div>
+            <Timeline
+              items={fieldsData.serverStatus.map((server) => {
+                const isProcessing = fieldsData.loading && server.duration_ms === 0 && !server.success && !server.error;
+
+                return {
+                  color: isProcessing ? 'blue' : server.success ? 'green' : 'red',
+                  dot: isProcessing ? (
+                    <LoadingOutlined style={{ fontSize: 16 }} spin />
+                  ) : server.success ? (
+                    <CheckCircleOutlined style={{ fontSize: 16 }} />
+                  ) : (
+                    <CloseCircleOutlined style={{ fontSize: 16 }} />
+                  ),
+                  children: (
+                    <div>
+                      <Space>
+                        <CloudServerOutlined />
+                        <strong>{server.hostname}</strong>
+                        {isProcessing ? (
+                          <Tag color="processing" icon={<SyncOutlined spin />}>
+                            Processando...
+                          </Tag>
+                        ) : server.from_cache ? (
+                          <Tag color="cyan" icon={<ThunderboltOutlined />}>
+                            Cache
+                          </Tag>
+                        ) : server.success ? (
+                          <Tag color="green">Sucesso</Tag>
+                        ) : (
+                          <Tag color="red">Falha</Tag>
+                        )}
+                        {server.duration_ms > 0 && (
+                          <Tag icon={<ClockCircleOutlined />}>
+                            {server.duration_ms}ms
+                          </Tag>
+                        )}
+                      </Space>
+                      <div style={{ marginTop: 4, fontSize: 12, color: '#666' }}>
+                        {isProcessing ? (
+                          <span style={{ color: '#1890ff' }}>
+                            Conectando via SSH e extraindo campos metadata...
+                          </span>
+                        ) : server.success ? (
+                          server.from_cache ? (
+                            <span style={{ color: '#52c41a' }}>
+                              Dados carregados do cache (processado anteriormente)
+                            </span>
+                          ) : (
+                            <>
+                              {server.files_count} arquivos processados,{' '}
+                              {server.fields_count} campos novos encontrados
+                            </>
+                          )
+                        ) : (
+                          <span style={{ color: '#ff4d4f' }}>
+                            <WarningOutlined /> Erro:{' '}
+                            {server.error || 'Servidor offline ou inacessível'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ),
+                };
+              })}
+            />
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   );
 };
