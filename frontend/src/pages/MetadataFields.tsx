@@ -60,6 +60,7 @@ import {
   EditOutlined,
   SyncOutlined,
   CloudSyncOutlined,
+  CloudDownloadOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
   MinusCircleOutlined,
@@ -282,8 +283,13 @@ const MetadataFieldsPage: React.FC = () => {
     try {
       // USAR ENDPOINT OTIMIZADO QUE JÁ FAZ MERGE NO BACKEND
       // Evita fazer 56+ requisições HTTP paralelas (um por campo)
-      const response = await axios.get(`${API_URL}/metadata-fields/`, {
+      // CACHE-BUSTING: Adicionar timestamp para evitar cache do navegador
+      const response = await axios.get(`${API_URL}/metadata-fields/?_t=${Date.now()}`, {
         timeout: 30000,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
       });
 
       if (response.data.success) {
@@ -388,9 +394,17 @@ const MetadataFieldsPage: React.FC = () => {
 
     setLoadingSyncStatus(true);
     try {
+      // CACHE-BUSTING: Adicionar timestamp para evitar cache do navegador
       const response = await axios.get(`${API_URL}/metadata-fields/sync-status`, {
-        params: { server_id: serverId },
+        params: {
+          server_id: serverId,
+          _t: Date.now()  // ← Cache-busting
+        },
         timeout: 30000, // 30 segundos (SSH pode ser lento)
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+        }
       });
 
       if (response.data.success) {
@@ -478,6 +492,67 @@ const MetadataFieldsPage: React.FC = () => {
       }
     } finally {
       setLoadingSyncStatus(false);
+    }
+  };
+
+  /**
+   * Força extração manual de campos do Prometheus via SSH
+   */
+  const [loadingForceExtract, setLoadingForceExtract] = useState(false);
+
+  const handleForceExtract = async () => {
+    try {
+      setLoadingForceExtract(true);
+      message.loading({
+        content: 'Extraindo campos do Prometheus via SSH...',
+        key: 'force-extract',
+        duration: 0
+      });
+
+      const response = await axios.post(`${API_URL}/metadata-fields/force-extract`, {}, {
+        timeout: 60000 // 60 segundos (SSH pode demorar)
+      });
+
+      message.destroy('force-extract');
+
+      if (response.data.success) {
+        const { new_fields_count, total_fields, new_fields } = response.data;
+
+        if (new_fields_count > 0) {
+          message.success(
+            `✅ ${new_fields_count} campo(s) novo(s) encontrado(s)! Total: ${total_fields} campos.`,
+            8
+          );
+
+          // Mostrar lista de novos campos
+          if (new_fields && new_fields.length > 0) {
+            console.log('[FORCE-EXTRACT] Novos campos:', new_fields);
+          }
+        } else {
+          message.info(`Nenhum campo novo encontrado. Total: ${total_fields} campos.`, 5);
+        }
+
+        // Recarregar lista de campos
+        await fetchFields();
+
+        // Se tiver servidor selecionado, atualizar sync status também
+        if (selectedServer) {
+          await fetchSyncStatus(selectedServer);
+        }
+      }
+    } catch (error: any) {
+      message.destroy('force-extract');
+      console.error('[FORCE-EXTRACT] Erro:', error);
+
+      if (error.code === 'ECONNABORTED') {
+        message.error('⏱️ Timeout: Extração demorou mais de 60s. Tente novamente.', 10);
+      } else if (error.response?.data?.detail) {
+        message.error('Erro: ' + error.response.data.detail, 8);
+      } else {
+        message.error('Erro ao extrair campos: ' + error.message, 8);
+      }
+    } finally {
+      setLoadingForceExtract(false);
     }
   };
 
@@ -1362,7 +1437,23 @@ const MetadataFieldsPage: React.FC = () => {
             );
 
             toolbarItems.push(
-              <Tooltip key="sync" title="Atualizar status de sincronização">
+              <Tooltip
+                key="force-extract"
+                title="Extrair novos campos do Prometheus via SSH (sem reiniciar backend). Use quando adicionar novos campos no prometheus.yml."
+              >
+                <Button
+                  icon={<CloudDownloadOutlined spin={loadingForceExtract} />}
+                  onClick={handleForceExtract}
+                  disabled={loadingForceExtract}
+                  loading={loadingForceExtract}
+                >
+                  {loadingForceExtract ? 'Extraindo...' : 'Extrair Campos'}
+                </Button>
+              </Tooltip>
+            );
+
+            toolbarItems.push(
+              <Tooltip key="sync" title="Atualizar status de sincronização (apenas verifica, não extrai novos campos)">
                 <Button
                   icon={<SyncOutlined spin={loadingSyncStatus} />}
                   onClick={() => selectedServer && fetchSyncStatus(selectedServer)}

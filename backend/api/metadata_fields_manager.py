@@ -1979,6 +1979,153 @@ async def sync_field_to_prometheus_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/force-extract")
+async def force_extract_fields():
+    """
+    Força extração manual de campos do Prometheus via SSH.
+
+    Similar ao pre-warm do startup, mas acionado manualmente.
+
+    FLUXO:
+    1. Limpa cache de campos
+    2. Conecta via SSH aos servidores Prometheus
+    3. Extrai relabel_configs do prometheus.yml
+    4. Faz MERGE com campos existentes (preserva customizações)
+    5. Salva no KV
+    6. Retorna lista de novos campos encontrados
+
+    Útil quando:
+    - Adicionou novos campos no prometheus.yml
+    - Quer atualizar lista de campos sem reiniciar backend
+    - Suspeita que campos estão desatualizados
+    """
+    try:
+        logger.info("[FORCE-EXTRACT] Iniciando extração manual de campos")
+
+        # PASSO 1: Limpar cache global para forçar nova extração
+        global _fields_config_cache
+        _fields_config_cache = None
+        logger.info("[FORCE-EXTRACT] Cache limpo")
+
+        # PASSO 2: Carregar config EXISTENTE do KV (para preservar customizações)
+        from core.kv_manager import KVManager
+        kv_manager = KVManager()
+        existing_config = await kv_manager.get_json('skills/eye/metadata/fields')
+
+        existing_fields_map = {}
+        if existing_config and 'fields' in existing_config:
+            existing_fields_map = {
+                f['name']: f for f in existing_config['fields']
+            }
+            logger.info(f"[FORCE-EXTRACT] {len(existing_fields_map)} campos existentes no KV")
+
+        # PASSO 3: Extrair campos do Prometheus via SSH
+        multi_config = MultiConfigManager()
+        extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+
+        if not extraction_result or 'fields' not in extraction_result:
+            raise HTTPException(
+                status_code=500,
+                detail="Falha na extração de campos do Prometheus"
+            )
+
+        fields_objects = extraction_result['fields']
+        logger.info(f"[FORCE-EXTRACT] {len(fields_objects)} campos extraídos do Prometheus")
+
+        # PASSO 4: MERGE INTELIGENTE (preservar customizações do usuário)
+        merged_fields = []
+        new_fields_count = 0
+        preserved_count = 0
+
+        user_customization_fields = [
+            'available_for_registration',
+            'display_name',
+            'field_type',
+            'category',
+            'description',
+            'order',
+            'required',
+            'editable',
+            'show_in_table',
+            'show_in_dashboard',
+            'show_in_form',
+            'show_in_services',
+            'show_in_exporters',
+            'show_in_blackbox',
+        ]
+
+        for extracted_field in fields_objects:
+            field_name = extracted_field.name
+            field_dict = extracted_field.to_dict()
+
+            if field_name in existing_fields_map:
+                # PRESERVAR customizações do usuário
+                existing_field = existing_fields_map[field_name]
+                for custom_field in user_customization_fields:
+                    if custom_field in existing_field:
+                        field_dict[custom_field] = existing_field[custom_field]
+                preserved_count += 1
+            else:
+                # CAMPO NOVO
+                new_fields_count += 1
+                logger.info(f"[FORCE-EXTRACT] 🆕 Campo NOVO: '{field_name}'")
+
+            merged_fields.append(field_dict)
+
+        # PASSO 5: Salvar no KV
+        total_servers = extraction_result.get('total_servers', 0)
+        successful_servers = extraction_result.get('successful_servers', 0)
+
+        success = await kv_manager.put_json(
+            key='skills/eye/metadata/fields',
+            value={
+                'version': '2.0.0',
+                'last_updated': datetime.now().isoformat(),
+                'source': 'manual_force_extract',
+                'total_fields': len(merged_fields),
+                'fields': merged_fields,
+                'extraction_status': {
+                    'total_servers': total_servers,
+                    'successful_servers': successful_servers,
+                    'server_status': extraction_result.get('server_status', []),
+                },
+                'merge_info': {
+                    'new_fields': new_fields_count,
+                    'preserved_fields': preserved_count,
+                    'total_merged': len(merged_fields),
+                }
+            }
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Falha ao salvar campos no KV")
+
+        logger.info(f"[FORCE-EXTRACT] ✅ Extração concluída: {new_fields_count} novos, {preserved_count} preservados")
+
+        # Retornar resultado
+        new_field_names = [f['name'] for f in merged_fields if f['name'] not in existing_fields_map]
+
+        return {
+            "success": True,
+            "message": f"Extração concluída com sucesso. {new_fields_count} campo(s) novo(s) encontrado(s).",
+            "total_fields": len(merged_fields),
+            "new_fields": new_field_names,
+            "new_fields_count": new_fields_count,
+            "preserved_count": preserved_count,
+            "servers_checked": total_servers,
+            "servers_success": successful_servers,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FORCE-EXTRACT] Erro: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao extrair campos: {str(e)}"
+        )
+
+
 # ============================================================================
 # REPLICAÇÃO E GERENCIAMENTO DE SERVIDORES
 # ============================================================================
