@@ -4,6 +4,16 @@
 **Data da análise:** 2025-10-30
 **Linhas de código:** 628 linhas
 
+> **⚠️ DOCUMENTO PARCIALMENTE DESATUALIZADO (2025-11-12)**
+>
+> As seguintes funcionalidades mencionadas neste documento foram **REMOVIDAS**:
+> - ❌ Botão "Master → Slaves" (replicação de configurações)
+> - ❌ Botões "Reiniciar Selecionado" e "Reiniciar Todos"
+> - ❌ APIs `/metadata-fields/replicate-to-slaves` e `/metadata-fields/restart-prometheus`
+>
+> **Motivo:** Esta página apenas LÊ dados do Prometheus (não edita prometheus.yml).
+> Edições de prometheus.yml são feitas na página **PrometheusConfig**.
+
 ---
 
 ## 📋 RESUMO EXECUTIVO

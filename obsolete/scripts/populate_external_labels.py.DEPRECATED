@@ -49,13 +49,29 @@ async def main():
     kv = KVManager()
 
     print("[INFO] Buscando sites do Consul KV...")
-    sites_data = await kv.get_json("skills/eye/settings/sites")
+    # ATUALIZADO: Usar novo path do KV (migrado de skills/eye/settings/sites)
+    sites_data = await kv.get_json("skills/eye/metadata/sites")
 
-    if not sites_data or "sites" not in sites_data:
+    if not sites_data:
         print("[ERROR] Sites não encontrados no KV!")
         return 1
 
-    sites = sites_data["sites"]
+    # Estrutura pode ter wrapper 'data'
+    if 'data' in sites_data:
+        data_wrapper = sites_data.get('data', {})
+        if isinstance(data_wrapper, dict) and 'data' in data_wrapper:
+            # Duplo wrapper
+            sites = data_wrapper.get('data', {}).get('sites', [])
+        else:
+            # Wrapper simples
+            sites = data_wrapper.get('sites', [])
+    else:
+        # Estrutura antiga sem wrapper
+        sites = sites_data.get("sites", [])
+    
+    if not sites:
+        print("[ERROR] Lista de sites vazia no KV!")
+        return 1
     print(f"[INFO] Encontrados {len(sites)} sites")
 
     updated_count = 0
@@ -79,7 +95,28 @@ async def main():
 
     if updated_count > 0:
         print(f"\n[SAVE] Salvando {updated_count} sites atualizados no KV...")
-        success = await kv.put_json("skills/eye/settings/sites", {"sites": sites})
+        
+        # ATUALIZADO: Salvar com estrutura completa preservando wrapper
+        if 'data' in sites_data:
+            # Preservar estrutura existente
+            save_structure = sites_data.copy()
+            if 'data' in save_structure.get('data', {}):
+                # Duplo wrapper
+                save_structure['data']['data']['sites'] = sites
+            else:
+                # Wrapper simples
+                save_structure['data']['sites'] = sites
+        else:
+            # Criar estrutura nova
+            save_structure = {
+                "data": {"sites": sites},
+                "meta": {
+                    "version": "2.0.0",
+                    "last_update": "external_labels_population"
+                }
+            }
+        
+        success = await kv.put_json("skills/eye/metadata/sites", save_structure)
 
         if success:
             print("[SUCCESS] ✅ Sites atualizados com sucesso!")

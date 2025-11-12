@@ -1,3 +1,12 @@
+/**
+ * ⚠️ ARQUIVO DE BACKUP ⚠️
+ * 
+ * As abas "Gerenciar Sites" e "External Labels" foram migradas para MetadataFields.tsx
+ * Este arquivo é mantido como backup de segurança e não deve mais ser usado.
+ * 
+ * Para gerenciar sites e visualizar external labels, use a página MetadataFields.
+ */
+
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useConsulDelete } from '../hooks/useConsulDelete';
 import {

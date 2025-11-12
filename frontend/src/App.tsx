@@ -5,6 +5,7 @@ import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
 import { loadNamingConfig } from './utils/namingUtils';
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
+import { SitesProvider } from './hooks/useSites';
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -33,7 +34,7 @@ import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
 import MonitoringTypes from './pages/MonitoringTypes';
 import ReferenceValues from './pages/ReferenceValues';
-import Settings from './pages/Settings';
+// import Settings from './pages/Settings'; // REMOVIDO - Funcionalidades migradas para MetadataFields
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -118,11 +119,10 @@ const App: React.FC = () => {
           name: 'Valores de Referência',
           icon: <DatabaseOutlined />,
         },
-        {
-          path: '/settings',
-          name: 'Sites e External Labels',
-          icon: <CloudServerOutlined />,
-        },
+        // REMOVIDO: Settings (Sites e External Labels)
+        // Funcionalidades agora disponíveis em:
+        // - /metadata-fields (aba "Gerenciar Sites")
+        // - /metadata-fields (aba "External Labels")
       ],
     },
     {
@@ -158,6 +158,7 @@ const App: React.FC = () => {
         }}
       >
         <AntdApp>
+        <SitesProvider>
         <MetadataFieldsProvider>
         <ProLayout
           title="Consul Manager"
@@ -195,10 +196,11 @@ const App: React.FC = () => {
             <Route path="/installer" element={<Installer />} />
             <Route path="/monitoring-types" element={<MonitoringTypes />} />
             <Route path="/reference-values" element={<ReferenceValues />} />
-            <Route path="/settings" element={<Settings />} />
+            {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
           </Routes>
         </ProLayout>
         </MetadataFieldsProvider>
+        </SitesProvider>
         </AntdApp>
       </ConfigProvider>
     </BrowserRouter>

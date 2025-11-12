@@ -640,31 +640,6 @@ Sincroniza campo específico com prometheus.yml.
 
 ---
 
-### `POST /metadata-fields/replicate-to-slaves`
-Replica configurações do master para slaves.
-
-**Request Body:**
-```json
-{
-  "source_server": null,
-  "target_servers": ["172.16.200.14:22"]
-}
-```
-
----
-
-### `POST /metadata-fields/restart-prometheus`
-Reinicia Prometheus em servidores.
-
-**Request Body:**
-```json
-{
-  "server_ids": ["172.16.1.26:5522"]
-}
-```
-
----
-
 ## Blackbox Targets (`/blackbox`)
 
 Gerenciamento de alvos Blackbox Exporter.

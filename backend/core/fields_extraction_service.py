@@ -48,10 +48,15 @@ class MetadataField:
     validation: Optional[Dict[str, Any]] = None  # Validação (objeto)
     default_value: Optional[Any] = None  # Valor padrão
     placeholder: str = ""  # Placeholder para input
+    discovered_in: List[str] = None  # Lista de hostnames onde campo foi descoberto (MULTI-SERVER)
 
     def to_dict(self) -> Dict[str, Any]:
         """Converte para dicionário"""
-        return asdict(self)
+        result = asdict(self)
+        # Garantir que discovered_in seja sempre uma lista (não None)
+        if result.get('discovered_in') is None:
+            result['discovered_in'] = []
+        return result
 
 
 class FieldsExtractionService:

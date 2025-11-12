@@ -1,0 +1,55 @@
+{
+  "timestamp": "2025-11-12T18:59:46.289024",
+  "endpoints": {
+    "naming-config": {
+      "url": "http://localhost:5000/api/v1/settings/naming-config",
+      "status_code": 200,
+      "response": {
+        "naming_strategy": "option2",
+        "suffix_enabled": true,
+        "default_site": "palmas"
+      },
+      "success": true,
+      "notes": "Config atual vem de .env"
+    },
+    "sites-config": {
+      "url": "http://localhost:5000/api/v1/metadata-fields/config/sites",
+      "status_code": 200,
+      "total_sites": 3,
+      "sites": [
+        {
+          "code": "palmas",
+          "name": "Palmas",
+          "is_default": true,
+          "color": "red",
+          "cluster": "palmas-master",
+          "prometheus_instance": "172.16.1.26"
+        },
+        {
+          "code": "rio",
+          "name": "Rio de Janeiro",
+          "is_default": false,
+          "color": "gold",
+          "cluster": "rmd-ldc-cliente",
+          "prometheus_instance": "172.16.200.14"
+        },
+        {
+          "code": "dtc",
+          "name": "Dtc",
+          "is_default": false,
+          "color": "blue",
+          "cluster": "dtc-remote-skills",
+          "prometheus_instance": "11.144.0.21"
+        }
+      ],
+      "success": true,
+      "notes": "Sites atuais do KV"
+    },
+    "sites-config-new": {
+      "url": "http://localhost:5000/api/v1/settings/sites-config",
+      "status_code": 404,
+      "exists": false,
+      "notes": "Este endpoint será criado na FASE 2"
+    }
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "timestamp": "2025-11-12T19:58:46.401061",
+  "tests": {
+    "test_naming_config_from_env": {
+      "actual": {
+        "naming_strategy": "option2",
+        "suffix_enabled": true,
+        "default_site": "palmas",
+        "description": "option1: Nomes iguais + filtros | option2: Nomes diferentes por site"
+      },
+      "expected": {
+        "naming_strategy": "option2",
+        "suffix_enabled": true,
+        "default_site": "palmas"
+      },
+      "passed": true,
+      "notes": "Config atual vem de variáveis de ambiente"
+    },
+    "test_apply_site_suffix_default_site": {
+      "input": {
+        "service_name": "node_exporter",
+        "site": "palmas"
+      },
+      "actual": "node_exporter",
+      "expected": "node_exporter",
+      "passed": true,
+      "notes": "Site padrão (palmas) não deve receber sufixo"
+    },
+    "test_apply_site_suffix_non_default_site": {
+      "input": {
+        "service_name": "node_exporter",
+        "site": "rio"
+      },
+      "actual": "node_exporter_rio",
+      "expected": "node_exporter_rio",
+      "passed": true,
+      "notes": "Site remoto (rio) deve receber sufixo _rio"
+    },
+    "test_apply_site_suffix_dtc": {
+      "input": {
+        "service_name": "blackbox_exporter",
+        "site": "dtc"
+      },
+      "actual": "blackbox_exporter_dtc",
+      "expected": "blackbox_exporter_dtc",
+      "passed": true,
+      "notes": "Site DTC deve receber sufixo _dtc"
+    },
+    "test_extract_site_from_cluster_rio": {
+      "input": {
+        "cluster": "rmd-ldc-cliente"
+      },
+      "actual": "rio",
+      "expected": "rio",
+      "passed": true,
+      "notes": "Cluster 'rmd-ldc-cliente' deve inferir site='rio'"
+    },
+    "test_extract_site_from_cluster_dtc": {
+      "input": {
+        "cluster": "dtc-remote-skills"
+      },
+      "actual": "dtc",
+      "expected": "dtc",
+      "passed": true,
+      "notes": "Cluster 'dtc-remote-skills' deve inferir site='dtc'"
+    },
+    "test_extract_site_from_cluster_palmas": {
+      "input": {
+        "cluster": "palmas-master"
+      },
+      "actual": "palmas",
+      "expected": "palmas",
+      "passed": true,
+      "notes": "Cluster 'palmas-master' deve inferir site='palmas'"
+    },
+    "test_extract_site_from_explicit_field": {
+      "input": {
+        "site": "rio",
+        "cluster": "outro-cluster"
+      },
+      "actual": "rio",
+      "expected": "rio",
+      "passed": true,
+      "notes": "Campo 'site' explícito tem prioridade sobre cluster"
+    },
+    "test_sites_from_kv": {
+      "actual": {
+        "total_sites": 3,
+        "sites": [
+          {
+            "code": "palmas",
+            "name": "Palmas",
+            "is_default": true,
+            "color": "red",
+            "cluster": "palmas-master",
+            "prometheus_instance": "172.16.1.26",
+            "has_all_fields": true
+          },
+          {
+            "code": "rio",
+            "name": "Rio de Janeiro",
+            "is_default": false,
+            "color": "gold",
+            "cluster": "rmd-ldc-cliente",
+            "prometheus_instance": "172.16.200.14",
+            "has_all_fields": true
+          },
+          {
+            "code": "dtc",
+            "name": "Dtc",
+            "is_default": false,
+            "color": "blue",
+            "cluster": "dtc-remote-skills",
+            "prometheus_instance": "11.144.0.21",
+            "has_all_fields": true
+          }
+        ]
+      },
+      "expected": {
+        "total_sites": 3,
+        "all_sites_valid": true
+      },
+      "passed": true,
+      "notes": "KV deve conter 3 sites com todos os campos necessários"
+    },
+    "test_site_colors_in_kv": {
+      "actual": {
+        "kv_colors": {
+          "palmas": "red",
+          "rio": "gold",
+          "dtc": "blue"
+        },
+        "frontend_hardcoded": {
+          "palmas": "blue",
+          "rio": "green",
+          "dtc": "orange"
+        }
+      },
+      "expected": {
+        "kv_colors": {
+          "palmas": "red",
+          "rio": "gold",
+          "dtc": "blue"
+        },
+        "should_match": true
+      },
+      "passed": true,
+      "discrepancies": {
+        "palmas": {
+          "kv": "red",
+          "frontend": "blue",
+          "matches": false
+        },
+        "rio": {
+          "kv": "gold",
+          "frontend": "green",
+          "matches": false
+        },
+        "dtc": {
+          "kv": "blue",
+          "frontend": "orange",
+          "matches": false
+        }
+      },
+      "notes": "KV tem cores corretas, mas frontend tem hardcoding errado"
+    },
+    "test_apply_suffix_with_cluster_inference": {
+      "test_cases": [
+        {
+          "input": {
+            "service_name": "mysql_exporter",
+            "cluster": "rmd-ldc-cliente"
+          },
+          "expected_site": "rio",
+          "expected_name": "mysql_exporter_rio",
+          "actual_name": "mysql_exporter_rio",
+          "passed": true
+        },
+        {
+          "input": {
+            "service_name": "postgres_exporter",
+            "cluster": "dtc-remote-skills"
+          },
+          "expected_site": "dtc",
+          "expected_name": "postgres_exporter_dtc",
+          "actual_name": "postgres_exporter_dtc",
+          "passed": true
+        },
+        {
+          "input": {
+            "service_name": "redis_exporter",
+            "cluster": "palmas-master"
+          },
+          "expected_site": "palmas",
+          "expected_name": "redis_exporter",
+          "actual_name": "redis_exporter",
+          "passed": true
+        }
+      ],
+      "passed": true,
+      "notes": "Inferência de site pelo cluster deve funcionar corretamente"
+    },
+    "test_unknown_site_handling": {
+      "input": {
+        "service_name": "test_exporter",
+        "site": "saopaulo"
+      },
+      "actual": "test_exporter_saopaulo",
+      "expected": "test_exporter",
+      "passed": false,
+      "notes": "Site desconhecido deve retornar nome sem sufixo"
+    }
+  },
+  "summary": {
+    "total_tests": 12,
+    "passed": 11,
+    "failed": 1
+  }
+}
