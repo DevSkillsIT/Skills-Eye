@@ -146,6 +146,11 @@ class BatchSyncRequest(BaseModel):
     dry_run: bool = Field(False, description="Se True, apenas simula sem aplicar")
 
 
+class ForceExtractRequest(BaseModel):
+    """Request para extração forçada de campos"""
+    server_id: Optional[str] = Field(None, description="ID do servidor (hostname). Se None, extrai de todos.")
+
+
 class FieldSyncResult(BaseModel):
     """Resultado da sincronização de um campo"""
     field_name: str
@@ -1980,7 +1985,9 @@ async def sync_field_to_prometheus_endpoint(
 
 
 @router.post("/force-extract")
-async def force_extract_fields():
+async def force_extract_fields(
+    request: Optional[ForceExtractRequest] = None
+):
     """
     Força extração manual de campos do Prometheus via SSH.
 
@@ -1988,7 +1995,7 @@ async def force_extract_fields():
 
     FLUXO:
     1. Limpa cache de campos
-    2. Conecta via SSH aos servidores Prometheus
+    2. Conecta via SSH aos servidores Prometheus (ou apenas um servidor se server_id fornecido)
     3. Extrai relabel_configs do prometheus.yml
     4. Faz MERGE com campos existentes (preserva customizações)
     5. Salva no KV
@@ -1998,9 +2005,17 @@ async def force_extract_fields():
     - Adicionou novos campos no prometheus.yml
     - Quer atualizar lista de campos sem reiniciar backend
     - Suspeita que campos estão desatualizados
+
+    Args:
+        request: Opcional - se fornecido com server_id, extrai apenas daquele servidor
     """
     try:
-        logger.info("[FORCE-EXTRACT] Iniciando extração manual de campos")
+        server_id = request.server_id if request else None
+
+        if server_id:
+            logger.info(f"[FORCE-EXTRACT] Iniciando extração manual do servidor: {server_id}")
+        else:
+            logger.info("[FORCE-EXTRACT] Iniciando extração manual de TODOS os servidores")
 
         # PASSO 1: Limpar cache global para forçar nova extração
         global _fields_config_cache
@@ -2020,8 +2035,28 @@ async def force_extract_fields():
             logger.info(f"[FORCE-EXTRACT] {len(existing_fields_map)} campos existentes no KV")
 
         # PASSO 3: Extrair campos do Prometheus via SSH
+        import asyncio
         multi_config = MultiConfigManager()
-        extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+
+        # Se tiver server_id, usar método específico para servidor único (extract_single_server_fields)
+        if server_id:
+            # Verificar se servidor existe
+            if not any(h.hostname == server_id for h in multi_config.hosts):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor '{server_id}' não encontrado na configuração"
+                )
+
+            logger.info(f"[FORCE-EXTRACT] Usando extract_single_server_fields para: {server_id}")
+
+            # USAR MÉTODO CORRETO PARA SERVIDOR ÚNICO (sync → async via to_thread)
+            extraction_result = await asyncio.to_thread(
+                multi_config.extract_single_server_fields,
+                server_id
+            )
+        else:
+            # Extrair de todos os servidores (async nativo)
+            extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
 
         if not extraction_result or 'fields' not in extraction_result:
             raise HTTPException(

@@ -501,15 +501,25 @@ const MetadataFieldsPage: React.FC = () => {
   const [loadingForceExtract, setLoadingForceExtract] = useState(false);
 
   const handleForceExtract = async () => {
+    if (!selectedServer) {
+      message.warning('Selecione um servidor primeiro');
+      return;
+    }
+
     try {
       setLoadingForceExtract(true);
+
+      const serverName = servers.find(s => s.id === selectedServer)?.display_name || selectedServer;
+
       message.loading({
-        content: 'Extraindo campos do Prometheus via SSH...',
+        content: `Extraindo campos do servidor ${serverName} via SSH...`,
         key: 'force-extract',
         duration: 0
       });
 
-      const response = await axios.post(`${API_URL}/metadata-fields/force-extract`, {}, {
+      const response = await axios.post(`${API_URL}/metadata-fields/force-extract`, {
+        server_id: selectedServer  // ← Passar servidor selecionado
+      }, {
         timeout: 60000 // 60 segundos (SSH pode demorar)
       });
 
@@ -1439,12 +1449,16 @@ const MetadataFieldsPage: React.FC = () => {
             toolbarItems.push(
               <Tooltip
                 key="force-extract"
-                title="Extrair novos campos do Prometheus via SSH (sem reiniciar backend). Use quando adicionar novos campos no prometheus.yml."
+                title={
+                  !selectedServer
+                    ? "Selecione um servidor primeiro"
+                    : "Extrair novos campos do Prometheus via SSH (sem reiniciar backend). Use quando adicionar novos campos no prometheus.yml do servidor selecionado."
+                }
               >
                 <Button
                   icon={<CloudDownloadOutlined spin={loadingForceExtract} />}
                   onClick={handleForceExtract}
-                  disabled={loadingForceExtract}
+                  disabled={!selectedServer || loadingForceExtract}
                   loading={loadingForceExtract}
                 >
                   {loadingForceExtract ? 'Extraindo...' : 'Extrair Campos'}
