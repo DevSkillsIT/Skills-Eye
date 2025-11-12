@@ -388,6 +388,98 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
+  /**
+   * Força extração SSH de TODOS os servidores (para botão "Atualizar Dados" do modal)
+   */
+  const forceRefreshFields = async () => {
+    console.log('[METADATA-FIELDS] 🔄 FORCE REFRESH - Forçando extração SSH de TODOS os servidores...');
+
+    // RESETAR estados ANTES de abrir o modal
+    setFieldsData(prev => ({
+      ...prev,
+      loading: true,
+      fromCache: false,
+      successfulServers: 0,
+      totalServers: 0,
+      serverStatus: [],
+      totalFields: 0,
+      fieldsError: null,
+    }));
+
+    // Abrir modal com estados limpos
+    setProgressModalVisible(true);
+    setLoading(true);
+
+    try {
+      // CHAMAR FORCE-EXTRACT SEM server_id = extrai de TODOS os servidores
+      const response = await axios.post(
+        `${API_URL}/metadata-fields/force-extract`,
+        {}, // ← SEM server_id = TODOS os servidores
+        {
+          timeout: 60000, // 60 segundos
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        }
+      );
+
+      console.log('[METADATA-FIELDS] ✅ Force extract concluído:', response.data);
+
+      if (response.data.success) {
+        // Recarregar campos do KV (que acabou de ser atualizado)
+        const fieldsResponse = await axios.get(`${API_URL}/metadata-fields/?_t=${Date.now()}`, {
+          timeout: 30000,
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          }
+        });
+
+        if (fieldsResponse.data.success) {
+          const fields = fieldsResponse.data.fields.map((field: any) => ({
+            ...field,
+            show_in_services: field.show_in_services ?? true,
+            show_in_exporters: field.show_in_exporters ?? true,
+            show_in_blackbox: field.show_in_blackbox ?? true,
+          }));
+
+          console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos recarregados após force-extract`);
+
+          setFields(fields);
+
+          // Atualizar estado do modal
+          setFieldsData({
+            fromCache: false, // SEMPRE false porque acabamos de extrair
+            loading: false,
+            successfulServers: fieldsResponse.data.successful_servers || 0,
+            totalServers: fieldsResponse.data.total_servers || 0,
+            serverStatus: fieldsResponse.data.server_status || [],
+            totalFields: fields.length,
+            fieldsError: null,
+          });
+
+          message.success(`Extração forçada concluída! ${fields.length} campos atualizados.`);
+        }
+      }
+    } catch (error: any) {
+      const errorMsg = error.code === 'ECONNABORTED'
+        ? 'Timeout ao forçar extração (60s)'
+        : 'Erro ao forçar extração: ' + (error.response?.data?.detail || error.message);
+
+      message.error(errorMsg);
+
+      // Atualizar estado com erro
+      setFieldsData(prev => ({
+        ...prev,
+        loading: false,
+        fieldsError: errorMsg,
+      }));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchExternalLabels = async (serverId: string) => {
     if (!serverId) {
       setExternalLabels({});
@@ -2186,7 +2278,7 @@ const MetadataFieldsPage: React.FC = () => {
       <ExtractionProgressModal
         visible={progressModalVisible}
         onClose={() => setProgressModalVisible(false)}
-        onRefresh={fetchFields}
+        onRefresh={forceRefreshFields}
         loading={fieldsData.loading}
         fromCache={fieldsData.fromCache}
         successfulServers={fieldsData.successfulServers}
