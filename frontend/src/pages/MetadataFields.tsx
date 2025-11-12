@@ -662,81 +662,11 @@ const MetadataFieldsPage: React.FC = () => {
 
   /**
    * Força extração manual de campos do Prometheus via SSH
+   * Agora chama forceRefreshFields() que extrai de TODOS os servidores
+   * e mostra o modal de progresso em tempo real
    */
-  const [loadingForceExtract, setLoadingForceExtract] = useState(false);
-
   const handleForceExtract = async () => {
-    if (!selectedServer) {
-      message.warning('Selecione um servidor primeiro');
-      return;
-    }
-
-    try {
-      setLoadingForceExtract(true);
-
-      // Buscar servidor no array para pegar o hostname (sem porta)
-      const server = servers.find(s => s.id === selectedServer);
-      if (!server) {
-        message.error('Servidor não encontrado');
-        setLoadingForceExtract(false);
-        return;
-      }
-
-      const serverName = server.display_name || server.hostname;
-
-      message.loading({
-        content: `Extraindo campos do servidor ${serverName} via SSH...`,
-        key: 'force-extract',
-        duration: 0
-      });
-
-      const response = await axios.post(`${API_URL}/metadata-fields/force-extract`, {
-        server_id: server.hostname  // ← CRÍTICO: Passar HOSTNAME (não ID com porta)
-      }, {
-        timeout: 60000 // 60 segundos (SSH pode demorar)
-      });
-
-      message.destroy('force-extract');
-
-      if (response.data.success) {
-        const { new_fields_count, total_fields, new_fields } = response.data;
-
-        if (new_fields_count > 0) {
-          message.success(
-            `✅ ${new_fields_count} campo(s) novo(s) encontrado(s)! Total: ${total_fields} campos.`,
-            8
-          );
-
-          // Mostrar lista de novos campos
-          if (new_fields && new_fields.length > 0) {
-            console.log('[FORCE-EXTRACT] Novos campos:', new_fields);
-          }
-        } else {
-          message.info(`Nenhum campo novo encontrado. Total: ${total_fields} campos.`, 5);
-        }
-
-        // Recarregar lista de campos
-        await fetchFields();
-
-        // Se tiver servidor selecionado, atualizar sync status também
-        if (selectedServer) {
-          await fetchSyncStatus(selectedServer);
-        }
-      }
-    } catch (error: any) {
-      message.destroy('force-extract');
-      console.error('[FORCE-EXTRACT] Erro:', error);
-
-      if (error.code === 'ECONNABORTED') {
-        message.error('⏱️ Timeout: Extração demorou mais de 60s. Tente novamente.', 10);
-      } else if (error.response?.data?.detail) {
-        message.error('Erro: ' + error.response.data.detail, 8);
-      } else {
-        message.error('Erro ao extrair campos: ' + error.message, 8);
-      }
-    } finally {
-      setLoadingForceExtract(false);
-    }
+    await forceRefreshFields();
   };
 
   // Carregamento inicial: servidores + campos + categorias + sync status (UMA VEZ APENAS)
@@ -1629,12 +1559,12 @@ const MetadataFieldsPage: React.FC = () => {
                 }
               >
                 <Button
-                  icon={<CloudDownloadOutlined spin={loadingForceExtract} />}
+                  icon={<CloudDownloadOutlined spin={fieldsData.loading} />}
                   onClick={handleForceExtract}
-                  disabled={!selectedServer || loadingForceExtract}
-                  loading={loadingForceExtract}
+                  disabled={fieldsData.loading}
+                  loading={fieldsData.loading}
                 >
-                  {loadingForceExtract ? 'Extraindo...' : 'Extrair Campos'}
+                  {fieldsData.loading ? 'Extraindo...' : 'Extrair Campos'}
                 </Button>
               </Tooltip>
             );
