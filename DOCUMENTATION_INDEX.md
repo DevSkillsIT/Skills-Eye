@@ -1,8 +1,16 @@
 # Índice de Documentação - Skills Eye
 
-**Última Atualização:** 2025-01-07
+**Última Atualização:** 2025-11-12 (Reorganização Completa)
 
 Este documento serve como índice para TODA a documentação do projeto, organizada por categoria.
+
+**🆕 Mudanças nesta revisão:**
+- ✅ Criada pasta `docs/features/` para funcionalidades principais
+- ✅ Criada pasta `docs/sessions/` para correções e sessões específicas
+- ✅ Criada pasta `Tests/` na raiz para TODOS os testes automatizados
+- ✅ 28 documentos movidos da raiz para pastas apropriadas
+- ✅ 34 testes organizados em 4 categorias (naming, metadata, performance, integration)
+- ✅ Documentação atualizada refletindo funcionalidades de 2025-11-12
 
 ---
 
@@ -131,6 +139,76 @@ Este documento serve como índice para TODA a documentação do projeto, organiz
 | Documento | Localização | Descrição |
 |-----------|-------------|-----------|
 | **Jobs Perdidos** | [docs/incidents/jobs-perdidos.md](docs/incidents/jobs-perdidos.md) | Incidente de jobs perdidos |
+
+---
+
+## 🎯 FEATURES E FUNCIONALIDADES
+
+| Documento | Localização | Descrição |
+|-----------|-------------|-----------|
+| **Naming System Complete** | [docs/features/NAMING_SYSTEM_COMPLETE.md](docs/features/NAMING_SYSTEM_COMPLETE.md) | **NOVO** - Sistema de naming dinâmico 100% completo |
+| **Guia de Uso Naming** | [docs/features/GUIA_USO_NAMING_SYSTEM.md](docs/features/GUIA_USO_NAMING_SYSTEM.md) | Guia prático de uso do naming system |
+| **Migração Naming** | [docs/features/MIGRACAO_NAMING_DINAMICO_COMPLETA.md](docs/features/MIGRACAO_NAMING_DINAMICO_COMPLETA.md) | História completa da migração naming |
+| **Plano Naming** | [docs/features/PLANO_NAMING_DINAMICO.md](docs/features/PLANO_NAMING_DINAMICO.md) | Plano original da implementação |
+| **Análise Naming Sites** | [docs/features/ANALISE_NAMING_SITES_2025-11-12.md](docs/features/ANALISE_NAMING_SITES_2025-11-12.md) | Análise detalhada de sites e naming |
+| **Resumo Dinâmico** | [docs/features/RESUMO_DINAMICO_COMPLETO.md](docs/features/RESUMO_DINAMICO_COMPLETO.md) | Resumo da implementação dinâmica |
+| **Correções Fase 7** | [docs/features/CORRECOES_FASE_7_COMPLETA.md](docs/features/CORRECOES_FASE_7_COMPLETA.md) | Correções finais fase 7 |
+| **Sites & External Labels** | [docs/features/RESPOSTA_SITES_EXTERNAL_LABELS.md](docs/features/RESPOSTA_SITES_EXTERNAL_LABELS.md) | Explicação de sites e external labels |
+| **Dados Sites/External Labels** | [docs/features/EXPLICACAO_DADOS_SITES_EXTERNAL_LABELS.md](docs/features/EXPLICACAO_DADOS_SITES_EXTERNAL_LABELS.md) | Estrutura de dados detalhada |
+| **Correções Sites** | [docs/features/CORRECOES_SITES_2025-11-12.md](docs/features/CORRECOES_SITES_2025-11-12.md) | Correções específicas de sites |
+| **Consolidação Completa** | [docs/features/CONSOLIDACAO_COMPLETA_RESUMO.md](docs/features/CONSOLIDACAO_COMPLETA_RESUMO.md) | Resumo da consolidação settings→metadata |
+| **Remoção Settings** | [docs/features/REMOCAO_SETTINGS_2025-11-12.md](docs/features/REMOCAO_SETTINGS_2025-11-12.md) | Migração /settings → /metadata-fields |
+| **Implementação Completa** | [docs/features/IMPLEMENTACAO_COMPLETA.md](docs/features/IMPLEMENTACAO_COMPLETA.md) | Implementação completa de features |
+| **Análise Backend** | [docs/features/ANALISE_BACKEND_SETTINGS_VS_METADATA.md](docs/features/ANALISE_BACKEND_SETTINGS_VS_METADATA.md) | Análise settings vs metadata |
+| **Análise Arquitetura** | [docs/features/ANALISE_ARQUITETURA_FINAL.md](docs/features/ANALISE_ARQUITETURA_FINAL.md) | Análise final da arquitetura |
+
+---
+
+## 📝 SESSÕES E CORREÇÕES
+
+| Documento | Localização | Descrição |
+|-----------|-------------|-----------|
+| **CHANGELOG Session** | [docs/sessions/CHANGELOG-SESSION.md](docs/sessions/CHANGELOG-SESSION.md) | Changelog de sessão específica |
+| **Correções 2025-11-11** | [docs/sessions/CORRECOES_2025-11-11.md](docs/sessions/CORRECOES_2025-11-11.md) | Correções aplicadas em 11/11 |
+| **Correções Críticas** | [docs/sessions/CORRECOES_CRITICAS_2025-11-11.md](docs/sessions/CORRECOES_CRITICAS_2025-11-11.md) | Correções críticas específicas |
+| **Correções Finais 11/11** | [docs/sessions/CORRECOES_FINAIS_2025-11-11.md](docs/sessions/CORRECOES_FINAIS_2025-11-11.md) | Últimas correções de 11/11 |
+| **Correções Completas** | [docs/sessions/CORRECOES_FINAIS_COMPLETAS.md](docs/sessions/CORRECOES_FINAIS_COMPLETAS.md) | Correções completas consolidadas |
+| **Correções Estrutura KV** | [docs/sessions/CORRECOES_URGENTES_ESTRUTURA_KV.md](docs/sessions/CORRECOES_URGENTES_ESTRUTURA_KV.md) | Correções urgentes KV |
+| **KV Órfãos** | [docs/sessions/CORRECOES_APLICADAS_KV_ORFAOS.md](docs/sessions/CORRECOES_APLICADAS_KV_ORFAOS.md) | Correção de campos órfãos |
+| **Colunas** | [docs/sessions/CORRECOES_COLUNAS_2025-11-12.md](docs/sessions/CORRECOES_COLUNAS_2025-11-12.md) | Correções de colunas em tabelas |
+| **External Labels Aba** | [docs/sessions/CORRECOES_FINAIS_ABA_EXTERNAL_LABELS.md](docs/sessions/CORRECOES_FINAIS_ABA_EXTERNAL_LABELS.md) | Correções aba external labels |
+| **Órfãos vs Missing** | [docs/sessions/EXPLICACAO_ORFAOS_VS_MISSING.md](docs/sessions/EXPLICACAO_ORFAOS_VS_MISSING.md) | Explicação de campos órfãos |
+
+---
+
+## 🧪 TESTES AUTOMATIZADOS
+
+**Localização:** [Tests/](Tests/)
+
+| Categoria | Testes | Descrição |
+|-----------|--------|-----------|
+| **Naming** | 3 testes | Sistema de naming dinâmico (11/12 passing) |
+| **Metadata** | 12 testes | Metadata fields, reference values, external labels |
+| **Performance** | 5 testes | Performance, cache, rendering, API benchmarks |
+| **Integration** | 14 testes | Endpoints, validação, multi-site, prometheus config |
+| **TOTAL** | **34 testes** | **✅ 33/34 passing (97%)** |
+
+**Documentação completa:** [Tests/README.md](Tests/README.md)
+
+**Como executar:**
+```bash
+# Todos os testes de naming
+for test in Tests/naming/*.py; do python3 "$test"; done
+
+# Todos os testes de metadata
+for test in Tests/metadata/*.py; do python3 "$test"; done
+
+# Todos os testes de performance
+for test in Tests/performance/*.py; do python3 "$test"; done
+
+# Todos os testes de integração
+for test in Tests/integration/*.py; do python3 "$test"; done
+```
 
 ---
 

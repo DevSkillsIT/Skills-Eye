@@ -1,18 +1,32 @@
 # MetadataFields.tsx - Análise Completa da Página
 
 **Arquivo:** `frontend/src/pages/MetadataFields.tsx`
-**Data da análise:** 2025-10-30
-**Linhas de código:** 628 linhas
+**Data da análise:** 2025-11-12 (ATUALIZADO)
+**Linhas de código:** 3468 linhas (expandida significativamente)
 
-> **⚠️ DOCUMENTO PARCIALMENTE DESATUALIZADO (2025-11-12)**
+> **✅ DOCUMENTO ATUALIZADO (2025-11-12)**
 >
-> As seguintes funcionalidades mencionadas neste documento foram **REMOVIDAS**:
-> - ❌ Botão "Master → Slaves" (replicação de configurações)
-> - ❌ Botões "Reiniciar Selecionado" e "Reiniciar Todos"
-> - ❌ APIs `/metadata-fields/replicate-to-slaves` e `/metadata-fields/restart-prometheus`
+> **Funcionalidades ADICIONADAS desde última análise:**
+> - ✅ **Gerenciamento de Sites** - CRUD completo de sites (Palmas, Rio, DTC)
+> - ✅ **External Labels** - Gerenciamento global e por servidor
+> - ✅ **Naming Strategy** - Configuração option1 vs option2, sufixos automáticos
+> - ✅ **Reference Values** - Autocomplete dinâmico de valores
+> - ✅ **Sync Status** - Visualização de sincronização KV ↔ Prometheus
+> - ✅ **Batch Sync** - Sincronização em lote instantânea
+> - ✅ **Force Extract** - Extração forçada de campos via SSH
 >
-> **Motivo:** Esta página apenas LÊ dados do Prometheus (não edita prometheus.yml).
-> Edições de prometheus.yml são feitas na página **PrometheusConfig**.
+> **Funcionalidades REMOVIDAS:**
+> - ❌ Botão "Master → Slaves" (movido para PrometheusConfig)
+> - ❌ Botões "Reiniciar Prometheus" (movido para PrometheusConfig)
+>
+> **Nova Estrutura:**
+> A página agora possui **6 abas principais** em formato de tabs:
+> 1. 📋 **Campos Metadata** - Gerenciamento de campos (tabela principal)
+> 2. 🌍 **Gerenciar Sites** - CRUD de sites (palmas, rio, dtc)
+> 3. 🏷️ **External Labels Global** - External labels compartilhados
+> 4. 🏷️ **External Labels Todos** - External labels por servidor
+> 5. 📚 **Reference Values** - Valores de autocomplete
+> 6. 🔄 **Sync Status** - Status de sincronização
 
 ---
 
@@ -20,14 +34,39 @@
 
 ### O QUE É A PÁGINA METADATAFIELDS
 
-A página **MetadataFields** é uma **interface de gerenciamento centralizado** de todos os campos metadata usados no sistema Skills Eye. Ela permite que o usuário:
+A página **MetadataFields** é o **centro de controle completo** para gerenciar TODOS os aspectos de metadata no sistema Skills Eye. Ela consolidou funcionalidades que antes estavam espalhadas em `/settings` e outras páginas. Agora permite que o usuário:
 
+#### 🔧 Gerenciamento de Campos Metadata
 1. **Adicione novos campos metadata** ao sistema
 2. **Edite campos existentes** (display name, tipo, categoria, visibilidade)
 3. **Delete campos não obrigatórios**
 4. **Sincronize automaticamente** com prometheus.yml em múltiplos servidores
-5. **Replique configurações** do Master para Slaves
-6. **Reinicie serviços** Prometheus após mudanças
+5. **Force Extract** - Extração SSH forçada de campos do Prometheus
+
+#### 🌍 Gerenciamento de Sites (NOVO - 2025-11-12)
+1. **CRUD Completo de Sites** - Criar, editar, excluir sites (palmas, rio, dtc)
+2. **Cores Customizadas** - Atribuir cores para identificação visual
+3. **Site Padrão** - Definir site default (checkbox `is_default`)
+4. **Auto-Sync** - Sincroniza sites detectados no Prometheus automaticamente
+5. **Naming Strategy** - Configurar option1 (filtros) vs option2 (sufixos)
+
+#### 🏷️ External Labels (NOVO - 2025-11-12)
+1. **External Labels Global** - Labels compartilhados por todos os servidores
+2. **External Labels por Servidor** - Labels específicos de cada Prometheus
+3. **Edição Inline** - Alterar valores diretamente na tabela
+4. **Sync com Prometheus** - Reflete configuração real dos servidores
+
+#### 📚 Reference Values (NOVO - 2025-11-12)
+1. **Autocomplete Dinâmico** - Valores para dropdowns de formulários
+2. **Por Campo** - Company, Project, Env, Tipo, Fabricante, etc
+3. **Categorias** - Organização por categorias (basic, device, extra)
+4. **CRUD Inline** - Adicionar/remover valores diretamente
+
+#### 🔄 Sync Status (NOVO - 2025-11-12)
+1. **Visualização de Status** - KV vs Prometheus (em sync ou não)
+2. **Campos Órfãos** - Campos no KV mas não no Prometheus
+3. **Campos Missing** - Campos no Prometheus mas não no KV
+4. **Batch Sync** - Sincronização em lote de todos os servidores
 
 ### POR QUE ESSA PÁGINA FOI CRIADA
 
@@ -70,7 +109,320 @@ DEPOIS (Com MetadataFields UI):
 
 ---
 
-## 🏗️ ARQUITETURA E FLUXO DE DADOS
+## � NOVAS FUNCIONALIDADES (2025-11-12)
+
+### 1. Gerenciamento de Sites
+
+**Localização:** Aba "Gerenciar Sites" na página MetadataFields
+
+**O que faz:**
+Gerencia os sites (localizações físicas) do sistema: Palmas (HQ), Rio de Janeiro, DTC.
+
+**KV Namespace:** `skills/eye/metadata/sites`
+
+**Estrutura de Dados:**
+```json
+{
+  "data": {
+    "sites": [
+      {
+        "code": "palmas",
+        "name": "Palmas",
+        "color": "red",
+        "is_default": true
+      },
+      {
+        "code": "rio",
+        "name": "Rio de Janeiro",
+        "color": "gold",
+        "is_default": false
+      },
+      {
+        "code": "dtc",
+        "name": "Dtc",
+        "color": "blue",
+        "is_default": false
+      }
+    ],
+    "naming_config": {
+      "strategy": "option2",
+      "suffix_enabled": true,
+      "description": "option1: Nomes iguais + filtros | option2: Sufixos por site"
+    }
+  },
+  "meta": {
+    "updated_at": "2025-11-12T...",
+    "version": "2.0.0"
+  }
+}
+```
+
+**Funcionalidades:**
+- ✅ **Criar Site:** Botão "Adicionar Site" abre modal com form
+- ✅ **Editar Site:** Clique no ícone ✏️ para editar code, name, color, is_default
+- ✅ **Excluir Site:** Clique no ícone 🗑️ para remover site (com confirmação)
+- ✅ **Auto-Sync:** Botão "Sincronizar Sites" detecta sites do external_labels automaticamente
+- ✅ **Naming Strategy:** Card separado com dropdown option1/option2 e switch de sufixos
+
+**Endpoints:**
+- `GET /api/v1/metadata-fields/config/sites` - Lista todos os sites
+- `POST /api/v1/metadata-fields/config/sites` - Cria novo site
+- `PATCH /api/v1/metadata-fields/config/sites/{code}` - Atualiza site
+- `DELETE /api/v1/metadata-fields/config/sites/{code}` - Remove site
+- `POST /api/v1/metadata-fields/config/sites/sync` - Auto-sync com Prometheus
+- `PATCH /api/v1/metadata-fields/config/naming` - Atualiza naming strategy
+
+**Impacto:**
+- **Services.tsx:** Adiciona sufixos automáticos aos nomes (ex: `node_exporter_rio`)
+- **Exporters.tsx:** Filtra por site, adiciona sufixos
+- **BlackboxTargets.tsx:** Filtra por site
+- **Backend (naming_utils.py):** Aplica sufixos baseado em `site` ou `cluster`
+
+---
+
+### 2. External Labels
+
+**Localização:** Abas "External Labels Global" e "External Labels Todos"
+
+**O que faz:**
+Gerencia `external_labels` do prometheus.yml de cada servidor. Labels são adicionados a TODAS as métricas coletadas pelo Prometheus.
+
+**Aba "External Labels Global":**
+- Mostra labels **compartilhados** por todos os servidores
+- Exemplo: `site=palmas`, `env=prod`, `datacenter=br-central`
+- Edição inline com botão "Salvar"
+
+**Aba "External Labels Todos":**
+- Mostra labels **por servidor** (cada linha = 1 servidor)
+- Permite visualizar diferenças entre servidores
+- Edição inline por servidor
+
+**Origem dos Dados:**
+```yaml
+# prometheus.yml
+global:
+  external_labels:
+    site: palmas
+    env: prod
+    datacenter: br-central
+    cluster: prod-1
+```
+
+**Endpoints:**
+- `GET /api/v1/metadata-fields/external-labels/{hostname}` - Labels de servidor específico
+- `POST /api/v1/metadata-fields/force-extract` - Extrai via SSH de todos os servidores
+
+**Caso de Uso:**
+1. Abrir aba "External Labels Global"
+2. Ver que `site=palmas` e `env=prod`
+3. Editar inline: `env=staging`
+4. Clicar "Salvar"
+5. Backend conecta via SSH e edita prometheus.yml
+6. Prometheus recarrega automaticamente
+
+---
+
+### 3. Reference Values
+
+**Localização:** Aba "Reference Values"
+
+**O que faz:**
+Gerencia valores de autocomplete para dropdowns em formulários de Services, Exporters, etc.
+
+**KV Namespace:** `skills/eye/reference-values/{field_name}.json`
+
+**Estrutura de Dados:**
+```json
+// skills/eye/reference-values/company.json
+{
+  "field": "company",
+  "values": ["Skills IT", "Cliente A", "Cliente B"],
+  "updated_at": "2025-11-12T..."
+}
+```
+
+**Campos Gerenciados:**
+- `company` - Empresas cadastradas
+- `project` - Projetos
+- `env` - Ambientes (prod, dev, staging)
+- `tipo` - Tipos de dispositivo
+- `fabricante` - Fabricantes (Cisco, HP, Dell)
+- `tipo_dispositivo_abrev` - Abreviações (SW, RT, FW)
+- `cod_localidade` - Códigos de localidade
+
+**Funcionalidades:**
+- ✅ **Visualizar por Categoria:** Filtro por categoria (basic, device, extra)
+- ✅ **Adicionar Valor:** Botão "+" adiciona valor inline
+- ✅ **Remover Valor:** Clique no ícone 🗑️ ao lado do valor
+- ✅ **Auto-Populate:** Botão "Atualizar" sincroniza com valores existentes no Consul
+
+**Endpoints:**
+- `GET /api/v1/metadata-fields/reference-values/{field}` - Lista valores de campo
+- `POST /api/v1/metadata-fields/reference-values/{field}` - Adiciona valor
+- `DELETE /api/v1/metadata-fields/reference-values/{field}` - Remove valor
+
+**Fluxo de Uso:**
+```
+Usuário abre Services → Clica "Criar Serviço"
+     ↓
+Dropdown "Empresa" carrega de reference-values/company.json
+     ↓
+Usuário digita "Nova Empresa"
+     ↓
+Frontend detecta valor novo e sugere adicionar
+     ↓
+POST /reference-values/company → Adiciona ao KV
+     ↓
+Próxima vez dropdown já tem "Nova Empresa"
+```
+
+---
+
+### 4. Sync Status
+
+**Localização:** Aba "Sync Status"
+
+**O que faz:**
+Mostra status de sincronização entre KV (Consul) e Prometheus (SSH).
+
+**3 Estados Possíveis:**
+1. ✅ **Em Sync** - Campos no KV = Campos no Prometheus
+2. ⚠️ **Órfãos** - Campos no KV mas NÃO no Prometheus (pode remover do KV)
+3. ⚠️ **Missing** - Campos no Prometheus mas NÃO no KV (deve adicionar ao KV)
+
+**Tabela por Servidor:**
+```
+┌──────────────────┬─────────┬─────────┬─────────┐
+│ Servidor         │ Em Sync │ Órfãos  │ Missing │
+├──────────────────┼─────────┼─────────┼─────────┤
+│ 172.16.1.26      │ ✅ 18   │ ⚠️ 2    │ ⚠️ 1    │
+│ 172.16.200.14    │ ✅ 16   │ ⚠️ 4    │ ⚠️ 0    │
+└──────────────────┴─────────┴─────────┴─────────┘
+```
+
+**Ações Disponíveis:**
+- **Adicionar ao KV:** Clique para adicionar campos missing ao KV
+- **Remover do KV:** Clique para remover campos órfãos do KV
+- **Batch Sync:** Botão "Sincronizar Todos" executa sync em lote
+
+**Endpoints:**
+- `GET /api/v1/metadata-fields/sync-status?server_id={id}` - Status de servidor específico
+- `POST /api/v1/metadata-fields/add-to-kv` - Adiciona campos missing ao KV
+- `POST /api/v1/metadata-fields/remove-orphans` - Remove campos órfãos do KV
+- `POST /api/v1/metadata-fields/batch-sync` - Sync em lote
+
+**Quando Usar:**
+- Após adicionar campo manualmente no prometheus.yml (via SSH)
+- Após editar prometheus.yml na página PrometheusConfig
+- Quando detecção automática falha
+- Para validar consistência após mudanças em massa
+
+---
+
+### 5. Naming Strategy (Sistema Dinâmico)
+
+**Localização:** Card "Configuração Global de Naming Strategy" na aba "Gerenciar Sites"
+
+**O que faz:**
+Define como serviços são nomeados no sistema multi-site.
+
+**2 Opções:**
+
+**Option 1: Nomes Iguais + Filtros**
+```
+Palmas: node_exporter  |  Filtros: site=palmas
+Rio:    node_exporter  |  Filtros: site=rio
+DTC:    node_exporter  |  Filtros: site=dtc
+```
+- ✅ Nomes idênticos em todos os sites
+- ✅ Filtros por site para distinguir
+- ❌ Pode causar conflitos no Consul se não filtrar
+
+**Option 2: Sufixos por Site (RECOMENDADO)**
+```
+Palmas: node_exporter       (sem sufixo - é o default)
+Rio:    node_exporter_rio   (sufixo _rio)
+DTC:    node_exporter_dtc   (sufixo _dtc)
+```
+- ✅ Nomes únicos por site
+- ✅ Sem conflitos no Consul
+- ✅ Fácil identificar site pelo nome
+- ❌ Nomes mais longos
+
+**Configuração:**
+- **Estratégia:** Dropdown (option1 / option2)
+- **Sufixos Habilitados:** Switch (on / off)
+- **Salvar:** Botão atualiza KV instantaneamente
+
+**Onde é Aplicado:**
+- `backend/core/naming_utils.py` - Função `apply_site_suffix()`
+- `backend/api/services.py` - Linhas 403-407, 570-574
+- `backend/api/blackbox_manager.py` - Aplica sufixos em targets
+- `frontend/src/hooks/useSites.tsx` - Hook disponibiliza naming config
+- `frontend/src/utils/namingUtils.ts` - Funções deprecated (usar useSites)
+
+**Endpoint:**
+- `PATCH /api/v1/metadata-fields/config/naming` - Atualiza naming strategy
+
+**Cache Dinâmico:**
+```python
+# backend/core/naming_utils.py
+_naming_cache = {}  # Cache global
+
+async def _update_cache():
+    """Atualiza cache de sites e naming do KV"""
+    kv_data = await kv.get_json("skills/eye/metadata/sites")
+    _naming_cache = kv_data["data"]["naming_config"]
+    # Sem fallback hardcoded - 100% dinâmico!
+```
+
+**Validação:**
+```bash
+# Teste automatizado
+python3 Tests/naming/test_naming_baseline.py
+# Resultado: 11/12 testes passando (91.7%)
+```
+
+---
+
+### 6. Batch Sync (Modal Instantâneo)
+
+**Localização:** Ao abrir aba "Campos Metadata" pela primeira vez
+
+**O que faz:**
+Executa sincronização em lote de TODOS os servidores Prometheus ao mesmo tempo.
+
+**Fluxo:**
+1. Usuário abre página MetadataFields
+2. Clica na aba "Campos Metadata"
+3. Modal aparece automaticamente: "Sincronizando com servidores..."
+4. Backend conecta SSH em paralelo em todos os servidores
+5. Extrai campos de cada prometheus.yml
+6. Atualiza KV com campos encontrados
+7. Modal fecha automaticamente (3-5 segundos)
+
+**Endpoints:**
+- `POST /api/v1/metadata-fields/batch-sync` - Sync em lote
+- `POST /api/v1/metadata-fields/force-extract` - Extração forçada manual
+
+**Benefício:**
+- ❌ **ANTES:** Usuário precisava clicar "Sincronizar" em cada servidor
+- ✅ **AGORA:** Sincronização automática ao abrir página (experiência fluida)
+
+**Configuração:**
+```typescript
+// MetadataFields.tsx
+useEffect(() => {
+  if (activeTab === 'fields' && !batchSyncDone) {
+    handleBatchSync();  // Executa apenas 1 vez
+    setBatchSyncDone(true);
+  }
+}, [activeTab]);
+```
+
+---
+
+## �🏗️ ARQUITETURA E FLUXO DE DADOS
 
 ### Estrutura de Dados (metadata_fields.json)
 
