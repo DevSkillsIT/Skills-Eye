@@ -1596,6 +1596,19 @@ async def list_fields(
             )
 
     # Continuar com lógica normal de leitura do KV
+    # DETECTAR se veio do cache em memória (para modal)
+    global _fields_config_cache
+    came_from_memory_cache = False
+
+    # Verificar se cache em memória está válido ANTES de chamar load_fields_config
+    if (_fields_config_cache["data"] is not None and
+        _fields_config_cache["timestamp"] is not None):
+        from datetime import datetime
+        elapsed = (datetime.now() - _fields_config_cache["timestamp"]).total_seconds()
+        if elapsed < _fields_config_cache["ttl"]:
+            came_from_memory_cache = True
+            logger.debug(f"[METADATA-FIELDS] GET detectou cache em memória válido (from_cache=True)")
+
     config = await load_fields_config()
 
     # PROTEÇÃO: Validar se config não é None
@@ -1623,6 +1636,10 @@ async def list_fields(
     # Buscar informações de extraction_status se existir (para modal de progresso)
     extraction_status = config.get('extraction_status', {})
 
+    # CRÍTICO: Se veio do cache em memória OU se source não é force_extract recente, marcar como cache
+    # Isso garante que o modal mostre "Dados carregados do cache instantaneamente"
+    is_from_cache = came_from_memory_cache or config.get('source') in ['prewarm_startup', 'fallback_on_demand']
+
     return FieldsConfigResponse(
         success=True,
         fields=fields,
@@ -1631,7 +1648,7 @@ async def list_fields(
         version=config.get('version', '1.0.0'),
         last_updated=config.get('last_updated', ''),
         # Adicionar informações do extraction_status para modal
-        from_cache=extraction_status.get('from_cache', False),
+        from_cache=is_from_cache,  # ← CORRIGIDO: detecta cache em memória ou prewarm
         server_status=extraction_status.get('server_status', []),
         total_servers=extraction_status.get('total_servers', 0),
         successful_servers=extraction_status.get('successful_servers', 0)
