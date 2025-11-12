@@ -24,8 +24,8 @@ start /B /MIN cmd /c "cd frontend && npm run dev > NUL 2>&1"
 timeout /t 5 /nobreak >nul
 
 echo [5/5] Verificando...
-netstat -ano 2>nul | findstr ":5000" | findstr "LISTENING" >nul && echo Backend OK || echo Backend ERRO
-netstat -ano 2>nul | findstr ":8081" | findstr "LISTENING" >nul && echo Frontend OK || echo Frontend ERRO
+netstat -ano 2>nul | findstr ":5001" | findstr "LISTENING" >nul && echo Backend OK || echo Backend ERRO
+netstat -ano 2>nul | findstr ":8082" | findstr "LISTENING" >nul && echo Frontend OK || echo Frontend ERRO
 
 echo.
 echo CONCLUIDO!
