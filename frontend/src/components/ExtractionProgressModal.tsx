@@ -13,6 +13,7 @@ import {
   Alert,
   Tag,
   Timeline,
+  Tooltip,
 } from 'antd';
 import {
   LoadingOutlined,
@@ -24,6 +25,7 @@ import {
   ReloadOutlined,
   CloudServerOutlined,
   ClockCircleOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 
 export interface ServerStatus {
@@ -85,22 +87,98 @@ const ExtractionProgressModal: React.FC<ExtractionProgressModalProps> = ({
       onCancel={onClose}
       width={700}
       footer={
-        <Space>
-          <Button onClick={onClose} disabled={loading}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          gap: '12px',
+          padding: '4px 0'
+        }}>
+          {/* Botão Atualizar Dados - PRIMEIRO */}
+          <Tooltip
+            title={
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  Forçar Extração SSH
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>
+                  Conecta em todos os servidores Prometheus<br/>
+                  e extrai os campos metadata mais recentes<br/>
+                  dos arquivos prometheus.yml via SSH
+                </div>
+              </div>
+            }
+            placement="topRight"
+          >
+            <Button
+              type="primary"
+              size="large"
+              icon={<SyncOutlined spin={loading} />}
+              onClick={async () => {
+                onClose();
+                await onRefresh();
+              }}
+              disabled={loading}
+              style={{
+                background: loading ? '#d9d9d9' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                border: 'none',
+                borderRadius: '8px',
+                height: '44px',
+                padding: '0 24px',
+                fontWeight: 600,
+                fontSize: '15px',
+                boxShadow: loading ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.4)',
+                transition: 'all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1)',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(102, 126, 234, 0.6)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+                }
+              }}
+            >
+              {loading ? 'Extraindo...' : 'Atualizar Dados'}
+            </Button>
+          </Tooltip>
+
+          {/* Botão OK - SEGUNDO */}
+          <Button
+            size="large"
+            icon={<CheckOutlined />}
+            onClick={onClose}
+            disabled={loading}
+            style={{
+              borderRadius: '8px',
+              height: '44px',
+              padding: '0 24px',
+              fontWeight: 500,
+              fontSize: '15px',
+              border: '2px solid #d9d9d9',
+              transition: 'all 0.3s cubic-bezier(0.645, 0.045, 0.355, 1)',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                e.currentTarget.style.borderColor = '#40a9ff';
+                e.currentTarget.style.color = '#40a9ff';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                e.currentTarget.style.borderColor = '#d9d9d9';
+                e.currentTarget.style.color = 'rgba(0, 0, 0, 0.88)';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }
+            }}
+          >
             OK
           </Button>
-          <Button
-            type="primary"
-            icon={<ReloadOutlined />}
-            onClick={async () => {
-              onClose();
-              await onRefresh();
-            }}
-            disabled={loading}
-          >
-            Atualizar Dados
-          </Button>
-        </Space>
+        </div>
       }
     >
       <div style={{ marginBottom: 16 }}>
