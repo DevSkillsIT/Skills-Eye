@@ -100,13 +100,21 @@ interface PageVisibilityPopoverProps {
 const PageVisibilityPopover: React.FC<PageVisibilityPopoverProps> = ({ record, onUpdate }) => {
   const [popoverVisible, setPopoverVisible] = useState(false);
 
-  const handleUpdateFieldConfig = async (fieldToUpdate: 'services' | 'exporters' | 'blackbox', newValue: boolean) => {
+  const handleUpdateFieldConfig = async (
+    fieldToUpdate: 'services' | 'exporters' | 'blackbox' | 'network-probes' | 'web-probes' | 'system-exporters' | 'database-exporters',
+    newValue: boolean
+  ) => {
     try {
       // Preparar payload com apenas o campo que mudou
       const payload: any = {};
       if (fieldToUpdate === 'services') payload.show_in_services = newValue;
       if (fieldToUpdate === 'exporters') payload.show_in_exporters = newValue;
       if (fieldToUpdate === 'blackbox') payload.show_in_blackbox = newValue;
+      // ⭐ NOVOS CHECKBOXES - v2.0 (2025-11-13)
+      if (fieldToUpdate === 'network-probes') payload.show_in_network_probes = newValue;
+      if (fieldToUpdate === 'web-probes') payload.show_in_web_probes = newValue;
+      if (fieldToUpdate === 'system-exporters') payload.show_in_system_exporters = newValue;
+      if (fieldToUpdate === 'database-exporters') payload.show_in_database_exporters = newValue;
 
       // Salvar no JSON principal metadata/fields (fonte única da verdade)
       await axios.patch(`${API_URL}/metadata-fields/${record.name}`, payload);
@@ -145,6 +153,31 @@ const PageVisibilityPopover: React.FC<PageVisibilityPopoverProps> = ({ record, o
         >
           <Tag color="orange" style={{ margin: 0 }}>Blackbox</Tag>
         </Checkbox>
+        {/* ⭐ NOVOS CHECKBOXES - v2.0 (2025-11-13) */}
+        <Checkbox
+          checked={record.show_in_network_probes ?? true}
+          onChange={(e) => handleUpdateFieldConfig('network-probes', e.target.checked)}
+        >
+          <Tag color="purple" style={{ margin: 0 }}>Network Probes</Tag>
+        </Checkbox>
+        <Checkbox
+          checked={record.show_in_web_probes ?? true}
+          onChange={(e) => handleUpdateFieldConfig('web-probes', e.target.checked)}
+        >
+          <Tag color="cyan" style={{ margin: 0 }}>Web Probes</Tag>
+        </Checkbox>
+        <Checkbox
+          checked={record.show_in_system_exporters ?? true}
+          onChange={(e) => handleUpdateFieldConfig('system-exporters', e.target.checked)}
+        >
+          <Tag color="geekblue" style={{ margin: 0 }}>System Exporters</Tag>
+        </Checkbox>
+        <Checkbox
+          checked={record.show_in_database_exporters ?? true}
+          onChange={(e) => handleUpdateFieldConfig('database-exporters', e.target.checked)}
+        >
+          <Tag color="magenta" style={{ margin: 0 }}>Database Exporters</Tag>
+        </Checkbox>
       </Space>
     </div>
   );
@@ -172,6 +205,27 @@ const PageVisibilityPopover: React.FC<PageVisibilityPopoverProps> = ({ record, o
         {record.show_in_blackbox !== false && (
           <Tooltip title="Aparece em formulários de Blackbox">
             <Tag color="orange">Blackbox</Tag>
+          </Tooltip>
+        )}
+        {/* ⭐ NOVOS BADGES VISUAIS - v2.0 (2025-11-13) */}
+        {record.show_in_network_probes !== false && (
+          <Tooltip title="Aparece em Network Probes">
+            <Tag color="purple">Network Probes</Tag>
+          </Tooltip>
+        )}
+        {record.show_in_web_probes !== false && (
+          <Tooltip title="Aparece em Web Probes">
+            <Tag color="cyan">Web Probes</Tag>
+          </Tooltip>
+        )}
+        {record.show_in_system_exporters !== false && (
+          <Tooltip title="Aparece em System Exporters">
+            <Tag color="geekblue">System Exporters</Tag>
+          </Tooltip>
+        )}
+        {record.show_in_database_exporters !== false && (
+          <Tooltip title="Aparece em Database Exporters">
+            <Tag color="magenta">Database Exporters</Tag>
           </Tooltip>
         )}
       </Space>
