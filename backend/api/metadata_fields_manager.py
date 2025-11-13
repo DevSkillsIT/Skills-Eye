@@ -1753,9 +1753,10 @@ async def list_fields(
     # Buscar informações de extraction_status se existir (para modal de progresso)
     extraction_status = config.get('extraction_status', {})
 
-    # CRÍTICO: Se veio do cache em memória OU se source não é force_extract recente, marcar como cache
-    # Isso garante que o modal mostre "Dados carregados do cache instantaneamente"
-    is_from_cache = came_from_memory_cache or config.get('source') in ['prewarm_startup', 'fallback_on_demand']
+    # CRÍTICO: Determina se os dados vieram do cache
+    # Nota: "came_from_memory_cache" foi removido durante refactor — usar apenas o campo 'source' retornado
+    # pelo load_fields_config(). Valores possíveis: 'prewarm_startup', 'fallback_on_demand', 'initial_extraction', etc.
+    is_from_cache = config.get('source') in ['prewarm_startup', 'fallback_on_demand']
 
     return FieldsConfigResponse(
         success=True,
