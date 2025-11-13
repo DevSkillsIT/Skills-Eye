@@ -8,6 +8,8 @@ from .windows_winrm import WindowsWinRMInstaller
 from .windows_ssh import WindowsSSHInstaller
 from .windows_multi_connector import WindowsMultiConnector
 from . import network_utils
+from . import retry_utils
+from . import rollback_manager
 
 __all__ = [
     'LinuxSSHInstaller',
@@ -15,5 +17,7 @@ __all__ = [
     'WindowsWinRMInstaller',
     'WindowsSSHInstaller',
     'WindowsMultiConnector',
-    'network_utils'
+    'network_utils',
+    'retry_utils',
+    'rollback_manager',
 ]
