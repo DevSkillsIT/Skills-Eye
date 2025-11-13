@@ -125,20 +125,33 @@ EXPORTER_PATTERNS = {
 }
 
 
-async def migrate():
-    """Executa migração de regras hardcoded para JSON no KV"""
+async def migrate(silent: bool = False):
+    """
+    Executa migração de regras hardcoded para JSON no KV
 
-    print("=" * 80)
-    print(" MIGRAÇÃO: CATEGORIZAÇÃO HARDCODED → JSON NO KV")
-    print("=" * 80)
-    print()
+    Args:
+        silent: Se True, não exibe mensagens de progresso (apenas warnings/erros)
+
+    Returns:
+        bool: True se migração foi bem-sucedida
+    """
+
+    def log(msg: str):
+        """Helper para log condicional"""
+        if not silent:
+            print(msg)
+
+    log("=" * 80)
+    log(" MIGRAÇÃO: CATEGORIZAÇÃO HARDCODED → JSON NO KV")
+    log("=" * 80)
+    log("")
 
     rules = []
 
     # ========================================================================
     # PASSO 1: Regras de Blackbox (prioridade alta: 100)
     # ========================================================================
-    print("📦 Convertendo regras de Blackbox...")
+    log("📦 Convertendo regras de Blackbox...")
 
     # Network Probes
     for module, display_name in BLACKBOX_NETWORK_MODULES.items():
@@ -170,13 +183,13 @@ async def migrate():
             }
         })
 
-    print(f"  ✅ {len(BLACKBOX_NETWORK_MODULES)} regras de Network Probes")
-    print(f"  ✅ {len(BLACKBOX_WEB_MODULES)} regras de Web Probes")
+    log(f"  ✅ {len(BLACKBOX_NETWORK_MODULES)} regras de Network Probes")
+    log(f"  ✅ {len(BLACKBOX_WEB_MODULES)} regras de Web Probes")
 
     # ========================================================================
     # PASSO 2: Regras de Exporters (prioridade média: 80)
     # ========================================================================
-    print("\n📦 Convertendo regras de Exporters...")
+    log("\n📦 Convertendo regras de Exporters...")
 
     for pattern_name, (category, display_name, exporter_type) in EXPORTER_PATTERNS.items():
         rules.append({
@@ -191,7 +204,7 @@ async def migrate():
             }
         })
 
-    print(f"  ✅ {len(EXPORTER_PATTERNS)} regras de Exporters")
+    log(f"  ✅ {len(EXPORTER_PATTERNS)} regras de Exporters")
 
     # ========================================================================
     # PASSO 3: Ordenar por prioridade (maior primeiro)
@@ -222,7 +235,7 @@ async def migrate():
     # ========================================================================
     # PASSO 5: Salvar no Consul KV
     # ========================================================================
-    print("\n💾 Salvando no Consul KV...")
+    log("\n💾 Salvando no Consul KV...")
 
     config_manager = ConsulKVConfigManager()
     key = 'monitoring-types/categorization/rules'
@@ -230,23 +243,26 @@ async def migrate():
     success = await config_manager.put(key, rules_data)
 
     if success:
-        print(f"  ✅ Regras salvas em: skills/eye/{key}")
-        print(f"\n📊 RESUMO:")
-        print(f"  - Total de regras: {len(rules)}")
-        print(f"  - Blackbox Network: {len(BLACKBOX_NETWORK_MODULES)}")
-        print(f"  - Blackbox Web: {len(BLACKBOX_WEB_MODULES)}")
-        print(f"  - Exporters: {len(EXPORTER_PATTERNS)}")
-        print(f"  - Categorias: {len(rules_data['categories'])}")
-        print(f"\n✅ MIGRAÇÃO CONCLUÍDA COM SUCESSO!")
+        log(f"  ✅ Regras salvas em: skills/eye/{key}")
+        log(f"\n📊 RESUMO:")
+        log(f"  - Total de regras: {len(rules)}")
+        log(f"  - Blackbox Network: {len(BLACKBOX_NETWORK_MODULES)}")
+        log(f"  - Blackbox Web: {len(BLACKBOX_WEB_MODULES)}")
+        log(f"  - Exporters: {len(EXPORTER_PATTERNS)}")
+        log(f"  - Categorias: {len(rules_data['categories'])}")
+        log(f"\n✅ MIGRAÇÃO CONCLUÍDA COM SUCESSO!")
 
         # Exibir preview das primeiras 5 regras
-        print(f"\n📋 Preview das primeiras 5 regras:")
+        log(f"\n📋 Preview das primeiras 5 regras:")
         for rule in rules[:5]:
-            print(f"  - {rule['id']} (prioridade {rule['priority']}) → {rule['category']}")
+            log(f"  - {rule['id']} (prioridade {rule['priority']}) → {rule['category']}")
 
+        logger.info(f"Migração de categorização concluída: {len(rules)} regras salvas no KV")
         return True
     else:
+        # Sempre exibir erros, mesmo em modo silent
         print(f"  ❌ ERRO ao salvar regras no KV")
+        logger.error("Falha ao salvar regras de categorização no KV")
         return False
 
 
@@ -282,6 +298,46 @@ async def validate_migration():
         print(f"  ✅ Estrutura de regras válida")
 
     return True
+
+
+async def run_migration(force: bool = False) -> bool:
+    """
+    Função de conveniência para executar migração automaticamente no startup.
+
+    Verifica se regras já existem no KV antes de migrar.
+    Útil para ser chamada em app.py no lifespan event.
+
+    Args:
+        force: Se True, executa migração mesmo se regras já existem
+
+    Returns:
+        bool: True se migração foi executada com sucesso (ou não era necessária)
+    """
+    try:
+        config_manager = ConsulKVConfigManager()
+        key = 'monitoring-types/categorization/rules'
+
+        # Verificar se regras já existem
+        if not force:
+            existing_rules = await config_manager.get(key, use_cache=False)
+            if existing_rules and existing_rules.get('total_rules', 0) > 0:
+                logger.info(f"Regras de categorização já existem no KV ({existing_rules.get('total_rules')} regras) - migração não necessária")
+                return True
+
+        # Executar migração silenciosa
+        logger.info("Iniciando auto-migração de regras de categorização...")
+        success = await migrate(silent=True)
+
+        if success:
+            logger.info("✅ Auto-migração de regras concluída com sucesso")
+        else:
+            logger.error("❌ Auto-migração de regras FALHOU")
+
+        return success
+
+    except Exception as e:
+        logger.error(f"Erro ao executar auto-migração: {e}")
+        return False
 
 
 async def main():

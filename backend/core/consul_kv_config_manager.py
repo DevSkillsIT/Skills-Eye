@@ -179,15 +179,15 @@ class ConsulKVConfigManager:
         self,
         key: str,
         value: Any,
-        invalidate_cache: bool = True
+        update_cache: bool = True
     ) -> bool:
         """
-        Salva valor no KV e opcionalmente invalida cache
+        Salva valor no KV e opcionalmente atualiza cache
 
         Args:
             key: Chave (sem namespace, ex: 'monitoring-types/cache')
             value: Valor (dict, list ou Pydantic model)
-            invalidate_cache: Se deve invalidar cache após salvar (padrão: True)
+            update_cache: Se deve atualizar cache após salvar (padrão: True)
 
         Returns:
             True se salvou com sucesso
@@ -205,18 +205,21 @@ class ConsulKVConfigManager:
         full_key = self._full_key(key)
 
         # Converter Pydantic model para dict
+        value_to_save = value
         if isinstance(value, BaseModel):
-            value = value.dict()
+            value_to_save = value.dict()
 
         # Salvar no Consul
-        success = await self.kv_manager.put_json(full_key, value)
+        success = await self.kv_manager.put_json(full_key, value_to_save)
 
         if success:
             logger.debug(f"[KV WRITE OK] {key}")
 
-            # Invalidar cache se solicitado
-            if invalidate_cache:
-                self.invalidate(key)
+            # Atualizar cache com o novo valor (não invalidar!)
+            # Isso evita uma busca extra ao KV na próxima leitura
+            if update_cache:
+                self._cache[full_key] = CachedValue(value_to_save, self.ttl_seconds)
+                logger.debug(f"[CACHE UPDATED] {key} após PUT (TTL: {self.ttl_seconds}s)")
         else:
             logger.error(f"[KV WRITE FAILED] {key}")
 
@@ -261,6 +264,14 @@ class ConsulKVConfigManager:
         count = len(self._cache)
         self._cache.clear()
         logger.info(f"[CACHE] {count} itens invalidados")
+
+    def clear_cache(self) -> None:
+        """
+        Alias para invalidate_all() - mantido para backward compatibility
+
+        Usado pelos testes e scripts que esperam este nome de método.
+        """
+        self.invalidate_all()
 
     def get_cache_stats(self) -> Dict[str, Any]:
         """
@@ -324,8 +335,9 @@ class ConsulKVConfigManager:
         logger.info(f"[COMPUTE] {key} não encontrado, computando...")
         computed_value = await compute_fn()
 
-        # Salvar no KV
+        # Salvar no KV e atualizar cache
         if computed_value is not None:
-            await self.put(key, computed_value, invalidate_cache=False)
+            await self.put(key, computed_value, update_cache=True)
+            logger.debug(f"[COMPUTE SAVED] {key} salvo no KV e cache")
 
         return computed_value

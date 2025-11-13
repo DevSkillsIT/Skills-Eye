@@ -239,15 +239,29 @@ async def lifespan(app: FastAPI):
     # ============================================
     print(">> Iniciando Consul Manager API...")
 
-    # ⚠️ VALIDAÇÃO CRÍTICA: Verificar se cache de monitoramento foi inicializado
+    # ============================================
+    # AUTO-MIGRAÇÃO: Regras de categorização
+    # ============================================
+    # Executa migração automaticamente se regras não existirem no KV
+    # Isso elimina a necessidade de executar migrate_categorization_to_json.py manualmente
+    try:
+        from migrate_categorization_to_json import run_migration
+        migration_success = await run_migration(force=False)
+        if not migration_success:
+            print("⚠️  Auto-migração de regras falhou - verificar logs")
+    except Exception as e:
+        print(f"⚠️  Erro ao executar auto-migração de regras: {e}")
+
+    # ============================================
+    # VALIDAÇÃO: Cache de tipos de monitoramento
+    # ============================================
     try:
         from core.consul_kv_config_manager import ConsulKVConfigManager
         config_manager = ConsulKVConfigManager()
         types_cache = await config_manager.get('monitoring-types/cache', use_cache=False)
         if not types_cache:
             print("\n⚠️  WARNING: Cache de tipos de monitoramento NÃO INICIALIZADO!")
-            print("   Execute: python backend/migrate_categorization_to_json.py")
-            print("   OU via API: POST /api/v1/monitoring/sync-cache\n")
+            print("   Sincronize via API: POST /api/v1/monitoring/sync-cache\n")
         else:
             print(f"✓ Cache de tipos: {types_cache.get('total_types', 0)} tipos em {len(types_cache.get('categories', []))} categorias")
     except Exception as e:

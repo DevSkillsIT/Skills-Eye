@@ -156,7 +156,18 @@ async def get_monitoring_data(
         # ==================================================================
         # PASSO 4: Buscar TODOS os serviços do Consul
         # ==================================================================
-        all_services = await consul_manager.get_services_list()
+        # Buscar serviços de todos os nós (retorna {node_name: {service_id: service_data}})
+        all_services_dict = await consul_manager.get_all_services_from_all_nodes()
+
+        # Converter estrutura aninhada para lista plana
+        all_services = []
+        for node_name, services_dict in all_services_dict.items():
+            for service_id, service_data in services_dict.items():
+                # Adicionar node e ID aos dados do serviço
+                service_data['Node'] = node_name
+                service_data['ID'] = service_id
+                all_services.append(service_data)
+
         logger.info(f"[MONITORING DATA] Total de serviços no Consul: {len(all_services)}")
 
         # ==================================================================
