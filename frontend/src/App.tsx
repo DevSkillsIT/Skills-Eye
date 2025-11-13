@@ -34,6 +34,9 @@ import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
 import MonitoringTypes from './pages/MonitoringTypes';
 import ReferenceValues from './pages/ReferenceValues';
+// ⭐ NOVO - Sistema de Refatoração v2.0 (2025-11-13)
+import DynamicMonitoringPage from './pages/DynamicMonitoringPage';
+import MonitoringRules from './pages/MonitoringRules';
 // import Settings from './pages/Settings'; // REMOVIDO - Funcionalidades migradas para MetadataFields
 
 const App: React.FC = () => {
@@ -91,6 +94,32 @@ const App: React.FC = () => {
           path: '/presets',
           name: 'Presets de Serviços',
           icon: <AppstoreOutlined />,
+        },
+        // ⭐ NOVAS PÁGINAS DINÂMICAS - v2.0 (2025-11-13)
+        {
+          path: '/monitoring/network-probes',
+          name: 'Network Probes',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/monitoring/web-probes',
+          name: 'Web Probes',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/monitoring/system-exporters',
+          name: 'System Exporters',
+          icon: <CloudServerOutlined />,
+        },
+        {
+          path: '/monitoring/database-exporters',
+          name: 'Database Exporters',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/monitoring/rules',
+          name: 'Regras de Categorização',
+          icon: <SettingOutlined />,
         },
       ],
     },
@@ -196,6 +225,12 @@ const App: React.FC = () => {
             <Route path="/installer" element={<Installer />} />
             <Route path="/monitoring-types" element={<MonitoringTypes />} />
             <Route path="/reference-values" element={<ReferenceValues />} />
+            {/* ⭐ NOVAS ROTAS DINÂMICAS - v2.0 (2025-11-13) */}
+            <Route path="/monitoring/network-probes" element={<DynamicMonitoringPage category="network-probes" />} />
+            <Route path="/monitoring/web-probes" element={<DynamicMonitoringPage category="web-probes" />} />
+            <Route path="/monitoring/system-exporters" element={<DynamicMonitoringPage category="system-exporters" />} />
+            <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
+            <Route path="/monitoring/rules" element={<MonitoringRules />} />
             {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
           </Routes>
         </ProLayout>

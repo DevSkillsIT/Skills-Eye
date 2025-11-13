@@ -72,6 +72,11 @@ class MetadataFieldModel(BaseModel):
     show_in_services: bool = Field(True, description="Mostrar na página Services")
     show_in_exporters: bool = Field(True, description="Mostrar na página Exporters")
     show_in_blackbox: bool = Field(True, description="Mostrar na página Blackbox")
+    # ⭐ NOVAS PROPRIEDADES - Sistema de Refatoração v2.0 (2025-11-13)
+    show_in_network_probes: bool = Field(True, description="Mostrar na página Network Probes")
+    show_in_web_probes: bool = Field(True, description="Mostrar na página Web Probes")
+    show_in_system_exporters: bool = Field(True, description="Mostrar na página System Exporters")
+    show_in_database_exporters: bool = Field(True, description="Mostrar na página Database Exporters")
 
 
 class CategoryModel(BaseModel):
@@ -235,6 +240,10 @@ def merge_fields_preserving_customizations(
                 'required', 'auto_register', 'category', 'order', 'description',
                 'show_in_table', 'show_in_dashboard', 'show_in_form',
                 'show_in_services', 'show_in_exporters', 'show_in_blackbox', 'show_in_filter',
+                # ⭐ NOVAS PROPRIEDADES - v2.0 (2025-11-13)
+                'show_in_network_probes', 'show_in_web_probes',
+                'show_in_system_exporters', 'show_in_database_exporters',
+                # Outros campos customizáveis
                 'editable', 'enabled', 'available_for_registration',
                 'validation_regex', 'validation', 'default_value', 'placeholder',
                 'display_name'  # Usuário pode ter customizado o nome amigável

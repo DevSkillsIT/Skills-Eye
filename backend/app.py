@@ -28,6 +28,8 @@ from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
 # from api.metadata_dynamic import router as metadata_dynamic_router  # REMOVIDO: Usar prometheus_config em vez disso
 from api.monitoring_types_dynamic import router as monitoring_types_dynamic_router  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
+from api.monitoring_unified import router as monitoring_unified_router  # ⭐ NOVO: API unificada para páginas dinâmicas (v2.0 2025-11-13)
+from api.categorization_rules import router as categorization_rules_router  # ⭐ NOVO: CRUD de regras de categorização (v2.0 2025-11-13)
 from api.reference_values import router as reference_values_router  # NOVO: Sistema de auto-cadastro/retroalimentação
 from api.service_tags import router as service_tags_router  # NOVO: Sistema de tags retroalimentáveis
 from api.settings import router as settings_router  # NOVO: Configurações globais (naming strategy, etc)
@@ -382,6 +384,8 @@ app.include_router(prometheus_config_router, prefix="/api/v1", tags=["Prometheus
 app.include_router(metadata_fields_router, prefix="/api/v1", tags=["Metadata Fields"])
 # app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["Dynamic Metadata"])  # REMOVIDO: Usar prometheus-config
 app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["Monitoring Types"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
+app.include_router(monitoring_unified_router, prefix="/api/v1", tags=["Monitoring Unified"])  # ⭐ NOVO: API unificada (v2.0 2025-11-13)
+app.include_router(categorization_rules_router, prefix="/api/v1", tags=["Categorization Rules"])  # ⭐ NOVO: CRUD de regras (v2.0 2025-11-13)
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["Reference Values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais

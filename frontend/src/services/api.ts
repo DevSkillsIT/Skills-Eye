@@ -1033,6 +1033,189 @@ export const consulAPI = {
       { host, file_path: filePath },
       { timeout: 30000 }
     ),
+
+  // ⭐ NOVOS MÉTODOS - Sistema de Refatoração v2.0 (2025-11-13)
+  // API Unificada de Monitoramento
+
+  /**
+   * Busca dados de monitoramento do Consul filtrados por categoria
+   *
+   * @param category - Categoria: network-probes, web-probes, system-exporters, database-exporters
+   * @param company - Filtro opcional de empresa
+   * @param site - Filtro opcional de site
+   * @param env - Filtro opcional de ambiente
+   * @returns Dados de serviços filtrados
+   */
+  getMonitoringData: (
+    category: string,
+    company?: string,
+    site?: string,
+    env?: string
+  ) =>
+    api.get<{
+      success: boolean;
+      category: string;
+      data: any[];
+      total: number;
+      modules?: string[];
+      job_names?: string[];
+      cache_age_seconds?: number;
+      filters_applied?: Record<string, any>;
+      detail?: string;
+    }>('/monitoring/data', {
+      params: { category, company, site, env }
+    }),
+
+  /**
+   * Busca métricas do Prometheus via PromQL
+   *
+   * @param category - Categoria de monitoramento
+   * @param server - Servidor Prometheus (opcional)
+   * @param timeRange - Intervalo de tempo (ex: 5m, 1h)
+   * @param company - Filtro de empresa
+   * @param site - Filtro de site
+   * @returns Métricas do Prometheus
+   */
+  getMonitoringMetrics: (
+    category: string,
+    server?: string,
+    timeRange = '5m',
+    company?: string,
+    site?: string
+  ) =>
+    api.get<{
+      success: boolean;
+      category: string;
+      metrics: Array<{
+        instance: string;
+        job: string;
+        module?: string;
+        status: number;
+        latency_ms?: number;
+        timestamp: string;
+        [key: string]: any;
+      }>;
+      query: string;
+      prometheus_server: string;
+      total: number;
+    }>('/monitoring/metrics', {
+      params: { category, server, time_range: timeRange, company, site }
+    }),
+
+  /**
+   * Força sincronização do cache de tipos de monitoramento
+   *
+   * @returns Status da sincronização
+   */
+  syncMonitoringCache: () =>
+    api.post<{
+      success: boolean;
+      message: string;
+      total_types: number;
+      total_servers: number;
+      categories: Array<{
+        category: string;
+        count: number;
+      }>;
+      duration_seconds: number;
+      detail?: string;
+    }>('/monitoring/sync-cache'),
+
+  // =========================================================================
+  // ⭐ CATEGORIZATION RULES API - Gerenciamento de Regras (v2.0)
+  // =========================================================================
+
+  /**
+   * Listar todas as regras de categorização
+   */
+  getCategorizationRules: () =>
+    api.get<{
+      success: boolean;
+      data: {
+        version: string;
+        last_updated: string;
+        total_rules: number;
+        rules: Array<{
+          id: string;
+          priority: number;
+          category: string;
+          display_name: string;
+          exporter_type?: string;
+          conditions: {
+            job_name_pattern?: string;
+            metrics_path?: string;
+            module_pattern?: string;
+          };
+        }>;
+        default_category: string;
+        categories: Array<{
+          id: string;
+          display_name: string;
+        }>;
+      };
+    }>('/categorization-rules'),
+
+  /**
+   * Criar nova regra de categorização
+   */
+  createCategorizationRule: (rule: {
+    id: string;
+    priority: number;
+    category: string;
+    display_name: string;
+    exporter_type?: string;
+    conditions: {
+      job_name_pattern?: string;
+      metrics_path?: string;
+      module_pattern?: string;
+    };
+  }) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      rule_id: string;
+    }>('/categorization-rules', rule),
+
+  /**
+   * Atualizar regra existente
+   */
+  updateCategorizationRule: (
+    ruleId: string,
+    updates: {
+      priority?: number;
+      category?: string;
+      display_name?: string;
+      exporter_type?: string;
+      conditions?: {
+        job_name_pattern?: string;
+        metrics_path?: string;
+        module_pattern?: string;
+      };
+    }
+  ) =>
+    api.put<{
+      success: boolean;
+      message: string;
+    }>(`/categorization-rules/${ruleId}`, updates),
+
+  /**
+   * Deletar regra
+   */
+  deleteCategorizationRule: (ruleId: string) =>
+    api.delete<{
+      success: boolean;
+      message: string;
+    }>(`/categorization-rules/${ruleId}`),
+
+  /**
+   * Recarregar regras do KV
+   */
+  reloadCategorizationRules: () =>
+    api.post<{
+      success: boolean;
+      message: string;
+      total_rules: number;
+    }>('/categorization-rules/reload'),
 };
 
 // ============================================================================
@@ -1277,6 +1460,12 @@ export interface MetadataFieldDynamic {
   show_in_blackbox: boolean;
   show_in_exporters: boolean;
   show_in_services: boolean;
+  // ⭐ NOVOS CAMPOS - Sistema de Refatoração v2.0 (2025-11-13)
+  show_in_network_probes?: boolean;
+  show_in_web_probes?: boolean;
+  show_in_system_exporters?: boolean;
+  show_in_database_exporters?: boolean;
+  // Outros campos
   editable: boolean;
   available_for_registration: boolean;
   options: string[];
