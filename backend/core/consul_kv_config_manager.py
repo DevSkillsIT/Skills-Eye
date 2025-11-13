@@ -55,7 +55,7 @@ class ConsulKVConfigManager:
 
     Exemplo de Uso:
         ```python
-        manager = ConsulKVConfigManager(ttl=300)  # 5 minutos
+        manager = ConsulKVConfigManager(ttl_seconds=300)  # 5 minutos
 
         # Salvar config
         await manager.put('monitoring-types/cache', types_data)
