@@ -7,11 +7,13 @@ from .windows_psexec import WindowsPSExecInstaller
 from .windows_winrm import WindowsWinRMInstaller
 from .windows_ssh import WindowsSSHInstaller
 from .windows_multi_connector import WindowsMultiConnector
+from . import network_utils
 
 __all__ = [
     'LinuxSSHInstaller',
     'WindowsPSExecInstaller',
     'WindowsWinRMInstaller',
     'WindowsSSHInstaller',
-    'WindowsMultiConnector'
+    'WindowsMultiConnector',
+    'network_utils'
 ]

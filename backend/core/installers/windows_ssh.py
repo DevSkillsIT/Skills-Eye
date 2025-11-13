@@ -455,8 +455,12 @@ Write-Output 'FIM'
             await self.log(f"Error: {error[:500]}", "debug")
             return False
 
-    async def validate_installation(self) -> bool:
-        """Validate installation"""
+    async def validate_installation(
+        self,
+        basic_auth_user: Optional[str] = None,
+        basic_auth_password: Optional[str] = None
+    ) -> bool:
+        """Validate installation with optional Basic Auth test"""
         await self.log("Validando instalação...", "info")
 
         # Check service
@@ -469,8 +473,16 @@ Write-Output 'FIM'
             await self.log("Serviço windows_exporter não está ativo", "error")
             return False
 
-        # Test metrics
-        command = '(Invoke-WebRequest -Uri "http://localhost:9182/metrics" -UseBasicParsing).StatusCode'
+        # Test metrics (with Basic Auth if provided)
+        if basic_auth_user and basic_auth_password:
+            await self.log("Testando métricas com Basic Auth...", "info")
+            auth_header = f"{basic_auth_user}:{basic_auth_password}"
+            import base64
+            auth_b64 = base64.b64encode(auth_header.encode()).decode()
+            command = f'(Invoke-WebRequest -Uri "http://localhost:9182/metrics" -UseBasicParsing -Headers @{{Authorization="Basic {auth_b64}"}}).StatusCode'
+        else:
+            command = '(Invoke-WebRequest -Uri "http://localhost:9182/metrics" -UseBasicParsing).StatusCode'
+
         exit_code, output, _ = await self.execute_command(command, powershell=True)
 
         if exit_code == 0 and '200' in output:

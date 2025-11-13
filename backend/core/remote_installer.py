@@ -449,8 +449,12 @@ rm -rf "$TMP_DIR"
             await self.log(f"Error: {error}", "debug")
             return False
 
-    async def validate_installation(self) -> bool:
-        """Valida instalação"""
+    async def validate_installation(
+        self,
+        basic_auth_user: Optional[str] = None,
+        basic_auth_password: Optional[str] = None
+    ) -> bool:
+        """Valida instalação com teste opcional de Basic Auth"""
         await self.log("Validando instalação...", "info")
 
         port = 9100
@@ -464,9 +468,15 @@ rm -rf "$TMP_DIR"
             await self.log(f"Serviço {service_name} não está ativo", "error")
             return False
 
-        # Testar métricas
+        # Testar métricas (com Basic Auth se fornecido)
         await self.log("Testando métricas...", "info")
-        exit_code, output, _ = await self.execute_command(f"curl -s http://localhost:{port}/metrics | head -10")
+        if basic_auth_user and basic_auth_password:
+            await self.log("Testando com credenciais Basic Auth...", "info")
+            exit_code, output, _ = await self.execute_command(
+                f"curl -s -u {basic_auth_user}:{basic_auth_password} http://localhost:{port}/metrics | head -10"
+            )
+        else:
+            exit_code, output, _ = await self.execute_command(f"curl -s http://localhost:{port}/metrics | head -10")
 
         if exit_code == 0 and output:
             await self.log("Métricas acessíveis localmente", "success")

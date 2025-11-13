@@ -767,30 +767,15 @@ async def run_installation(installation_id: str, request):
         task_info["progress"] = 85
         task_info["message"] = "Validando instalação..."
 
-        # Validate (pass Basic Auth params for Linux and Windows)
-        if isinstance(request, (LinuxSSHInstallRequest, WindowsPSExecInstallRequest, WindowsWinRMInstallRequest, WindowsSSHInstallRequest)):
-            basic_auth_user = getattr(request, 'basic_auth_user', None)
-            basic_auth_password = getattr(request, 'basic_auth_password', None)
-            
-            if not await installer.validate_installation(
-                basic_auth_user,
-                basic_auth_password
-            ):
-                raise Exception("Validação falhou")
-        else:
-            # Fallback para métodos sem basic auth
-            validate_method = getattr(installer, 'validate_installation', None)
-            if validate_method:
-                import inspect
-                sig = inspect.signature(validate_method)
-                if len(sig.parameters) > 0:
-                    if not await installer.validate_installation(None, None):
-                        raise Exception("Validação falhou")
-                else:
-                    if not await installer.validate_installation():
-                        raise Exception("Validação falhou")
-            else:
-                raise Exception("Método validate_installation não encontrado")
+        # Validate (all installers now accept Basic Auth params)
+        basic_auth_user = getattr(request, 'basic_auth_user', None)
+        basic_auth_password = getattr(request, 'basic_auth_password', None)
+
+        if not await installer.validate_installation(
+            basic_auth_user,
+            basic_auth_password
+        ):
+            raise Exception("Validação falhou")
 
         task_info["progress"] = 95
         task_info["message"] = "Finalizando..."
