@@ -52,7 +52,6 @@ const Installer: React.FC = () => {
     installationId,
     running,
     success,
-    failed,
     progress,
     logs,
     startInstallation,
@@ -70,6 +69,9 @@ const Installer: React.FC = () => {
       setInstallationStage('failed');
     },
   });
+
+  // Compute failed state from success
+  const failed = success === false;
 
   const { connected, error: wsError } = useWebSocketLogs({
     installationId: installationId || undefined,
