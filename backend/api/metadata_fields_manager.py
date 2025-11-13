@@ -36,13 +36,9 @@ _servers_cache = {
     "ttl": 300  # 5 minutos em segundos
 }
 
-# NOVO: Cache em memória para fields_config
-# Evita múltiplas leituras do Consul KV (que pode ter latência de rede)
-_fields_config_cache = {
-    "data": None,
-    "timestamp": None,
-    "ttl": 300  # 5 minutos em segundos
-}
+# NOVO: Usar ConsulKVConfigManager para cache unificado (elimina cache manual)
+from core.consul_kv_config_manager import ConsulKVConfigManager
+_kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 
 # Lock global para evitar múltiplas extrações SSH simultâneas
 _extraction_lock = asyncio.Lock()
@@ -279,7 +275,8 @@ async def load_fields_config() -> Dict[str, Any]:
     IMPORTANTE: Não usa mais arquivo JSON hardcoded!
     Campos vêm 100% do Prometheus via extração SSH.
 
-    CACHE EM MEMÓRIA (NOVO):
+    CACHE EM MEMÓRIA (REFATORADO):
+    - Usa ConsulKVConfigManager para cache unificado (elimina código duplicado)
     - Cache de 5 minutos para evitar leituras repetidas do KV
     - Reduz latência de rede (KV → Backend)
     - Primeira requisição: lê do KV (~100-500ms)
@@ -292,33 +289,16 @@ async def load_fields_config() -> Dict[str, Any]:
     - Popula KV automaticamente
     - Retorna dados extraídos
     """
-    global _extraction_lock, _extraction_in_progress, _fields_config_cache
+    global _extraction_lock, _extraction_in_progress
 
     try:
-        # PASSO 0: Verificar cache em memória (NOVO)
-        # Se cache válido, retornar imediatamente (<1ms)
-        now = datetime.now()
-        if (_fields_config_cache["data"] is not None and
-            _fields_config_cache["timestamp"] is not None):
+        # PASSO 1: Tentar ler do KV usando cache unificado (ConsulKVConfigManager)
+        # Isso substitui o cache manual anterior
+        fields_data = await _kv_manager.get('metadata/fields', use_cache=True)
 
-            elapsed = (now - _fields_config_cache["timestamp"]).total_seconds()
-            if elapsed < _fields_config_cache["ttl"]:
-                logger.debug(f"[METADATA-FIELDS] ✓ Cache em memória VÁLIDO (idade: {elapsed:.1f}s / TTL: {_fields_config_cache['ttl']}s)")
-                return _fields_config_cache["data"]
-            else:
-                logger.debug(f"[METADATA-FIELDS] Cache em memória EXPIRADO (idade: {elapsed:.1f}s)")
-
-        # PASSO 1: Se cache expirado, ler do Consul KV
-        from core.kv_manager import KVManager
-
-        kv = KVManager()
-        fields_data = await kv.get_json('skills/eye/metadata/fields')
-
-        # PASSO 1.1: Se KV tem dados, atualizar cache em memória e retornar
+        # PASSO 1.1: Se KV tem dados, retornar
         if fields_data:
-            _fields_config_cache["data"] = fields_data
-            _fields_config_cache["timestamp"] = now
-            logger.info(f"[METADATA-FIELDS] ✓ Dados carregados do KV e cacheados em memória (TTL: {_fields_config_cache['ttl']}s)")
+            logger.debug(f"[METADATA-FIELDS] ✓ Dados carregados do KV (via cache unificado)")
             return fields_data
 
         # PASSO 2: Se KV vazio, disparar fallback
@@ -329,13 +309,11 @@ async def load_fields_config() -> Dict[str, Any]:
             async with _extraction_lock:
                 # DOUBLE-CHECK: Verificar novamente se KV ainda está vazio
                 # (outra requisição pode ter populado enquanto aguardávamos lock)
-                fields_data = await kv.get_json('skills/eye/metadata/fields')
+                # Usa use_cache=False para forçar leitura fresca do KV
+                fields_data = await _kv_manager.get('metadata/fields', use_cache=False)
 
                 if fields_data:
                     logger.info("[METADATA-FIELDS] KV foi populado por outra requisição. Usando dados existentes.")
-                    # Atualizar cache em memória antes de retornar
-                    _fields_config_cache["data"] = fields_data
-                    _fields_config_cache["timestamp"] = now
                     return fields_data
 
                 logger.info("[METADATA-FIELDS FALLBACK] Disparando extração SSH sob demanda (com lock)...")
@@ -343,6 +321,7 @@ async def load_fields_config() -> Dict[str, Any]:
 
                 try:
                     from api.prometheus_config import multi_config
+                    from core.kv_manager import KVManager
 
                     logger.info("[METADATA-FIELDS FALLBACK] Iniciando extração via AsyncSSH + TAR...")
                     extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
@@ -358,8 +337,9 @@ async def load_fields_config() -> Dict[str, Any]:
 
                     # LÓGICA CRÍTICA: SEMPRE FAZER MERGE COM DADOS EXISTENTES NO KV!
                     # NÃO sobrescrever customizações (required, auto_register, category, etc)
-                    
+
                     # PASSO 1: Buscar dados existentes do KV (podem ter customizações!)
+                    kv = KVManager()
                     existing_kv_data = await kv.get_json('skills/eye/metadata/fields')
                     
                     # PASSO 2: Converter campos extraídos para dict
@@ -398,10 +378,10 @@ async def load_fields_config() -> Dict[str, Any]:
                     )
 
                     logger.info(
-                        f"[METADATA-FIELDS FALLBACK] ✓ KV populado pela PRIMEIRA VEZ com {len(fields_dicts)} campos. "
+                        f"[METADATA-FIELDS FALLBACK] ✓ KV populado pela PRIMEIRA VEZ com {len(merged_fields)} campos. "
                         f"Próximas requisições usarão cache."
                     )
-                    
+
                     # Sincronizar sites no KV também (primeira vez)
                     server_status = extraction_result.get('server_status', [])
                     sites_sync_result = await sync_sites_to_kv(server_status)
@@ -409,10 +389,9 @@ async def load_fields_config() -> Dict[str, Any]:
                         f"[METADATA-FIELDS FALLBACK] ✓ Sites sincronizados: {sites_sync_result['total_sites']} total"
                     )
 
-                    # PASSO 2.1: Atualizar cache em memória também
-                    _fields_config_cache["data"] = fields_data
-                    _fields_config_cache["timestamp"] = now
-                    logger.info(f"[METADATA-FIELDS FALLBACK] ✓ Cache em memória atualizado (TTL: {_fields_config_cache['ttl']}s)")
+                    # PASSO 2.1: Invalidar cache unificado para forçar reload
+                    _kv_manager.invalidate('metadata/fields')
+                    logger.info(f"[METADATA-FIELDS FALLBACK] ✓ Cache unificado invalidado (próxima leitura recarregará do KV)")
 
                     return fields_data
 
@@ -1516,8 +1495,9 @@ async def batch_sync_fields(request: BatchSyncRequest):
                             before_segment = job_text[:local_insert_pos]
                             needs_leading_newline = not before_segment.endswith(('\n', '\r'))
 
+                            newline = '\n' if needs_leading_newline else ''
                             insertion_text = (
-                                f"{'\n' if needs_leading_newline else ''}{item_indent}- source_labels: [\"{source_value}\"]\n"
+                                f"{newline}{item_indent}- source_labels: [\"{source_value}\"]\n"
                                 f"{item_indent}  target_label: {field['name']}\n"
                             )
 
@@ -1742,19 +1722,7 @@ async def list_fields(
             )
 
     # Continuar com lógica normal de leitura do KV
-    # DETECTAR se veio do cache em memória (para modal)
-    global _fields_config_cache
-    came_from_memory_cache = False
-
-    # Verificar se cache em memória está válido ANTES de chamar load_fields_config
-    if (_fields_config_cache["data"] is not None and
-        _fields_config_cache["timestamp"] is not None):
-        from datetime import datetime
-        elapsed = (datetime.now() - _fields_config_cache["timestamp"]).total_seconds()
-        if elapsed < _fields_config_cache["ttl"]:
-            came_from_memory_cache = True
-            logger.debug(f"[METADATA-FIELDS] GET detectou cache em memória válido (from_cache=True)")
-
+    # NOTA: Cache detection removido - agora gerenciado pelo ConsulKVConfigManager
     config = await load_fields_config()
 
     # PROTEÇÃO: Validar se config não é None
@@ -1927,14 +1895,9 @@ async def add_fields_to_kv(request: AddToKVRequest):
             await save_fields_config(config)
             logger.info(f"[ADD-TO-KV] Configuração salva no KV com {len(fields_added)} novos campos")
 
-            # PASSO 4: Limpar cache para forçar reload
-            global _fields_config_cache
-            _fields_config_cache = {
-                "data": None,
-                "timestamp": None,
-                "ttl": 300
-            }
-            logger.info("[ADD-TO-KV] Cache limpo")
+            # PASSO 4: Invalidar cache unificado para forçar reload
+            _kv_manager.invalidate('metadata/fields')
+            logger.info("[ADD-TO-KV] Cache invalidado")
 
         # PASSO 5: Retornar resultado
         return {
@@ -2025,10 +1988,8 @@ async def partial_update_field(field_name: str, updates: Dict[str, Any] = Body(.
 
     # CRÍTICO: Invalidar cache para que mudanças apareçam imediatamente
     # Sem isso, /api/v1/reference-values/ retorna cache antigo por até 5 minutos
-    global _fields_config_cache
-    _fields_config_cache["data"] = None
-    _fields_config_cache["timestamp"] = None
-    logger.info(f"[CACHE] Cache de fields_config invalidado após atualização de '{field_name}'")
+    _kv_manager.invalidate('metadata/fields')
+    logger.info(f"[CACHE] Cache unificado invalidado após atualização de '{field_name}'")
 
     return {
         "success": True,
@@ -2066,13 +2027,8 @@ async def remove_orphan_fields(request: Dict[str, List[str]] = Body(...)):
         # Salvar config atualizado
         await save_fields_config(config)
 
-        # Limpar cache
-        global _fields_config_cache
-        _fields_config_cache = {
-            "data": None,
-            "timestamp": None,
-            "ttl": 300
-        }
+        # Invalidar cache unificado
+        _kv_manager.invalidate('metadata/fields')
 
         logger.info(f"[REMOVE-ORPHANS] ✅ {removed_count} campos órfãos removidos do KV")
 
@@ -2119,13 +2075,8 @@ async def delete_field(
     # Salvar
     await save_fields_config(config)
 
-    # Limpar cache
-    global _fields_config_cache
-    _fields_config_cache = {
-        "data": None,
-        "timestamp": None,
-        "ttl": 300
-    }
+    # Invalidar cache unificado
+    _kv_manager.invalidate('metadata/fields')
 
     result = {
         "success": True,
@@ -2356,14 +2307,9 @@ async def force_extract_fields(
         else:
             logger.info("[FORCE-EXTRACT] Iniciando detecção de campos de TODOS os servidores")
 
-        # PASSO 1: Limpar cache global para forçar nova leitura
-        global _fields_config_cache
-        _fields_config_cache = {
-            "data": None,
-            "timestamp": None,
-            "ttl": 300
-        }
-        logger.info("[FORCE-EXTRACT] Cache limpo")
+        # PASSO 1: Invalidar cache unificado para forçar nova extração
+        _kv_manager.invalidate('metadata/fields')
+        logger.info("[FORCE-EXTRACT] Cache invalidado")
 
         # PASSO 2: Carregar campos EXISTENTES do KV (para comparação)
         from core.kv_manager import KVManager

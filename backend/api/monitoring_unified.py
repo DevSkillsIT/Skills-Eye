@@ -26,7 +26,6 @@ import logging
 import httpx
 
 from core.consul_kv_config_manager import ConsulKVConfigManager
-from core.dynamic_query_builder import DynamicQueryBuilder, QUERY_TEMPLATES
 from core.consul_manager import ConsulManager
 from core.categorization_rule_engine import CategorizationRuleEngine
 
@@ -35,7 +34,6 @@ router = APIRouter(prefix="/monitoring", tags=["Monitoring Unified"])
 
 # Inicializar componentes globais
 kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
-query_builder = DynamicQueryBuilder()
 consul_manager = ConsulManager()
 categorization_engine = CategorizationRuleEngine(kv_manager)
 
