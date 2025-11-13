@@ -138,10 +138,13 @@ export function useInstaller(options: UseInstallerOptions = {}) {
         username: formData.username,
         password: formData.password,
         target_type: formData.targetType,
+        exporter_port: formData.exporterPort,
+        connection_method: formData.connectionMethod,
         collector_profile: formData.selectedCollectors.join(','),
         version: formData.selectedVersion,
-        register_in_consul: formData.autoRegister,
-        consul_node: formData.selectedNodeAddress,
+        register_in_consul: formData.autoRegisterConsul,
+        consul_service_name: formData.consulServiceName,
+        consul_tags: formData.consulTags,
       };
 
       // Add optional fields
@@ -153,7 +156,7 @@ export function useInstaller(options: UseInstallerOptions = {}) {
         payload.key_file = formData.privateKeyFile;
       }
 
-      if (formData.useBasicAuth) {
+      if (formData.enableBasicAuth) {
         payload.basic_auth_user = formData.basicAuthUser;
         payload.basic_auth_password = formData.basicAuthPassword;
       }

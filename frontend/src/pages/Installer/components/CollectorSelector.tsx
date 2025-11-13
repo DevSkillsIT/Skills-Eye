@@ -13,17 +13,21 @@ const { Text, Title } = Typography;
 
 interface CollectorSelectorProps {
   targetType: TargetType;
-  selectedCollectors: string[];
-  onChange: (collectors: string[]) => void;
+  value?: string[]; // Form.Item passes 'value'
+  selectedCollectors?: string[]; // Direct usage
+  onChange?: (collectors: string[]) => void;
   disabled?: boolean;
 }
 
 export const CollectorSelector: React.FC<CollectorSelectorProps> = ({
   targetType,
+  value,
   selectedCollectors,
   onChange,
   disabled = false,
 }) => {
+  // Support both Form.Item integration (value prop) and direct usage (selectedCollectors prop)
+  const currentSelection = value ?? selectedCollectors ?? [];
   /**
    * Filter collectors based on target type
    */
@@ -42,10 +46,11 @@ export const CollectorSelector: React.FC<CollectorSelectorProps> = ({
    * Handle collector toggle
    */
   const handleToggle = (collectorValue: string, checked: boolean) => {
+    if (!onChange) return;
     if (checked) {
-      onChange([...selectedCollectors, collectorValue]);
+      onChange([...currentSelection, collectorValue]);
     } else {
-      onChange(selectedCollectors.filter((c) => c !== collectorValue));
+      onChange(currentSelection.filter((c) => c !== collectorValue));
     }
   };
 
@@ -53,21 +58,21 @@ export const CollectorSelector: React.FC<CollectorSelectorProps> = ({
    * Select all collectors
    */
   const selectAll = () => {
-    onChange(availableCollectors.map((c) => c.value));
+    if (onChange) onChange(availableCollectors.map((c) => c.value));
   };
 
   /**
    * Deselect all collectors
    */
   const deselectAll = () => {
-    onChange([]);
+    if (onChange) onChange([]);
   };
 
   /**
    * Reset to defaults
    */
   const resetToDefaults = () => {
-    onChange(defaultCollectors);
+    if (onChange) onChange(defaultCollectors);
   };
 
   return (
@@ -99,7 +104,7 @@ export const CollectorSelector: React.FC<CollectorSelectorProps> = ({
 
       <Row gutter={[12, 12]}>
         {availableCollectors.map((collector) => {
-          const isSelected = selectedCollectors.includes(collector.value);
+          const isSelected = currentSelection.includes(collector.value);
           const isDefault = defaultCollectors.includes(collector.value);
 
           return (
@@ -152,7 +157,7 @@ export const CollectorSelector: React.FC<CollectorSelectorProps> = ({
       {/* Selection summary */}
       <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: '#f5f5f5', borderRadius: 4 }}>
         <Text style={{ fontSize: 12 }}>
-          <strong>{selectedCollectors.length}</strong> de <strong>{availableCollectors.length}</strong> collectors
+          <strong>{currentSelection.length}</strong> de <strong>{availableCollectors.length}</strong> collectors
           selecionados
         </Text>
       </div>
