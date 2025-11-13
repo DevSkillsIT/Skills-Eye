@@ -367,28 +367,28 @@ async def root():
     }
 
 # Incluir routers
-app.include_router(services_router, prefix="/api/v1/services", tags=["services"])
-app.include_router(nodes_router, prefix="/api/v1/nodes", tags=["nodes"])
-app.include_router(config_router, prefix="/api/v1/config", tags=["config"])
-app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["blackbox"])
-app.include_router(kv_router, prefix="/api/v1/kv", tags=["kv"])
-app.include_router(presets_router, prefix="/api/v1/presets", tags=["presets"])
-app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
-app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["consul"])
-app.include_router(audit_router, prefix="/api/v1", tags=["audit"])
-app.include_router(dashboard_router, prefix="/api/v1", tags=["dashboard"])
-app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
-app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus-config"])
-app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
-# app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # REMOVIDO: Usar prometheus-config
-app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["monitoring-types-dynamic"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
-app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["reference-values"])  # NOVO: Auto-cadastro
-app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["service-tags"])  # NOVO: Tags retroalimentáveis
-app.include_router(settings_router, prefix="/api/v1", tags=["settings"])  # NOVO: Configurações globais
+app.include_router(services_router, prefix="/api/v1/services", tags=["Services"])
+app.include_router(nodes_router, prefix="/api/v1/nodes", tags=["Nodes"])
+app.include_router(config_router, prefix="/api/v1/config", tags=["Config"])
+app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["Blackbox"])
+app.include_router(kv_router, prefix="/api/v1/kv", tags=["Key-Value Store"])
+app.include_router(presets_router, prefix="/api/v1/presets", tags=["Service Presets"])
+app.include_router(search_router, prefix="/api/v1/search", tags=["Search"])
+app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["Consul Insights"])
+app.include_router(audit_router, prefix="/api/v1", tags=["Audit Logs"])
+app.include_router(dashboard_router, prefix="/api/v1", tags=["Dashboard"])
+app.include_router(optimized_router, prefix="/api/v1", tags=["Optimized Endpoints"])
+app.include_router(prometheus_config_router, prefix="/api/v1", tags=["Prometheus Config"])
+app.include_router(metadata_fields_router, prefix="/api/v1", tags=["Metadata Fields"])
+# app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["Dynamic Metadata"])  # REMOVIDO: Usar prometheus-config
+app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["Monitoring Types"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
+app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["Reference Values"])  # NOVO: Auto-cadastro
+app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
+app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais
 
 if HAS_INSTALLER:
-    app.include_router(installer_router, prefix="/api/v1/installer", tags=["installer"])
-    app.include_router(health_router, prefix="/api/v1/health", tags=["health"])
+    app.include_router(installer_router, prefix="/api/v1/installer", tags=["Installer"])
+    app.include_router(health_router, prefix="/api/v1/health", tags=["Health Check"])
 
 if __name__ == "__main__":
     import uvicorn

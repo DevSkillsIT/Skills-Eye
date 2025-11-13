@@ -10,7 +10,7 @@ from core.config import Config
 import requests
 import time
 
-router = APIRouter(prefix="/services-optimized", tags=["services-optimized"])
+router = APIRouter(prefix="/services-optimized", tags=["Services (Optimized)"])
 
 # Headers e URL do Consul
 CONSUL_HEADERS = {"X-Consul-Token": Config.CONSUL_TOKEN}

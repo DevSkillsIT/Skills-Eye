@@ -12,7 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/optimized", tags=["optimized"])
+router = APIRouter(prefix="/optimized", tags=["Optimized Endpoints"])
 
 # Headers e URL do Consul
 CONSUL_HEADERS = {"X-Consul-Token": Config.CONSUL_TOKEN}

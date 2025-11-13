@@ -12,7 +12,7 @@ import logging
 from core.consul_manager import ConsulManager
 from .models import KVPutRequest
 
-router = APIRouter()
+router = APIRouter(tags=["Key-Value Store"])
 logger = logging.getLogger(__name__)
 
 # Prefixo principal da aplicação (usado para validação de escrita)

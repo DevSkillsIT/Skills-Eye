@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 from core.audit_manager import audit_manager
 
-router = APIRouter(prefix="/kv/audit", tags=["audit"])
+router = APIRouter(prefix="/kv/audit", tags=["Audit Logs"])
 
 
 class AuditEventResponse(BaseModel):

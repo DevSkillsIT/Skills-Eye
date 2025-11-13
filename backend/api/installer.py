@@ -24,7 +24,7 @@ from core.consul_manager import ConsulManager
 from core.config import Config
 import logging
 
-router = APIRouter()
+router = APIRouter(tags=["Installer"])
 logger = logging.getLogger(__name__)
 
 # ============================================================================

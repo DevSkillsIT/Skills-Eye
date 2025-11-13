@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from core.consul_manager import ConsulManager
 from core.advanced_search import AdvancedSearch, SearchOperator, LogicalOperator
 
-router = APIRouter()
+router = APIRouter(tags=["Search"])
 
 
 # ============================================================================

@@ -8,7 +8,7 @@ from core.config import Config
 import asyncio
 import time
 
-router = APIRouter()
+router = APIRouter(tags=["Nodes"])
 
 # Cache simples para evitar timeouts no cold start
 _nodes_cache: Optional[Dict] = None

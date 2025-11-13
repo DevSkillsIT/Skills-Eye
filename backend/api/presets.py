@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from core.service_preset_manager import ServicePresetManager
 
-router = APIRouter()
+router = APIRouter(tags=["Service Presets"])
 
 
 # ============================================================================

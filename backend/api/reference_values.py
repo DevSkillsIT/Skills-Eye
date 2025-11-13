@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from core.reference_values_manager import ReferenceValuesManager
 from core.category_manager import CategoryManager
 
-router = APIRouter()
+router = APIRouter(tags=["Reference Values"])
 
 
 # ============================================================================

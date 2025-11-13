@@ -14,7 +14,7 @@ import logging
 from core.multi_config_manager import MultiConfigManager
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types Dynamic"])
+router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"])
 
 # Instanciar manager
 multi_config = MultiConfigManager()

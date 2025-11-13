@@ -12,7 +12,7 @@ from core.config import Config
 import requests
 import time
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 # Headers e URL do Consul
 CONSUL_HEADERS = {"X-Consul-Token": Config.CONSUL_TOKEN}

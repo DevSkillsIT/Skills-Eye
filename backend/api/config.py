@@ -10,7 +10,7 @@ from .models import ConsulConfig, ConsulConfigResponse, HealthCheckResponse
 import logging
 import httpx
 
-router = APIRouter()
+router = APIRouter(tags=["Config"])
 logger = logging.getLogger(__name__)
 
 

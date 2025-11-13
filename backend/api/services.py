@@ -16,7 +16,7 @@ from .models import (
 )
 import logging
 
-router = APIRouter()
+router = APIRouter(tags=["Services"])
 logger = logging.getLogger(__name__)
 
 

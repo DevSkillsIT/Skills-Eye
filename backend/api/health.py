@@ -7,7 +7,7 @@ from core.consul_manager import ConsulManager
 from core.config import Config
 import requests
 
-router = APIRouter()
+router = APIRouter(tags=["Health Check"])
 
 @router.get("/status")
 async def get_health_status():

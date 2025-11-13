@@ -17,7 +17,7 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["Blackbox"])
 
 
 # ============================================================================

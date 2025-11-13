@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from core.consul_manager import ConsulManager
 
-router = APIRouter()
+router = APIRouter(tags=["Consul Insights"])
 
 
 @router.get("/hosts", include_in_schema=True)

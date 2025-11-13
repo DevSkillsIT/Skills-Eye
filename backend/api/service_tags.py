@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from core.consul_manager import ConsulManager
 from core.reference_values_manager import ReferenceValuesManager
 
-router = APIRouter()
+router = APIRouter(tags=["Service Tags"])
 
 
 class TagEnsureRequest(BaseModel):
