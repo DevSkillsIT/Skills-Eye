@@ -1120,6 +1120,102 @@ export const consulAPI = {
       duration_seconds: number;
       detail?: string;
     }>('/monitoring/sync-cache'),
+
+  // =========================================================================
+  // ⭐ CATEGORIZATION RULES API - Gerenciamento de Regras (v2.0)
+  // =========================================================================
+
+  /**
+   * Listar todas as regras de categorização
+   */
+  getCategorizationRules: () =>
+    api.get<{
+      success: boolean;
+      data: {
+        version: string;
+        last_updated: string;
+        total_rules: number;
+        rules: Array<{
+          id: string;
+          priority: number;
+          category: string;
+          display_name: string;
+          exporter_type?: string;
+          conditions: {
+            job_name_pattern?: string;
+            metrics_path?: string;
+            module_pattern?: string;
+          };
+        }>;
+        default_category: string;
+        categories: Array<{
+          id: string;
+          display_name: string;
+        }>;
+      };
+    }>('/categorization-rules'),
+
+  /**
+   * Criar nova regra de categorização
+   */
+  createCategorizationRule: (rule: {
+    id: string;
+    priority: number;
+    category: string;
+    display_name: string;
+    exporter_type?: string;
+    conditions: {
+      job_name_pattern?: string;
+      metrics_path?: string;
+      module_pattern?: string;
+    };
+  }) =>
+    api.post<{
+      success: boolean;
+      message: string;
+      rule_id: string;
+    }>('/categorization-rules', rule),
+
+  /**
+   * Atualizar regra existente
+   */
+  updateCategorizationRule: (
+    ruleId: string,
+    updates: {
+      priority?: number;
+      category?: string;
+      display_name?: string;
+      exporter_type?: string;
+      conditions?: {
+        job_name_pattern?: string;
+        metrics_path?: string;
+        module_pattern?: string;
+      };
+    }
+  ) =>
+    api.put<{
+      success: boolean;
+      message: string;
+    }>(`/categorization-rules/${ruleId}`, updates),
+
+  /**
+   * Deletar regra
+   */
+  deleteCategorizationRule: (ruleId: string) =>
+    api.delete<{
+      success: boolean;
+      message: string;
+    }>(`/categorization-rules/${ruleId}`),
+
+  /**
+   * Recarregar regras do KV
+   */
+  reloadCategorizationRules: () =>
+    api.post<{
+      success: boolean;
+      message: string;
+      total_rules: number;
+    }>('/categorization-rules/reload'),
 };
 
 // ============================================================================

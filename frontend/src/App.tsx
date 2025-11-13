@@ -36,6 +36,7 @@ import MonitoringTypes from './pages/MonitoringTypes';
 import ReferenceValues from './pages/ReferenceValues';
 // ⭐ NOVO - Sistema de Refatoração v2.0 (2025-11-13)
 import DynamicMonitoringPage from './pages/DynamicMonitoringPage';
+import MonitoringRules from './pages/MonitoringRules';
 // import Settings from './pages/Settings'; // REMOVIDO - Funcionalidades migradas para MetadataFields
 
 const App: React.FC = () => {
@@ -114,6 +115,11 @@ const App: React.FC = () => {
           path: '/monitoring/database-exporters',
           name: 'Database Exporters',
           icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/monitoring/rules',
+          name: 'Regras de Categorização',
+          icon: <SettingOutlined />,
         },
       ],
     },
@@ -224,6 +230,7 @@ const App: React.FC = () => {
             <Route path="/monitoring/web-probes" element={<DynamicMonitoringPage category="web-probes" />} />
             <Route path="/monitoring/system-exporters" element={<DynamicMonitoringPage category="system-exporters" />} />
             <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
+            <Route path="/monitoring/rules" element={<MonitoringRules />} />
             {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
           </Routes>
         </ProLayout>
