@@ -54,8 +54,13 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
     <Space wrap align="center">
       {/* GERAÇÃO DINÂMICA: Um Select para cada campo com show_in_filter=true */}
       {fields.map((field) => {
-        const fieldOptions = options[field.name] || [];
+        const fieldOptions = options?.[field.name] ?? [];
         const minWidth = field.display_name.length > 15 ? 200 : 150;
+
+        // ⚠️ Não renderizar select sem opções (evita race condition)
+        if (!fieldOptions || fieldOptions.length === 0) {
+          return null;
+        }
 
         return (
           <Select
@@ -65,7 +70,7 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
             placeholder={field.placeholder || field.display_name}
             style={{ minWidth }}
             loading={loading}
-            value={value[field.name]}
+            value={value?.[field.name]}
             onChange={(val) => handleChange(field.name, val)}
           >
             {fieldOptions.map((item) => (

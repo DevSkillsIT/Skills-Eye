@@ -986,16 +986,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           </Space>
         </Card>
 
-        {/* Barra de filtros metadata */}
-        <MetadataFilterBar
-          fields={filterFields}
-          filters={filters}
-          options={metadataOptions}
-          onChange={(newFilters) => {
-            setFilters(newFilters);
-            actionRef.current?.reload();
-          }}
-        />
+        {/* Barra de filtros metadata - Só renderiza quando dados estiverem prontos */}
+        {filterFields.length > 0 && Object.keys(metadataOptions).length > 0 && (
+          <MetadataFilterBar
+            fields={filterFields}
+            filters={filters}
+            options={metadataOptions}
+            onChange={(newFilters) => {
+              setFilters(newFilters);
+              actionRef.current?.reload();
+            }}
+          />
+        )}
 
         {/* ✅ COMPLETO: Tabela com TODAS as features */}
         <ProTable<MonitoringDataItem>
