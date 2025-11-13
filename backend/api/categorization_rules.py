@@ -18,7 +18,7 @@ DATA: 2025-11-13
 """
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import logging
@@ -40,7 +40,8 @@ class RuleConditions(BaseModel):
     metrics_path: Optional[str] = Field(None, description="Path de métricas (/probe ou /metrics)")
     module_pattern: Optional[str] = Field(None, description="Regex para __param_module (blackbox)")
 
-    @validator('job_name_pattern', 'module_pattern')
+    @field_validator('job_name_pattern', 'module_pattern')
+    @classmethod
     def validate_regex(cls, v):
         """Valida que regex é válido"""
         if v:
@@ -50,7 +51,8 @@ class RuleConditions(BaseModel):
                 raise ValueError(f"Regex inválido: {e}")
         return v
 
-    @validator('metrics_path')
+    @field_validator('metrics_path')
+    @classmethod
     def validate_metrics_path(cls, v):
         """Valida que metrics_path é válido"""
         if v and v not in ['/probe', '/metrics']:
@@ -60,7 +62,7 @@ class RuleConditions(BaseModel):
 
 class CategorizationRuleModel(BaseModel):
     """Modelo de regra de categorização"""
-    id: str = Field(..., description="ID único da regra", regex=r"^[a-z0-9_]+$")
+    id: str = Field(..., description="ID único da regra", pattern=r"^[a-z0-9_]+$")
     priority: int = Field(..., description="Prioridade (1-100)", ge=1, le=100)
     category: str = Field(..., description="Categoria de destino")
     display_name: str = Field(..., description="Nome amigável para exibição")
@@ -70,7 +72,7 @@ class CategorizationRuleModel(BaseModel):
 
 class RuleCreateRequest(BaseModel):
     """Request para criar regra"""
-    id: str = Field(..., regex=r"^[a-z0-9_]+$")
+    id: str = Field(..., pattern=r"^[a-z0-9_]+$")
     priority: int = Field(..., ge=1, le=100)
     category: str
     display_name: str
