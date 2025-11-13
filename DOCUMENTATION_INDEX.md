@@ -7,6 +7,8 @@ Este documento serve como índice para TODA a documentação do projeto, organiz
 **🆕 Mudanças nesta revisão (Fase 2):**
 - ✅ **ESTRUTURA PROFISSIONAL:** Pastas organizadas seguindo melhores práticas
 - ✅ **51+ arquivos reorganizados** da raiz para pastas apropriadas
+- ✅ **34 documentos obsoletos** movidos de `obsolete/` para `docs/obsolete/`
+- ✅ **ORGANIZATIONAL_GUIDE.md criado** - Guia definitivo de organização
 - ✅ Scripts movidos para `scripts/{deployment,migration,development,benchmarks}`
 - ✅ Logs movidos para `logs/` (gitignored)
 - ✅ Dados movidos para `data/{baselines,fixtures,temp}`
@@ -17,6 +19,14 @@ Este documento serve como índice para TODA a documentação do projeto, organiz
 - ✅ README.md COMPLETAMENTE atualizado com navegação
 - ✅ .gitignore atualizado para nova estrutura
 - ✅ **RAIZ LIMPA:** Apenas 6 arquivos essenciais permanecem
+
+**📘 GUIA DE ORGANIZAÇÃO:**
+- ✨ **[ORGANIZATIONAL_GUIDE.md](../ORGANIZATIONAL_GUIDE.md)** - **DOCUMENTO PRINCIPAL**
+  - Princípios de organização
+  - Estrutura padrão do projeto
+  - Processo completo de reorganização
+  - Checklist de validação
+  - Manutenção contínua
 
 ---
 
@@ -262,6 +272,38 @@ RAIZ (apenas essenciais):
 | **Colunas** | [docs/sessions/CORRECOES_COLUNAS_2025-11-12.md](docs/sessions/CORRECOES_COLUNAS_2025-11-12.md) | Correções de colunas em tabelas |
 | **External Labels Aba** | [docs/sessions/CORRECOES_FINAIS_ABA_EXTERNAL_LABELS.md](docs/sessions/CORRECOES_FINAIS_ABA_EXTERNAL_LABELS.md) | Correções aba external labels |
 | **Órfãos vs Missing** | [docs/sessions/EXPLICACAO_ORFAOS_VS_MISSING.md](docs/sessions/EXPLICACAO_ORFAOS_VS_MISSING.md) | Explicação de campos órfãos |
+
+---
+
+## 📦 DOCUMENTOS OBSOLETOS
+
+**Localização:** [docs/obsolete/](docs/obsolete/)
+
+**Total:** 43 documentos obsoletos/desatualizados movidos da pasta `obsolete/` raiz
+
+Estes documentos são mantidos apenas para histórico. **NÃO são mais válidos** para o sistema atual.
+
+### Categorias de Obsoletos:
+- **Correções antigas** - FIX_*.md, CORRECOES_URGENTES.md
+- **Análises antigas** - CONSUL_1.22.0_ANALYSIS.md, DEBUG_UPDATE_REPORT.md
+- **Implementações antigas** - IMPLEMENTACAO_*.md
+- **Refatorações antigas** - REFACTORING_*.md
+- **Relatórios antigos** - PERFORMANCE_REPORT.md
+- **READMEs antigos** - README_PHASE1.md
+
+**⚠️ IMPORTANTE:** Consulte sempre a documentação em `docs/features/` e `docs/developer/` para informações atualizadas.
+
+**Primeiros 10 obsoletos:**
+- ALTERACOES_REALIZADAS.md
+- CONSUL_1.22.0_ANALYSIS.md
+- CONSUL_UPDATE_FIX.md
+- CORRECOES_URGENTES.md
+- DEBUG_UPDATE_REPORT.md
+- DELETE_UPDATE_FIX.md
+- EXPORTERS_WINDOWS_FIX.md
+- FASTAPI_PATH_PARAMETER_FIX.md
+- FIX-MODAL-APPROACH.md
+- IMPLEMENTACAO_MONITORING_TYPES_RESUMO.md
 
 ---
 
