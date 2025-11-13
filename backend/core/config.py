@@ -27,16 +27,9 @@ class Config:
         """
         Retorna mapa de nós conhecidos (hostname → IP).
 
-        NOTA: Agora busca do Consul KV (skills/eye/metadata/sites)
-        Se KV não disponível, usa fallback estático.
+        FONTE: Consul KV (skills/eye/metadata/sites)
+        ZERO HARDCODE - Se KV vazio/falhar, retorna dict vazio
         """
-        # Fallback estático (caso KV não disponível)
-        fallback = {
-            "glpi-grafana-prometheus.skillsit.com.br": "172.16.1.26",
-            "consul-DTC-Genesis-Skills": "11.144.0.21",
-            "consul-RMD-LDC-Rio": "172.16.200.14"
-        }
-
         try:
             from core.kv_manager import KVManager
             kv = KVManager()
@@ -53,16 +46,13 @@ class Config:
                     ip = site.get('prometheus_instance')
                     if ip:
                         nodes[hostname] = ip
+                return nodes
 
-                # Se conseguiu dados do KV, retornar
-                if nodes:
-                    return nodes
-
-            # Fallback: retornar valores estáticos se KV vazio
-            return fallback
+            # KV vazio: retornar dict vazio (ZERO HARDCODE)
+            return {}
         except Exception:
-            # Se falhar, retornar fallback estático
-            return fallback
+            # Falha ao acessar KV: retornar dict vazio (ZERO HARDCODE)
+            return {}
 
     # Service Names
     SERVICE_NAMES = {
