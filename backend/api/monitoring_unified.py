@@ -109,7 +109,11 @@ async def get_monitoring_data(
         if not types_cache:
             raise HTTPException(
                 status_code=500,
-                detail="Cache de tipos não disponível. Execute sync-cache primeiro."
+                detail=(
+                    "Cache de tipos não disponível. "
+                    "Execute o script de migração: 'python backend/migrate_categorization_to_json.py' "
+                    "OU sincronize via API: 'POST /api/v1/monitoring/sync-cache'"
+                )
             )
 
         cache_stats = config_manager.get_cache_stats()
