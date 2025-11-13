@@ -186,6 +186,83 @@ class BatchSyncResponse(BaseModel):
 # FUNÇÕES AUXILIARES
 # ============================================================================
 
+def merge_fields_preserving_customizations(
+    extracted_fields: List[Dict[str, Any]],
+    existing_kv_fields: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    MERGE INTELIGENTE: Preserva customizações do KV enquanto atualiza estrutura do Prometheus
+    
+    CAMPOS PRESERVADOS DO KV (customizações do usuário):
+    - required (obrigatório)
+    - auto_register (auto-cadastro)
+    - category (categoria)
+    - show_in_* (visibilidade em páginas)
+    - order (ordem de exibição)
+    - description (descrição customizada)
+    - editable, enabled
+    - validation_regex, validation
+    - default_value, placeholder
+    
+    CAMPOS ATUALIZADOS DO PROMETHEUS (dinâmicos):
+    - options (valores únicos)
+    - discovered_in (servidores)
+    - source_label, regex, replacement (estrutura do relabel)
+    
+    Args:
+        extracted_fields: Campos extraídos do Prometheus (estrutura dinâmica)
+        existing_kv_fields: Campos existentes no KV (com customizações do usuário)
+    
+    Returns:
+        Lista de campos merged (customizações preservadas + estrutura atualizada)
+    """
+    # Criar map dos campos existentes no KV por nome
+    kv_fields_map = {field['name']: field for field in existing_kv_fields}
+    
+    merged_fields = []
+    
+    for extracted_field in extracted_fields:
+        field_name = extracted_field['name']
+        
+        if field_name in kv_fields_map:
+            # Campo JÁ EXISTE no KV - MERGE preservando customizações
+            kv_field = kv_fields_map[field_name]
+            
+            merged_field = extracted_field.copy()  # Base: estrutura do Prometheus
+            
+            # PRESERVAR customizações do KV (sobrescrever valores do Prometheus)
+            customizable_fields = [
+                'required', 'auto_register', 'category', 'order', 'description',
+                'show_in_table', 'show_in_dashboard', 'show_in_form',
+                'show_in_services', 'show_in_exporters', 'show_in_blackbox', 'show_in_filter',
+                'editable', 'enabled', 'available_for_registration',
+                'validation_regex', 'validation', 'default_value', 'placeholder',
+                'display_name'  # Usuário pode ter customizado o nome amigável
+            ]
+            
+            for custom_field in customizable_fields:
+                if custom_field in kv_field:
+                    merged_field[custom_field] = kv_field[custom_field]
+            
+            logger.debug(f"[MERGE] Campo '{field_name}': customizações preservadas do KV")
+        else:
+            # Campo NOVO extraído do Prometheus - usar defaults
+            merged_field = extracted_field.copy()
+            logger.debug(f"[MERGE] Campo '{field_name}': NOVO campo adicionado (defaults aplicados)")
+        
+        merged_fields.append(merged_field)
+    
+    # IMPORTANTE: Também manter campos ÓRFÃOS (campos no KV que NÃO existem mais no Prometheus)
+    # Isso evita perda de dados se um servidor Prometheus temporariamente não tiver um campo
+    extracted_field_names = {f['name'] for f in extracted_fields}
+    for kv_field_name, kv_field in kv_fields_map.items():
+        if kv_field_name not in extracted_field_names:
+            logger.warning(f"[MERGE] Campo '{kv_field_name}' existe no KV mas NÃO foi extraído do Prometheus - PRESERVANDO como órfão")
+            merged_fields.append(kv_field)
+    
+    return merged_fields
+
+
 async def load_fields_config() -> Dict[str, Any]:
     """
     Carrega configuração de campos do Consul KV (extraídos do Prometheus).
@@ -270,20 +347,34 @@ async def load_fields_config() -> Dict[str, Any]:
                         f"{successful_servers}/{total_servers} servidores"
                     )
 
-                    # LÓGICA CORRETA: EXTRAIR ≠ SINCRONIZAR
-                    # Fallback APENAS popula KV se estiver COMPLETAMENTE VAZIO (primeira vez)
-                    # NÃO adiciona campos novos automaticamente
+                    # LÓGICA CRÍTICA: SEMPRE FAZER MERGE COM DADOS EXISTENTES NO KV!
+                    # NÃO sobrescrever customizações (required, auto_register, category, etc)
+                    
+                    # PASSO 1: Buscar dados existentes do KV (podem ter customizações!)
+                    existing_kv_data = await kv.get_json('skills/eye/metadata/fields')
+                    
+                    # PASSO 2: Converter campos extraídos para dict
+                    extracted_fields_dicts = [f.to_dict() for f in fields]
+                    
+                    # PASSO 3: MERGE INTELIGENTE - preservar customizações do KV
+                    if existing_kv_data and existing_kv_data.get('fields'):
+                        logger.info(f"[METADATA-FIELDS MERGE] Fazendo merge com {len(existing_kv_data['fields'])} campos existentes no KV")
+                        merged_fields = merge_fields_preserving_customizations(
+                            extracted_fields=extracted_fields_dicts,
+                            existing_kv_fields=existing_kv_data['fields']
+                        )
+                        logger.info(f"[METADATA-FIELDS MERGE] ✓ Merge concluído: {len(merged_fields)} campos finais")
+                    else:
+                        logger.info("[METADATA-FIELDS MERGE] KV vazio - usando campos extraídos diretamente")
+                        merged_fields = extracted_fields_dicts
 
-                    # Converter MetadataField objects para dict
-                    fields_dicts = [f.to_dict() for f in fields]
-
-                    # Salvar no KV (APENAS PRIMEIRA VEZ - KV estava vazio)
+                    # PASSO 4: Salvar campos MERGED no KV
                     fields_data = {
                         'version': '2.0.0',
                         'last_updated': datetime.now().isoformat(),
-                        'source': 'fallback_on_demand_initial',
-                        'total_fields': len(fields_dicts),
-                        'fields': fields_dicts,
+                        'source': 'extraction_with_merge' if existing_kv_data else 'initial_extraction',
+                        'total_fields': len(merged_fields),
+                        'fields': merged_fields,
                         'extraction_status': {
                             'total_servers': total_servers,
                             'successful_servers': successful_servers,
@@ -294,7 +385,7 @@ async def load_fields_config() -> Dict[str, Any]:
                     await kv.put_json(
                         key='skills/eye/metadata/fields',
                         value=fields_data,
-                        metadata={'auto_updated': True, 'source': 'fallback_on_demand_initial'}
+                        metadata={'auto_updated': True, 'source': 'extraction_with_merge'}
                     )
 
                     logger.info(

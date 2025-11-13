@@ -36,7 +36,7 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000, // 60s - StrictMode causa requisições duplicadas em dev
+  timeout: 30000, // 30s
 });
 
 // ============================================================================

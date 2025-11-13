@@ -716,7 +716,7 @@ const MetadataFieldsPage: React.FC = () => {
     setLoadingCategories(true);
     try {
       const response = await axios.get(`${API_URL}/reference-values/categories`, {
-        timeout: 60000, // 60s - StrictMode causa requisições duplicadas em dev
+        timeout: 10000, // 10s
       });
       if (response.data.success && response.data.categories) {
         setCategories(response.data.categories);

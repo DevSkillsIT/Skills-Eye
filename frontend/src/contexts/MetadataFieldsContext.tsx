@@ -54,7 +54,7 @@ export function MetadataFieldsProvider({ children }: { children: ReactNode }) {
       // USA /metadata-fields/ que LÊ DO CONSUL KV (rápido, sem SSH)
       // Apenas MetadataFields page deve usar /prometheus-config/fields (com SSH)
       const response = await axios.get(`${API_URL}/metadata-fields/`, {
-        timeout: 60000, // 60s - StrictMode causa requisições duplicadas em dev
+        timeout: 10000, // 10s (KV é rápido)
       });
 
       const endTime = performance.now();

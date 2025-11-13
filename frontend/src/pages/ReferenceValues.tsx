@@ -161,8 +161,8 @@ const ReferenceValuesPage: React.FC = () => {
 
       // Carregar categorias e campos em paralelo
       const [categoriesRes, fieldsRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/v1/reference-values/categories', { timeout: 60000 }),
-        axios.get('http://localhost:5000/api/v1/reference-values/', { timeout: 60000 }),
+        axios.get('http://localhost:5000/api/v1/reference-values/categories'),
+        axios.get('http://localhost:5000/api/v1/reference-values/'),
       ]);
 
       if (!categoriesRes.data.success || !fieldsRes.data.success) {
