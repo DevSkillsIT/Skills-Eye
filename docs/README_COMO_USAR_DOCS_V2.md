@@ -54,8 +54,8 @@ Você tem **3 documentos principais** para a implementação:
 3º → PLANO original (seções não corrigidas) # Contexto geral
 
 # 2. Validar pré-requisitos:
-✓ Backend rodando (http://localhost:8003)
-✓ Frontend rodando (http://localhost:5173)
+✓ Backend rodando (http://localhost:5000)
+✓ Frontend rodando (http://localhost:8081)
 ✓ Consul acessível (http://localhost:8500)
 ✓ Testes de persistência passando (run_all_persistence_tests.sh)
 ```
@@ -87,8 +87,8 @@ Você tem **3 documentos principais** para a implementação:
   2. Copiar endpoint `/monitoring/metrics` (Prometheus)
 - **Validar:**
   ```bash
-  curl "http://localhost:8003/api/v1/monitoring/data?category=network-probes"
-  curl "http://localhost:8003/api/v1/monitoring/metrics?category=network-probes&metric_type=status"
+  curl "http://localhost:5000/api/v1/monitoring/data?category=network-probes"
+  curl "http://localhost:5000/api/v1/monitoring/metrics?category=network-probes&metric_type=status"
   ```
 
 #### **Dia 6: consulAPI (Frontend)**
