@@ -89,7 +89,7 @@ Apenas endpoints de **instalação remota** (`/installer/*`) requerem HTTP Basic
 Authorization: Basic base64(username:password)
 ```
 
-**Credenciais:** Configuradas no Consul KV: `skills/cm/settings/credentials`
+**Credenciais:** Configuradas no Consul KV: `skills/eye/settings/credentials`
 
 ---
 
@@ -635,31 +635,6 @@ Sincroniza campo específico com prometheus.yml.
 ```json
 {
   "apply_to_jobs": ["icmp", "http_2xx"]
-}
-```
-
----
-
-### `POST /metadata-fields/replicate-to-slaves`
-Replica configurações do master para slaves.
-
-**Request Body:**
-```json
-{
-  "source_server": null,
-  "target_servers": ["172.16.200.14:22"]
-}
-```
-
----
-
-### `POST /metadata-fields/restart-prometheus`
-Reinicia Prometheus em servidores.
-
-**Request Body:**
-```json
-{
-  "server_ids": ["172.16.1.26:5522"]
 }
 ```
 

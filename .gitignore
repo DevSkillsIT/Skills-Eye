@@ -56,9 +56,13 @@ frontend/build/
 ehthumbs.db
 Thumbs.db
 
-# Logs
-logs
+# Logs (entire logs/ directory)
+logs/
 *.log
+
+# Temporary data files
+data/temp/
+temp_*.json
 
 # Runtime data
 pids

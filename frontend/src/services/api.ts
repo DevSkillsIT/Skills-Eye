@@ -1131,6 +1131,93 @@ export interface BatchSyncResponse {
   duration_seconds: number;
 }
 
+// ============================================================================
+// CATEGORY API - Gerenciamento de Categorias (Abas Reference Values)
+// ============================================================================
+
+export interface CategoryInfo {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  order: number;
+  color: string;
+}
+
+export interface CategoriesResponse {
+  success: boolean;
+  total: number;
+  categories: CategoryInfo[];
+}
+
+export interface CategoryCreateRequest {
+  key: string;
+  label: string;
+  icon?: string;
+  description?: string;
+  order?: number;
+  color?: string;
+}
+
+export interface CategoryUpdateRequest {
+  label?: string;
+  icon?: string;
+  description?: string;
+  order?: number;
+  color?: string;
+}
+
+export const categoryAPI = {
+  /**
+   * Lista todas as categorias
+   */
+  listCategories: () =>
+    api.get<CategoriesResponse>('/reference-values/categories'),
+
+  /**
+   * Cria nova categoria
+   */
+  createCategory: (data: CategoryCreateRequest, user: string = 'system') =>
+    api.post<{ success: boolean; message: string }>(
+      '/reference-values/categories',
+      data,
+      { params: { user } }
+    ),
+
+  /**
+   * Atualiza categoria existente
+   */
+  updateCategory: (key: string, data: CategoryUpdateRequest, user: string = 'system') =>
+    api.put<{ success: boolean; message: string }>(
+      `/reference-values/categories/${key}`,
+      data,
+      { params: { user } }
+    ),
+
+  /**
+   * Deleta categoria
+   */
+  deleteCategory: (key: string, force: boolean = false, user: string = 'system') =>
+    api.delete<{ success: boolean; message: string }>(
+      `/reference-values/categories/${key}`,
+      { params: { force, user } }
+    ),
+
+  /**
+   * Restaura categorias padrão
+   */
+  resetToDefaults: (user: string = 'system') =>
+    api.post<{ success: boolean; message: string }>(
+      '/reference-values/categories/reset',
+      {},
+      { params: { user } }
+    ),
+};
+
+// ============================================================================
+// METADATA FIELDS API - Configuração de Campos Dinâmicos
+// ============================================================================
+
 export const metadataFieldsAPI = {
   /**
    * Lista todos os campos metadata configurados

@@ -5,6 +5,7 @@ import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
 import { loadNamingConfig } from './utils/namingUtils';
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
+import { SitesProvider } from './hooks/useSites';
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -33,7 +34,7 @@ import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
 import MonitoringTypes from './pages/MonitoringTypes';
 import ReferenceValues from './pages/ReferenceValues';
-import Settings from './pages/Settings';
+// import Settings from './pages/Settings'; // REMOVIDO - Funcionalidades migradas para MetadataFields
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -52,79 +53,99 @@ const App: React.FC = () => {
       icon: <DashboardOutlined />,
     },
     {
-      path: '/services',
-      name: 'Servicos',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/service-groups',
-      name: 'Grupos de Servicos',
-      icon: <AppstoreOutlined />,
-    },
-    {
-      path: '/hosts',
-      name: 'Hosts',
-      icon: <HddOutlined />,
-    },
-    {
-      path: '/exporters',
-      name: 'Exporters',
-      icon: <CloudServerOutlined />,
-    },
-    {
-      path: '/blackbox',
-      name: 'Alvos Blackbox',
+      path: '/monitoramento',
+      name: 'Monitoramento',
       icon: <RadarChartOutlined />,
+      children: [
+        {
+          path: '/services',
+          name: 'Services',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/service-groups',
+          name: 'Grupos de Serviços',
+          icon: <AppstoreOutlined />,
+        },
+        {
+          path: '/hosts',
+          name: 'Hosts',
+          icon: <HddOutlined />,
+        },
+        {
+          path: '/exporters',
+          name: 'Exporters',
+          icon: <CloudServerOutlined />,
+        },
+        {
+          path: '/blackbox',
+          name: 'Alvos Blackbox',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/blackbox-groups',
+          name: 'Grupos Blackbox',
+          icon: <AppstoreAddOutlined />,
+        },
+        {
+          path: '/presets',
+          name: 'Presets de Serviços',
+          icon: <AppstoreOutlined />,
+        },
+      ],
     },
     {
-      path: '/blackbox-groups',
-      name: 'Grupos Blackbox',
-      icon: <AppstoreAddOutlined />,
-    },
-    {
-      path: '/presets',
-      name: 'Presets de Servicos',
-      icon: <AppstoreOutlined />,
-    },
-    {
-      path: '/prometheus-config',
-      name: 'Config Prometheus',
-      icon: <SettingOutlined />,
-    },
-    {
-      path: '/metadata-fields',
-      name: 'Campos Metadata',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/kv-browser',
-      name: 'Armazenamento KV',
-      icon: <FolderOutlined />,
-    },
-    {
-      path: '/audit-log',
-      name: 'Log de Auditoria',
-      icon: <HistoryOutlined />,
-    },
-    {
-      path: '/installer',
-      name: 'Instalar Exporters',
-      icon: <ToolOutlined />,
-    },
-    {
-      path: '/monitoring-types',
-      name: 'Tipos de Monitoramento',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/reference-values',
-      name: 'Valores de Referência',
-      icon: <DatabaseOutlined />,
-    },
-    {
-      path: '/settings',
+      path: '/configuracoes',
       name: 'Configurações',
       icon: <SettingOutlined />,
+      children: [
+        {
+          path: '/metadata-fields',
+          name: 'Campos Metadata',
+          icon: <DatabaseOutlined />,
+        },
+        {
+          path: '/prometheus-config',
+          name: 'Prometheus Config',
+          icon: <SettingOutlined />,
+        },
+        {
+          path: '/monitoring-types',
+          name: 'Tipos de Monitoramento',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/reference-values',
+          name: 'Valores de Referência',
+          icon: <DatabaseOutlined />,
+        },
+        // REMOVIDO: Settings (Sites e External Labels)
+        // Funcionalidades agora disponíveis em:
+        // - /metadata-fields (aba "Gerenciar Sites")
+        // - /metadata-fields (aba "External Labels")
+      ],
+    },
+    {
+      path: '/ferramentas',
+      name: 'Ferramentas',
+      icon: <ToolOutlined />,
+      children: [
+        {
+          path: '/kv-browser',
+          name: 'Armazenamento KV',
+          icon: <FolderOutlined />,
+        },
+        {
+          path: '/audit-log',
+          name: 'Log de Auditoria',
+          icon: <HistoryOutlined />,
+        },
+        {
+          path: '/installer',
+          name: 'Instalar Exporters',
+          icon: <ToolOutlined />,
+        },
+      ],
     },
   ];
 
@@ -137,6 +158,7 @@ const App: React.FC = () => {
         }}
       >
         <AntdApp>
+        <SitesProvider>
         <MetadataFieldsProvider>
         <ProLayout
           title="Consul Manager"
@@ -174,10 +196,11 @@ const App: React.FC = () => {
             <Route path="/installer" element={<Installer />} />
             <Route path="/monitoring-types" element={<MonitoringTypes />} />
             <Route path="/reference-values" element={<ReferenceValues />} />
-            <Route path="/settings" element={<Settings />} />
+            {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
           </Routes>
         </ProLayout>
         </MetadataFieldsProvider>
+        </SitesProvider>
         </AntdApp>
       </ConfigProvider>
     </BrowserRouter>
@@ -185,8 +208,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-
-
-
-

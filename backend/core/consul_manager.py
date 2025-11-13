@@ -156,10 +156,21 @@ class ConsulManager:
             instances: List[Dict] = []
 
             for entry in data:
+                node = entry.get("Node", {})
                 service = entry.get("Service", {})
                 checks = entry.get("Checks", [])
 
                 instance_meta = {
+                    # Campos UpperCase para compatibilidade com convert_to_table_items
+                    "ID": service.get("ID"),
+                    "Service": service.get("Service"),
+                    "Node": node.get("Node"),
+                    "Address": node.get("Address"),  # Node address
+                    "ServiceAddress": service.get("Address"),  # Service address
+                    "Port": service.get("Port"),
+                    "Tags": service.get("Tags") or [],
+                    "Meta": service.get("Meta") or {},
+                    # Campos adicionais (lowercase mantidos para compatibilidade)
                     "id": service.get("ID"),
                     "name": service.get("Service"),
                     "tags": service.get("Tags") or [],
@@ -544,8 +555,18 @@ class ConsulManager:
             logger.error("Failed to write KV %s: %s", key, exc)
             return False
 
-    async def get_kv_tree(self, prefix: str) -> Dict[str, Dict]:
-        """Retorna um dicionário com todas as entradas de um prefixo"""
+    async def get_kv_tree(self, prefix: str, include_metadata: bool = False) -> Dict[str, Dict]:
+        """
+        Retorna um dicionário com todas as entradas de um prefixo.
+
+        Args:
+            prefix: Prefixo para buscar
+            include_metadata: Se True, retorna também CreateIndex, ModifyIndex, etc
+
+        Returns:
+            Se include_metadata=False: {key: value}
+            Se include_metadata=True: {key: {value: ..., metadata: {CreateIndex, ModifyIndex, ...}}}
+        """
         try:
             response = await self._request("GET", f"/kv/{prefix}", params={"recurse": "true"})
             entries = response.json()
@@ -556,10 +577,27 @@ class ConsulManager:
                 if value is None:
                     continue
                 decoded = base64.b64decode(value).decode("utf-8")
+
+                # Parse JSON
                 try:
-                    result[item["Key"]] = json.loads(decoded)
+                    parsed_value = json.loads(decoded)
                 except json.JSONDecodeError:
-                    result[item["Key"]] = decoded
+                    parsed_value = decoded
+
+                # Se include_metadata=True, retornar também CreateIndex, ModifyIndex
+                if include_metadata:
+                    result[item["Key"]] = {
+                        "value": parsed_value,
+                        "metadata": {
+                            "CreateIndex": item.get("CreateIndex"),
+                            "ModifyIndex": item.get("ModifyIndex"),
+                            "LockIndex": item.get("LockIndex"),
+                            "Flags": item.get("Flags"),
+                            "Session": item.get("Session"),
+                        }
+                    }
+                else:
+                    result[item["Key"]] = parsed_value
 
             return result
         except httpx.HTTPStatusError as exc:

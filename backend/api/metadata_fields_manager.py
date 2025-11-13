@@ -8,9 +8,9 @@ Este módulo fornece endpoints para:
 - Gerenciar categorias
 """
 
-from fastapi import APIRouter, HTTPException, Body, Query
+from fastapi import APIRouter, HTTPException, Body, Query, Request
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, cast, Tuple
+from typing import List, Dict, Any, Optional, cast, Tuple, Union
 from pathlib import Path
 import logging
 import asyncio
@@ -36,6 +36,18 @@ _servers_cache = {
     "ttl": 300  # 5 minutos em segundos
 }
 
+# NOVO: Cache em memória para fields_config
+# Evita múltiplas leituras do Consul KV (que pode ter latência de rede)
+_fields_config_cache = {
+    "data": None,
+    "timestamp": None,
+    "ttl": 300  # 5 minutos em segundos
+}
+
+# Lock global para evitar múltiplas extrações SSH simultâneas
+_extraction_lock = asyncio.Lock()
+_extraction_in_progress = False
+
 # ============================================================================
 # MODELOS PYDANTIC
 # ============================================================================
@@ -53,9 +65,13 @@ class MetadataFieldModel(BaseModel):
     show_in_form: bool = Field(True, description="Mostrar em formulários")
     options: Optional[List[str]] = Field(None, description="Opções para select")
     order: int = Field(0, description="Ordem de exibição")
-    category: str = Field("extra", description="Categoria do campo")
+    category: Union[str, List[str]] = Field("extra", description="Categoria(s) do campo - aceita string única ou lista para múltiplas categorias")
     editable: bool = Field(True, description="Pode ser editado")
     validation_regex: Optional[str] = Field(None, description="Regex de validação")
+    # Campos de visibilidade por página (anteriormente em field-config/)
+    show_in_services: bool = Field(True, description="Mostrar na página Services")
+    show_in_exporters: bool = Field(True, description="Mostrar na página Exporters")
+    show_in_blackbox: bool = Field(True, description="Mostrar na página Blackbox")
 
 
 class CategoryModel(BaseModel):
@@ -73,6 +89,11 @@ class FieldsConfigResponse(BaseModel):
     total: int
     version: str
     last_updated: str
+    # Campos adicionais para modal de progresso (opcional)
+    from_cache: bool = False
+    server_status: List[Dict[str, Any]] = []
+    total_servers: int = 0
+    successful_servers: int = 0
 
 
 class AddFieldRequest(BaseModel):
@@ -86,7 +107,7 @@ class FieldSyncStatus(BaseModel):
     """Status de sincronização de um campo"""
     name: str
     display_name: str
-    sync_status: str = Field(..., description="synced | outdated | missing | error")
+    sync_status: str = Field(..., description="synced | outdated | missing | orphan | error")
     prometheus_target_label: Optional[str] = Field(None, description="Target label no Prometheus")
     metadata_source_label: Optional[str] = Field(None, description="Source label no metadata_fields.json")
     message: Optional[str] = Field(None, description="Mensagem descritiva do status")
@@ -101,6 +122,7 @@ class SyncStatusResponse(BaseModel):
     total_synced: int
     total_outdated: int
     total_missing: int
+    total_orphan: int = Field(0, description="Campos no KV mas não no Prometheus (órfãos)")
     total_error: int
     prometheus_file_path: Optional[str] = None
     checked_at: str
@@ -128,6 +150,17 @@ class BatchSyncRequest(BaseModel):
     field_names: List[str] = Field(..., description="Lista de campos para sincronizar")
     server_id: str = Field(..., description="Servidor alvo")
     dry_run: bool = Field(False, description="Se True, apenas simula sem aplicar")
+
+
+class ForceExtractRequest(BaseModel):
+    """Request para extração forçada de campos"""
+    server_id: Optional[str] = Field(None, description="ID do servidor (hostname). Se None, extrai de todos.")
+
+
+class AddToKVRequest(BaseModel):
+    """Request para adicionar campos extraídos do Prometheus ao KV"""
+    field_names: List[str] = Field(..., description="Lista de nomes de campos para adicionar ao KV")
+    fields_data: List[Dict[str, Any]] = Field(..., description="Dados completos dos campos extraídos")
 
 
 class FieldSyncResult(BaseModel):
@@ -159,19 +192,138 @@ async def load_fields_config() -> Dict[str, Any]:
 
     IMPORTANTE: Não usa mais arquivo JSON hardcoded!
     Campos vêm 100% do Prometheus via extração SSH.
+
+    CACHE EM MEMÓRIA (NOVO):
+    - Cache de 5 minutos para evitar leituras repetidas do KV
+    - Reduz latência de rede (KV → Backend)
+    - Primeira requisição: lê do KV (~100-500ms)
+    - Próximas requisições: retorna do cache (<1ms)
+
+    FALLBACK AUTOMÁTICO COM LOCK:
+    - Se KV vazio, dispara extração SSH sob demanda
+    - Usa lock global para evitar múltiplas extrações simultâneas
+    - Se já existe extração em progresso, aguarda e tenta ler KV novamente
+    - Popula KV automaticamente
+    - Retorna dados extraídos
     """
+    global _extraction_lock, _extraction_in_progress, _fields_config_cache
+
     try:
+        # PASSO 0: Verificar cache em memória (NOVO)
+        # Se cache válido, retornar imediatamente (<1ms)
+        now = datetime.now()
+        if (_fields_config_cache["data"] is not None and
+            _fields_config_cache["timestamp"] is not None):
+
+            elapsed = (now - _fields_config_cache["timestamp"]).total_seconds()
+            if elapsed < _fields_config_cache["ttl"]:
+                logger.debug(f"[METADATA-FIELDS] ✓ Cache em memória VÁLIDO (idade: {elapsed:.1f}s / TTL: {_fields_config_cache['ttl']}s)")
+                return _fields_config_cache["data"]
+            else:
+                logger.debug(f"[METADATA-FIELDS] Cache em memória EXPIRADO (idade: {elapsed:.1f}s)")
+
+        # PASSO 1: Se cache expirado, ler do Consul KV
         from core.kv_manager import KVManager
 
         kv = KVManager()
-        fields_data = await kv.get_json('skills/cm/metadata/fields')
+        fields_data = await kv.get_json('skills/eye/metadata/fields')
 
+        # PASSO 1.1: Se KV tem dados, atualizar cache em memória e retornar
+        if fields_data:
+            _fields_config_cache["data"] = fields_data
+            _fields_config_cache["timestamp"] = now
+            logger.info(f"[METADATA-FIELDS] ✓ Dados carregados do KV e cacheados em memória (TTL: {_fields_config_cache['ttl']}s)")
+            return fields_data
+
+        # PASSO 2: Se KV vazio, disparar fallback
         if not fields_data:
-            logger.error("Dados de campos não encontrados no KV. Execute sincronização primeiro.")
-            raise HTTPException(
-                status_code=404,
-                detail="Campos não encontrados. Execute sincronização na página MetadataFields primeiro."
-            )
+            logger.warning("[METADATA-FIELDS] KV vazio detectado!")
+
+            # Adquirir lock para garantir que apenas uma extração aconteça por vez
+            async with _extraction_lock:
+                # DOUBLE-CHECK: Verificar novamente se KV ainda está vazio
+                # (outra requisição pode ter populado enquanto aguardávamos lock)
+                fields_data = await kv.get_json('skills/eye/metadata/fields')
+
+                if fields_data:
+                    logger.info("[METADATA-FIELDS] KV foi populado por outra requisição. Usando dados existentes.")
+                    # Atualizar cache em memória antes de retornar
+                    _fields_config_cache["data"] = fields_data
+                    _fields_config_cache["timestamp"] = now
+                    return fields_data
+
+                logger.info("[METADATA-FIELDS FALLBACK] Disparando extração SSH sob demanda (com lock)...")
+                _extraction_in_progress = True
+
+                try:
+                    from api.prometheus_config import multi_config
+
+                    logger.info("[METADATA-FIELDS FALLBACK] Iniciando extração via AsyncSSH + TAR...")
+                    extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+
+                    fields = extraction_result['fields']
+                    successful_servers = extraction_result.get('successful_servers', 0)
+                    total_servers = extraction_result.get('total_servers', 0)
+
+                    logger.info(
+                        f"[METADATA-FIELDS FALLBACK] ✓ Extração completa: {len(fields)} campos de "
+                        f"{successful_servers}/{total_servers} servidores"
+                    )
+
+                    # LÓGICA CORRETA: EXTRAIR ≠ SINCRONIZAR
+                    # Fallback APENAS popula KV se estiver COMPLETAMENTE VAZIO (primeira vez)
+                    # NÃO adiciona campos novos automaticamente
+
+                    # Converter MetadataField objects para dict
+                    fields_dicts = [f.to_dict() for f in fields]
+
+                    # Salvar no KV (APENAS PRIMEIRA VEZ - KV estava vazio)
+                    fields_data = {
+                        'version': '2.0.0',
+                        'last_updated': datetime.now().isoformat(),
+                        'source': 'fallback_on_demand_initial',
+                        'total_fields': len(fields_dicts),
+                        'fields': fields_dicts,
+                        'extraction_status': {
+                            'total_servers': total_servers,
+                            'successful_servers': successful_servers,
+                            'server_status': extraction_result.get('server_status', []),
+                        },
+                    }
+
+                    await kv.put_json(
+                        key='skills/eye/metadata/fields',
+                        value=fields_data,
+                        metadata={'auto_updated': True, 'source': 'fallback_on_demand_initial'}
+                    )
+
+                    logger.info(
+                        f"[METADATA-FIELDS FALLBACK] ✓ KV populado pela PRIMEIRA VEZ com {len(fields_dicts)} campos. "
+                        f"Próximas requisições usarão cache."
+                    )
+                    
+                    # Sincronizar sites no KV também (primeira vez)
+                    server_status = extraction_result.get('server_status', [])
+                    sites_sync_result = await sync_sites_to_kv(server_status)
+                    logger.info(
+                        f"[METADATA-FIELDS FALLBACK] ✓ Sites sincronizados: {sites_sync_result['total_sites']} total"
+                    )
+
+                    # PASSO 2.1: Atualizar cache em memória também
+                    _fields_config_cache["data"] = fields_data
+                    _fields_config_cache["timestamp"] = now
+                    logger.info(f"[METADATA-FIELDS FALLBACK] ✓ Cache em memória atualizado (TTL: {_fields_config_cache['ttl']}s)")
+
+                    return fields_data
+
+                except Exception as fallback_error:
+                    logger.error(f"[METADATA-FIELDS FALLBACK] ✗ Erro na extração sob demanda: {fallback_error}", exc_info=True)
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"KV vazio e falha ao extrair campos automaticamente: {str(fallback_error)}"
+                    )
+                finally:
+                    _extraction_in_progress = False
 
         return fields_data
     except HTTPException:
@@ -189,21 +341,26 @@ async def save_fields_config(config: Dict[str, Any]) -> bool:
     Salva configuração de campos no Consul KV.
 
     IMPORTANTE: Não salva mais em arquivo JSON!
-    Campos são salvos no KV: skills/cm/metadata/fields
+    Campos são salvos no KV: skills/eye/metadata/fields
+
+    Esta função é chamada quando usuário EDITA campos via PATCH.
+    As customizações são preservadas automaticamente pelo merge inteligente
+    que ocorre durante force-extract e fallback.
     """
     try:
         from core.kv_manager import KVManager
 
+        kv = KVManager()
+
         # Atualizar timestamp
         config['last_updated'] = datetime.utcnow().isoformat() + 'Z'
 
-        kv = KVManager()
-        success = await kv.put_json('skills/cm/metadata/fields', config)
+        success = await kv.put_json('skills/eye/metadata/fields', config)
 
         if not success:
             raise ValueError("Falha ao salvar no Consul KV")
 
-        logger.info(f"Configuração salva no KV: skills/cm/metadata/fields")
+        logger.info(f"Configuração salva no KV: skills/eye/metadata/fields")
         return True
     except Exception as e:
         logger.error(f"Erro ao salvar configuração: {e}")
@@ -493,6 +650,32 @@ async def list_servers():
             else:
                 display_name = hostname
 
+            # BUSCAR EXTERNAL LABELS DO KV (salvos em skills/eye/metadata/fields -> extraction_status -> server_status)
+            # External labels são extraídos do prometheus.yml (global.external_labels) e salvos junto com os campos
+            external_labels = {}
+            try:
+                from core.kv_manager import KVManager
+                kv = KVManager()
+
+                # Buscar dados consolidados que incluem server_status com external_labels
+                metadata_fields_data = await kv.get_json('skills/eye/metadata/fields')
+
+                if metadata_fields_data:
+                    # Extrair server_status que contém external_labels de cada servidor
+                    extraction_status = metadata_fields_data.get('extraction_status', {})
+                    server_status_list = extraction_status.get('server_status', [])
+
+                    # Procurar o servidor correspondente pelo hostname
+                    for server_info in server_status_list:
+                        if server_info.get('hostname') == hostname:
+                            external_labels = server_info.get('external_labels', {})
+                            logger.debug(f"External labels para {hostname} encontrados no KV: {len(external_labels)} labels")
+                            break
+                else:
+                    logger.debug(f"KV skills/eye/metadata/fields não encontrado - external_labels não disponíveis")
+            except Exception as ex_label_error:
+                logger.debug(f"Não foi possível buscar external labels para {hostname}: {ex_label_error}")
+
             servers.append({
                 "id": f"{hostname}:{port}",
                 "hostname": hostname,
@@ -500,7 +683,8 @@ async def list_servers():
                 "username": username,
                 "type": server_type,
                 "consul_node_name": consul_node_name,
-                "display_name": display_name
+                "display_name": display_name,
+                "external_labels": external_labels  # ← ADICIONADO!
             })
 
         if not servers:
@@ -546,32 +730,61 @@ async def get_sync_status(
     try:
         logger.info(f"[SYNC-STATUS] Verificando sync status para servidor: {server_id}")
 
-        # Buscar campos do KV (se não existir, retornar erro orientando a fazer sync primeiro)
+        # Buscar campos do KV (se não existir, buscar de prometheus_config.py via fallback)
         try:
             config = await load_fields_config()
             fields = config.get('fields', [])
             logger.info(f"[SYNC-STATUS] Carregados {len(fields)} campos do KV")
         except HTTPException as e:
-            # Se retornou 404 (não encontrado), orientar usuário
+            # Se retornou 404 (não encontrado), FALLBACK: buscar do endpoint prometheus-config
             if e.status_code == 404:
-                logger.warning("[SYNC-STATUS] Campos não encontrados no KV - necessário sincronizar primeiro")
-                # Retornar resposta vazia indicando que precisa sincronizar
-                return SyncStatusResponse(
-                    success=True,
-                    server_id=server_id,
-                    server_hostname=server_id.split(':')[0] if ':' in server_id else server_id,
-                    fields=[],
-                    total_synced=0,
-                    total_outdated=0,
-                    total_missing=0,
-                    total_error=0,
-                    prometheus_file_path=None,
-                    checked_at=datetime.now().isoformat(),
-                    message="Campos não carregados. Clique em 'Sincronizar Campos' para extrair do Prometheus primeiro.",
-                    fallback_used=False,
-                )
-            # Outros erros, repassar
-            raise
+                logger.warning("[SYNC-STATUS] Campos não encontrados no KV - usando FALLBACK")
+
+                try:
+                    # FALLBACK: Buscar campos do cache do multi_config_manager
+                    # Usar instância GLOBAL de prometheus_config.py (já tem cache populado!)
+                    from api.prometheus_config import multi_config
+
+                    # Extração via P2 (usa cache se disponível)
+                    logger.info("[SYNC-STATUS FALLBACK] Chamando extract_all_fields_with_asyncssh_tar()")
+                    extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result keys: {extraction_result.keys()}")
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result['fields'] type: {type(extraction_result.get('fields', []))}")
+                    logger.info(f"[SYNC-STATUS FALLBACK] extraction_result['fields'] length: {len(extraction_result.get('fields', []))}")
+
+                    fields_objects = extraction_result.get('fields', [])
+
+                    # Converter MetadataField objects para dict
+                    fields = [f.to_dict() for f in fields_objects]
+
+                    logger.info(f"[SYNC-STATUS FALLBACK] Carregados {len(fields)} campos do cache P2")
+
+                    if len(fields) == 0:
+                        # Se ainda assim não tem campos, orientar usuário
+                        return SyncStatusResponse(
+                            success=True,
+                            server_id=server_id,
+                            server_hostname=server_id.split(':')[0] if ':' in server_id else server_id,
+                            fields=[],
+                            total_synced=0,
+                            total_outdated=0,
+                            total_missing=0,
+                            total_error=0,
+                            prometheus_file_path=None,
+                            checked_at=datetime.now().isoformat(),
+                            message="Campos não carregados. Clique em 'Sincronizar Campos' para extrair do Prometheus primeiro.",
+                            fallback_used=True,
+                        )
+                except Exception as fallback_err:
+                    logger.error(f"[SYNC-STATUS FALLBACK] Erro no fallback: {fallback_err}")
+                    # Retornar erro se fallback também falhar
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Erro ao carregar campos (KV e fallback falharam): {str(fallback_err)}"
+                    )
+            else:
+                # Outros erros HTTP, repassar
+                raise
         except Exception as e:
             logger.error(f"[SYNC-STATUS] Erro ao carregar campos: {e}")
             raise HTTPException(
@@ -747,12 +960,14 @@ async def get_sync_status(
         total_synced = 0
         total_outdated = 0
         total_missing = 0
+        total_orphan = 0
         total_error = 0
 
         for field in fields:
             field_name = field.get('name')
             field_display_name = field.get('display_name', field_name)
             field_source_label = field.get('source_label')
+            discovered_in = field.get('discovered_in', [])  # Lista de servidores onde foi descoberto
 
             if not field_source_label:
                 # Campo sem source_label definido
@@ -773,17 +988,34 @@ async def get_sync_status(
                 prometheus_labels_map,
             )
 
+            # LÓGICA MULTI-SERVER: Campo é orphan/missing baseado em discovered_in
+            is_from_this_server = hostname in discovered_in or not discovered_in  # Se lista vazia, assumir compatível
+
             if raw_target is None:
-                # Campo não existe no Prometheus
-                field_statuses.append(FieldSyncStatus(
-                    name=field_name,
-                    display_name=field_display_name,
-                    sync_status='missing',
-                    metadata_source_label=field_source_label,
-                    prometheus_target_label=None,
-                    message=f'Campo não encontrado no prometheus.yml'
-                ))
-                total_missing += 1
+                # Campo NÃO existe no prometheus.yml ATUAL
+                if is_from_this_server:
+                    # Campo FOI descoberto neste servidor mas agora NÃO está = ÓRFÃO
+                    field_statuses.append(FieldSyncStatus(
+                        name=field_name,
+                        display_name=field_display_name,
+                        sync_status='orphan',
+                        metadata_source_label=field_source_label,
+                        prometheus_target_label=None,
+                        message=f'Campo foi removido do Prometheus (órfão - descoberto em: {", ".join(discovered_in)})'
+                    ))
+                    total_orphan += 1
+                else:
+                    # Campo NÃO foi descoberto neste servidor = MISSING (disponível para sincronizar)
+                    servers_str = ", ".join(discovered_in) if discovered_in else "outros servidores"
+                    field_statuses.append(FieldSyncStatus(
+                        name=field_name,
+                        display_name=field_display_name,
+                        sync_status='missing',
+                        metadata_source_label=field_source_label,
+                        prometheus_target_label=None,
+                        message=f'Campo disponível de {servers_str} (use "Sincronizar Campos" para aplicar)'
+                    ))
+                    total_missing += 1
 
             elif field_name in target_chain:
                 field_statuses.append(FieldSyncStatus(
@@ -820,6 +1052,7 @@ async def get_sync_status(
             total_synced=total_synced,
             total_outdated=total_outdated,
             total_missing=total_missing,
+            total_orphan=total_orphan,
             total_error=total_error,
             prometheus_file_path=prometheus_file_path,
             checked_at=datetime.now().isoformat(),
@@ -1371,8 +1604,66 @@ async def list_fields(
     - category: Filtrar por categoria (infrastructure, basic, device, extra)
     - required_only: Apenas campos obrigatórios
     - show_in_table_only: Apenas campos que aparecem em tabelas
+
+    PROTEÇÃO CONTRA RACE CONDITION:
+    - Se PRE-WARM estiver rodando, aguarda até 15 segundos
+    - Polling a cada 0.5s (30 iterações)
+    - Retorna erro 503 se timeout ou PRE-WARM falhar
     """
+    # Import status from app module
+    try:
+        from app import _prewarm_status
+    except ImportError:
+        logger.warning("[METADATA-FIELDS] Não foi possível importar _prewarm_status do app.py")
+        _prewarm_status = {'running': False, 'completed': False, 'failed': False, 'error': None}
+
+    # Se PRE-WARM está rodando, aguardar até 15s
+    if _prewarm_status.get('running', False):
+        logger.info("[METADATA-FIELDS] PRE-WARM em andamento, aguardando até 15s...")
+
+        for i in range(30):  # 30 * 0.5s = 15s
+            if _prewarm_status.get('completed', False):
+                logger.info(f"[METADATA-FIELDS] PRE-WARM concluído após {i * 0.5}s, prosseguindo...")
+                break
+            if _prewarm_status.get('failed', False):
+                error_msg = _prewarm_status.get('error', 'Erro desconhecido')
+                logger.error(f"[METADATA-FIELDS] PRE-WARM falhou: {error_msg}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Falha ao inicializar cache: {error_msg}"
+                )
+            await asyncio.sleep(0.5)
+        else:
+            # Timeout de 15s
+            logger.warning("[METADATA-FIELDS] Timeout aguardando PRE-WARM (15s)")
+            raise HTTPException(
+                status_code=503,
+                detail="Sistema ainda inicializando. Tente novamente em alguns segundos."
+            )
+
+    # Continuar com lógica normal de leitura do KV
+    # DETECTAR se veio do cache em memória (para modal)
+    global _fields_config_cache
+    came_from_memory_cache = False
+
+    # Verificar se cache em memória está válido ANTES de chamar load_fields_config
+    if (_fields_config_cache["data"] is not None and
+        _fields_config_cache["timestamp"] is not None):
+        from datetime import datetime
+        elapsed = (datetime.now() - _fields_config_cache["timestamp"]).total_seconds()
+        if elapsed < _fields_config_cache["ttl"]:
+            came_from_memory_cache = True
+            logger.debug(f"[METADATA-FIELDS] GET detectou cache em memória válido (from_cache=True)")
+
     config = await load_fields_config()
+
+    # PROTEÇÃO: Validar se config não é None
+    if not config:
+        raise HTTPException(
+            status_code=503,
+            detail="Configuração de campos não disponível. O sistema pode estar inicializando ou houve erro na extração."
+        )
+
     fields = config.get('fields', [])
 
     # Aplicar filtros
@@ -1388,13 +1679,25 @@ async def list_fields(
     # Ordenar por order
     fields.sort(key=lambda f: f.get('order', 999))
 
+    # Buscar informações de extraction_status se existir (para modal de progresso)
+    extraction_status = config.get('extraction_status', {})
+
+    # CRÍTICO: Se veio do cache em memória OU se source não é force_extract recente, marcar como cache
+    # Isso garante que o modal mostre "Dados carregados do cache instantaneamente"
+    is_from_cache = came_from_memory_cache or config.get('source') in ['prewarm_startup', 'fallback_on_demand']
+
     return FieldsConfigResponse(
         success=True,
         fields=fields,
         categories=config.get('categories', {}),
         total=len(fields),
         version=config.get('version', '1.0.0'),
-        last_updated=config.get('last_updated', '')
+        last_updated=config.get('last_updated', ''),
+        # Adicionar informações do extraction_status para modal
+        from_cache=is_from_cache,  # ← CORRIGIDO: detecta cache em memória ou prewarm
+        server_status=extraction_status.get('server_status', []),
+        total_servers=extraction_status.get('total_servers', 0),
+        successful_servers=extraction_status.get('successful_servers', 0)
     )
 
 
@@ -1468,9 +1771,94 @@ async def create_field(request: AddFieldRequest):
     }
 
 
+@router.post("/add-to-kv")
+async def add_fields_to_kv(request: AddToKVRequest):
+    """
+    Adiciona campos extraídos do Prometheus ao KV (Consul Key-Value).
+
+    Este endpoint é usado quando campos foram descobertos no Prometheus via force-extract
+    mas ainda não estão no KV. O status desses campos é "missing" (não aplicado).
+
+    FLUXO:
+    1. Carregar configuração atual do KV
+    2. Para cada campo em field_names:
+       - Verificar se já existe no KV (pular se existir)
+       - Adicionar ao array de fields
+    3. Salvar configuração atualizada no KV
+    4. Limpar cache
+
+    Args:
+        request: AddToKVRequest com field_names e fields_data
+
+    Returns:
+        JSON com sucesso, quantidade de campos adicionados, e mensagem
+    """
+    try:
+        logger.info(f"[ADD-TO-KV] Adicionando {len(request.field_names)} campos ao KV")
+
+        # PASSO 1: Carregar configuração atual do KV
+        config = await load_fields_config()
+        existing_fields_map = {f['name']: f for f in config.get('fields', [])}
+
+        # PASSO 2: Adicionar campos que NÃO existem no KV
+        fields_added = []
+        fields_skipped = []
+
+        for field_data in request.fields_data:
+            field_name = field_data.get('name')
+
+            if not field_name:
+                logger.warning(f"[ADD-TO-KV] Campo sem nome, pulando: {field_data}")
+                continue
+
+            # Se campo JÁ existe no KV, pular
+            if field_name in existing_fields_map:
+                logger.info(f"[ADD-TO-KV] Campo '{field_name}' já existe no KV, pulando")
+                fields_skipped.append(field_name)
+                continue
+
+            # Adicionar campo ao config
+            config['fields'].append(field_data)
+            fields_added.append(field_name)
+            logger.info(f"[ADD-TO-KV] ✅ Campo '{field_name}' adicionado ao KV")
+
+        # PASSO 3: Salvar configuração atualizada no KV
+        if fields_added:
+            await save_fields_config(config)
+            logger.info(f"[ADD-TO-KV] Configuração salva no KV com {len(fields_added)} novos campos")
+
+            # PASSO 4: Limpar cache para forçar reload
+            global _fields_config_cache
+            _fields_config_cache = {
+                "data": None,
+                "timestamp": None,
+                "ttl": 300
+            }
+            logger.info("[ADD-TO-KV] Cache limpo")
+
+        # PASSO 5: Retornar resultado
+        return {
+            "success": True,
+            "message": f"{len(fields_added)} campo(s) adicionado(s) ao KV com sucesso",
+            "fields_added": fields_added,
+            "fields_skipped": fields_skipped,
+            "total_added": len(fields_added),
+            "total_skipped": len(fields_skipped),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ADD-TO-KV] Erro: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao adicionar campos ao KV: {str(e)}"
+        )
+
+
 @router.put("/{field_name}")
 async def update_field(field_name: str, field_data: MetadataFieldModel):
-    """Atualiza campo existente"""
+    """Atualiza campo existente (substituição completa)"""
     config = await load_fields_config()
 
     # Buscar campo
@@ -1497,12 +1885,120 @@ async def update_field(field_name: str, field_data: MetadataFieldModel):
     }
 
 
+@router.patch("/{field_name}")
+async def partial_update_field(field_name: str, updates: Dict[str, Any] = Body(...)):
+    """
+    Atualiza parcialmente um campo existente (apenas campos enviados).
+
+    Útil para atualizar show_in_services, show_in_exporters, show_in_blackbox
+    sem precisar enviar todo o objeto MetadataFieldModel.
+
+    Example:
+        PATCH /api/v1/metadata-fields/company
+        {
+            "show_in_services": true,
+            "show_in_exporters": false
+        }
+    """
+    config = await load_fields_config()
+
+    # Buscar campo
+    field = get_field_by_name(config, field_name)
+    if not field:
+        raise HTTPException(status_code=404, detail=f"Campo '{field_name}' não encontrado")
+
+    # Atualizar apenas os campos enviados
+    for key, value in updates.items():
+        if key == 'name':
+            # Não permitir mudar o nome (usaria como chave primária)
+            raise HTTPException(status_code=400, detail="Não é permitido alterar o nome do campo")
+        field[key] = value
+
+    # Salvar (substituir campo no array)
+    for i, f in enumerate(config['fields']):
+        if f['name'] == field_name:
+            config['fields'][i] = field
+            break
+
+    # Salvar
+    await save_fields_config(config)
+
+    # CRÍTICO: Invalidar cache para que mudanças apareçam imediatamente
+    # Sem isso, /api/v1/reference-values/ retorna cache antigo por até 5 minutos
+    global _fields_config_cache
+    _fields_config_cache["data"] = None
+    _fields_config_cache["timestamp"] = None
+    logger.info(f"[CACHE] Cache de fields_config invalidado após atualização de '{field_name}'")
+
+    return {
+        "success": True,
+        "message": f"Campo '{field_name}' atualizado com sucesso",
+        "field": field
+    }
+
+
+@router.post("/remove-orphans")
+async def remove_orphan_fields(request: Dict[str, List[str]] = Body(...)):
+    """
+    Remove campos órfãos do KV (campos que não existem mais no Prometheus).
+
+    Body: {"field_names": ["testeCampo8", "testeCampo9"]}
+
+    Este endpoint é usado para limpar campos que foram removidos do Prometheus
+    mas ainda permanecem no KV.
+    """
+    try:
+        field_names = request.get('field_names', [])
+
+        if not field_names:
+            raise HTTPException(status_code=400, detail="Lista de campos vazia")
+
+        logger.info(f"[REMOVE-ORPHANS] Removendo {len(field_names)} campos órfãos do KV")
+
+        # Carregar config do KV
+        config = await load_fields_config()
+
+        # Remover campos da lista
+        initial_count = len(config['fields'])
+        config['fields'] = [f for f in config['fields'] if f['name'] not in field_names]
+        removed_count = initial_count - len(config['fields'])
+
+        # Salvar config atualizado
+        await save_fields_config(config)
+
+        # Limpar cache
+        global _fields_config_cache
+        _fields_config_cache = {
+            "data": None,
+            "timestamp": None,
+            "ttl": 300
+        }
+
+        logger.info(f"[REMOVE-ORPHANS] ✅ {removed_count} campos órfãos removidos do KV")
+
+        return {
+            "success": True,
+            "message": f"{removed_count} campo(s) órfão(s) removido(s) com sucesso",
+            "removed_fields": field_names,
+            "removed_count": removed_count,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[REMOVE-ORPHANS] Erro: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao remover campos órfãos: {str(e)}"
+        )
+
+
 @router.delete("/{field_name}")
 async def delete_field(
     field_name: str,
     remove_from_prometheus: bool = Query(False, description="Remover do prometheus.yml")
 ):
-    """Deleta campo metadata"""
+    """Deleta campo metadata do KV (e opcionalmente do prometheus.yml)"""
     config = await load_fields_config()
 
     # Buscar campo
@@ -1520,7 +2016,16 @@ async def delete_field(
     # Remover do array
     config['fields'] = [f for f in config['fields'] if f['name'] != field_name]
 
-    # Salvarawait save_fields_config(config)
+    # Salvar
+    await save_fields_config(config)
+
+    # Limpar cache
+    global _fields_config_cache
+    _fields_config_cache = {
+        "data": None,
+        "timestamp": None,
+        "ttl": 300
+    }
 
     result = {
         "success": True,
@@ -1713,195 +2218,850 @@ async def sync_field_to_prometheus_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================================================
-# REPLICAÇÃO E GERENCIAMENTO DE SERVIDORES
-# ============================================================================
-
-@router.post("/replicate-to-slaves")
-async def replicate_to_slaves(
-    source_server: Optional[str] = Body(None, description="ID do servidor origem (None = master)"),
-    target_servers: Optional[List[str]] = Body(None, description="IDs dos servidores destino (None = todos slaves)")
+@router.post("/force-extract")
+async def force_extract_fields(
+    request: Optional[ForceExtractRequest] = None
 ):
     """
-    Replica configurações do servidor master (ou especificado) para os slaves
+    Força extração manual de campos do Prometheus via SSH.
 
-    Copia:
-    - prometheus.yml
-    - Campos metadata configurados
-    - Arquivos de rules
+    IMPORTANTE: Esta operação APENAS DETECTA campos novos, NÃO adiciona ao KV automaticamente.
+
+    CONCEITO:
+    - EXTRAIR ≠ SINCRONIZAR
+    - Extração apenas descobre quais campos existem no Prometheus
+    - Usuário decide quais campos quer usar (via "Sincronizar Campos")
+
+    FLUXO:
+    1. Limpa cache de campos
+    2. Conecta via SSH aos servidores Prometheus (ou apenas um servidor se server_id fornecido)
+    3. Extrai relabel_configs do prometheus.yml
+    4. Compara com KV e detecta campos novos
+    5. Retorna lista de campos novos encontrados
+    6. NÃO modifica KV (campos permanecem como "missing" até sincronizar)
+
+    Útil quando:
+    - Adicionou novos campos manualmente no prometheus.yml de algum servidor
+    - Quer descobrir quais campos existem sem aplicá-los automaticamente
+    - Suspeita que há campos no Prometheus que não estão no KV
+
+    Args:
+        request: Opcional - se fornecido com server_id, extrai apenas daquele servidor
     """
     try:
+        server_id = request.server_id if request else None
+
+        if server_id:
+            logger.info(f"[FORCE-EXTRACT] Iniciando detecção de campos do servidor: {server_id}")
+        else:
+            logger.info("[FORCE-EXTRACT] Iniciando detecção de campos de TODOS os servidores")
+
+        # PASSO 1: Limpar cache global para forçar nova leitura
+        global _fields_config_cache
+        _fields_config_cache = {
+            "data": None,
+            "timestamp": None,
+            "ttl": 300
+        }
+        logger.info("[FORCE-EXTRACT] Cache limpo")
+
+        # PASSO 2: Carregar campos EXISTENTES do KV (para comparação)
+        from core.kv_manager import KVManager
+        kv_manager = KVManager()
+        existing_config = await kv_manager.get_json('skills/eye/metadata/fields')
+
+        existing_fields_map = {}
+        if existing_config and 'fields' in existing_config:
+            existing_fields_map = {
+                f['name']: f for f in existing_config['fields']
+            }
+            logger.info(f"[FORCE-EXTRACT] {len(existing_fields_map)} campos existentes no KV")
+        else:
+            logger.info("[FORCE-EXTRACT] Nenhum campo existente no KV")
+
+        # PASSO 3: Extrair campos do Prometheus via SSH
+        import asyncio
         multi_config = MultiConfigManager()
 
-        # Determinar servidor de origem
-        if source_server:
-            source_host = None
-            for host in multi_config.hosts:
-                if f"{host.hostname}:{host.port}" == source_server:
-                    source_host = host
-                    break
-            if not source_host:
-                raise HTTPException(status_code=404, detail=f"Servidor origem não encontrado: {source_server}")
+        # Se tiver server_id, usar método específico para servidor único
+        if server_id:
+            # Verificar se servidor existe
+            if not any(h.hostname == server_id for h in multi_config.hosts):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor '{server_id}' não encontrado na configuração"
+                )
+
+            logger.info(f"[FORCE-EXTRACT] Usando extract_single_server_fields para: {server_id}")
+
+            # USAR MÉTODO CORRETO PARA SERVIDOR ÚNICO (sync → async via to_thread)
+            extraction_result = await asyncio.to_thread(
+                multi_config.extract_single_server_fields,
+                server_id
+            )
         else:
-            # Usar master (primeiro da lista)
-            source_host = multi_config.hosts[0]
+            # Extrair de todos os servidores (async nativo)
+            extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
 
-        # Determinar servidores de destino
-        target_hosts = []
-        if target_servers:
-            for server_id in target_servers:
-                for host in multi_config.hosts:
-                    if f"{host.hostname}:{host.port}" == server_id:
-                        target_hosts.append(host)
-        else:
-            # Todos os slaves (todos menos o master)
-            target_hosts = multi_config.hosts[1:]
+        if not extraction_result or 'fields' not in extraction_result:
+            raise HTTPException(
+                status_code=500,
+                detail="Falha na extração de campos do Prometheus"
+            )
 
-        if not target_hosts:
-            return {
-                "success": True,
-                "message": "Nenhum servidor de destino para replicar"
-            }
+        fields_objects = extraction_result['fields']
+        total_servers = extraction_result.get('total_servers', 0)
+        successful_servers = extraction_result.get('successful_servers', 0)
 
-        # Ler prometheus.yml do servidor de origem
-        from pathlib import Path
-        source_file = None
-        for f in multi_config.list_config_files('prometheus'):
-            if f.filename == 'prometheus.yml' and f.host == source_host:
-                source_file = f
-                break
+        logger.info(f"[FORCE-EXTRACT] {len(fields_objects)} campos extraídos do Prometheus")
 
-        if not source_file:
-            raise HTTPException(status_code=404, detail="prometheus.yml não encontrado no servidor origem")
+        # PASSO 4: DETECTAR campos novos + preparar lista completa para frontend
+        new_field_names = []
+        all_fields_for_frontend = []
 
-        source_content = multi_config.get_file_content_raw(source_file.path)
+        for extracted_field in fields_objects:
+            field_name = extracted_field.name
+            field_dict = extracted_field.to_dict()
 
-        # Replicar para cada servidor destino
-        results = []
-        for target_host in target_hosts:
-            try:
-                # Conectar ao servidor destino
-                client = multi_config._get_ssh_client(target_host)
-                sftp = client.open_sftp()
+            # Detectar se é campo novo
+            is_new = field_name not in existing_fields_map
 
-                # Fazer backup
-                backup_path = f"/etc/prometheus/prometheus.yml.backup_replicated_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
-                try:
-                    sftp.rename("/etc/prometheus/prometheus.yml", backup_path)
-                except:
-                    pass  # Arquivo pode não existir
+            if is_new:
+                new_field_names.append(field_name)
+                logger.info(f"[FORCE-EXTRACT] 🆕 Campo NOVO descoberto: '{field_name}'")
 
-                # Escrever novo conteúdo
-                with sftp.open("/etc/prometheus/prometheus.yml", 'w') as f:
-                    f.write(source_content.encode('utf-8'))
+            # Adicionar à lista completa para o frontend
+            all_fields_for_frontend.append(field_dict)
 
-                # Validar com promtool
-                stdin, stdout, stderr = client.exec_command("promtool check config /etc/prometheus/prometheus.yml")
-                exit_status = stdout.channel.recv_exit_status()
+        new_fields_count = len(new_field_names)
 
-                sftp.close()
-                client.close()
+        logger.info(
+            f"[FORCE-EXTRACT] ✅ Detecção concluída: {len(all_fields_for_frontend)} campos extraídos, "
+            f"{new_fields_count} novos descobertos (NÃO salvos no KV)"
+        )
 
-                if exit_status == 0:
-                    results.append({
-                        "server": f"{target_host.hostname}:{target_host.port}",
-                        "success": True,
-                        "message": "Configuração replicada com sucesso"
-                    })
-                else:
-                    results.append({
-                        "server": f"{target_host.hostname}:{target_host.port}",
-                        "success": False,
-                        "message": "Replicado mas falhou na validação promtool"
-                    })
-            except Exception as e:
-                results.append({
-                    "server": f"{target_host.hostname}:{target_host.port}",
-                    "success": False,
-                    "error": str(e)
-                })
+        # PASSO 5: Sincronizar sites no KV automaticamente
+        server_status = extraction_result.get('server_status', [])
+        sites_sync_result = await sync_sites_to_kv(server_status)
+        
+        logger.info(
+            f"[FORCE-EXTRACT] Sites sincronizados: {sites_sync_result['total_sites']} total, "
+            f"{len(sites_sync_result['sites_added'])} novos"
+        )
 
-        success_count = sum(1 for r in results if r.get('success', False))
+        # IMPORTANTE: NÃO salvar campos no KV automaticamente!
+        # Apenas salvar sites (que tem external_labels)
+        # Retornar lista completa de campos extraídos para o frontend usar
 
         return {
-            "success": success_count > 0,
-            "message": f"Replicação concluída: {success_count}/{len(results)} servidores",
-            "source": f"{source_host.hostname}:{source_host.port}",
-            "results": results
+            "success": True,
+            "message": f"Extração concluída. {new_fields_count} campo(s) novo(s) descoberto(s) no Prometheus.",
+            "total_fields": len(all_fields_for_frontend),
+            "fields": all_fields_for_frontend,  # ← Lista COMPLETA de campos extraídos
+            "new_fields": new_field_names,
+            "new_fields_count": new_fields_count,
+            "existing_fields_count": len(existing_fields_map),
+            "servers_checked": total_servers,
+            "servers_success": successful_servers,
+            "sites_synced": sites_sync_result['total_sites'],
         }
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Erro ao replicar: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[FORCE-EXTRACT] Erro: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao extrair campos: {str(e)}"
+        )
 
 
-@router.post("/restart-prometheus")
-async def restart_prometheus(
-    server_ids: Optional[List[str]] = Body(None, description="IDs dos servidores (None = todos)")
-):
+# ============================================================================
+# FUNÇÃO AUXILIAR: SINCRONIZAR SITES NO KV
+# ============================================================================
+
+async def sync_sites_to_kv(server_status: list) -> dict:
     """
-    Reinicia serviço Prometheus em servidores especificados
+    Sincroniza sites automaticamente no KV baseado em server_status
+    
+    CHAMADO AUTOMATICAMENTE APÓS:
+    - force_extract_fields()
+    - load_fields_config() (fallback)
+    
+    PROCESSO:
+    1. Extrai external_labels de cada servidor em server_status
+    2. Cria/atualiza sites no KV com estrutura completa
+    3. Preserva configurações editáveis existentes (name, color, is_default)
+    
+    Args:
+        server_status: Lista de dicts com hostname, external_labels, port, etc
+    
+    Returns:
+        Dict com estatísticas da sincronização
+    """
+    from core.kv_manager import KVManager
+    import os
+    
+    kv = KVManager()
+    
+    # PASSO 1: Buscar sites existentes do KV
+    kv_data = await kv.get_json('skills/eye/metadata/sites') or {"data": {"sites": []}}
+    
+    # Estrutura pode ter wrapper 'data'
+    if 'data' in kv_data:
+        existing_sites = kv_data.get('data', {}).get('sites', [])
+    else:
+        existing_sites = kv_data.get('sites', [])
+    
+    # Mapear code → site config existente
+    existing_sites_map = {s['code']: s for s in existing_sites}
+    
+    logger.info(f"[SITES SYNC] Sites existentes no KV: {len(existing_sites)}")
+    
+    # PASSO 2: Buscar configuração de .env para pegar portas SSH
+    prometheus_hosts_str = os.getenv("PROMETHEUS_CONFIG_HOSTS", "")
+    raw_hosts = [h.strip() for h in prometheus_hosts_str.split(';') if h.strip()]
+    
+    # Mapear hostname → ssh_port
+    hostname_to_ssh_port = {}
+    for host_str in raw_hosts:
+        parts = host_str.split('/')
+        if len(parts) != 3:
+            continue
+        host_port = parts[0]
+        host_parts = host_port.split(':')
+        if len(host_parts) == 2:
+            hostname = host_parts[0]
+            ssh_port = int(host_parts[1]) if host_parts[1].isdigit() else 22
+            hostname_to_ssh_port[hostname] = ssh_port
+    
+    # PASSO 3: MESCLAR sites novos com existentes (NÃO sobrescrever!)
+    # IMPORTANTE: Preservar sites órfãos (que não estão no server_status)
+    updated_sites_map = existing_sites_map.copy()  # Começar com TODOS os existentes
+    sites_added = []
+    sites_updated = []
+    
+    for server in server_status:
+        if not server.get('success'):
+            continue  # Pular servidores com falha
+        
+        hostname = server.get('hostname')
+        external_labels = server.get('external_labels', {})
+        
+        if not external_labels:
+            logger.warning(f"[SITES SYNC] {hostname}: Sem external_labels, pulando")
+            continue
+        
+        # Detectar code do site
+        site_code = external_labels.get('site', hostname.replace('.', '_'))
+        
+        # Buscar config existente
+        existing_config = updated_sites_map.get(site_code, {})
+        
+        # Determinar SSH port
+        ssh_port = hostname_to_ssh_port.get(hostname, 22)
+        
+        # Criar site com external_labels no nível raiz
+        site = {
+            # Campos editáveis (preservar se existem)
+            "code": site_code,
+            "name": existing_config.get("name", site_code.title()),
+            "is_default": existing_config.get("is_default", False),
+            "color": existing_config.get("color", "blue"),
+            
+            # Campos de external_labels (readonly)
+            "cluster": external_labels.get("cluster", ""),
+            "datacenter": external_labels.get("datacenter", ""),
+            "environment": external_labels.get("environment", ""),
+            "site": external_labels.get("site", site_code),
+            "prometheus_instance": external_labels.get("prometheus_instance", hostname),
+            
+            # Conexão
+            "prometheus_host": hostname,
+            "ssh_port": ssh_port,
+            "prometheus_port": 9090,
+        }
+        
+        # ATUALIZAR no map (mesclar, não substituir lista inteira)
+        updated_sites_map[site_code] = site
+        
+        if site_code in existing_sites_map:
+            sites_updated.append(site_code)
+            logger.info(f"[SITES SYNC] ♻️ Site atualizado: {site_code}")
+        else:
+            sites_added.append(site_code)
+            logger.info(f"[SITES SYNC] 🆕 Novo site: {site_code}")
+    
+    # Converter map de volta para lista
+    new_sites = list(updated_sites_map.values())
+    
+    # PASSO 4: Garantir pelo menos um site default
+    if new_sites and not any(s.get("is_default") for s in new_sites):
+        new_sites[0]["is_default"] = True
+        logger.info(f"[SITES SYNC] Marcado '{new_sites[0]['code']}' como default")
+    
+    # PASSO 5: Salvar no KV
+    new_structure = {
+        "data": {
+            "sites": new_sites,
+            "meta": {
+                "version": "2.0.0",
+                "last_sync": datetime.now().isoformat(),
+                "structure": "external_labels_at_root",
+                "total_sites": len(new_sites)
+            }
+        }
+    }
+    
+    await kv.put_json(
+        key='skills/eye/metadata/sites',
+        value=new_structure,
+        metadata={
+            'auto_sync': True,
+            'structure_version': '2.0.0',
+            'source': 'auto_sync_from_extraction'
+        }
+    )
+    
+    logger.info(
+        f"[SITES SYNC] ✅ {len(new_sites)} sites sincronizados "
+        f"({len(sites_added)} novos, {len(sites_updated)} atualizados)"
+    )
+    
+    return {
+        "total_sites": len(new_sites),
+        "sites_added": sites_added,
+        "sites_updated": sites_updated
+    }
 
-    Executa: systemctl reload prometheus
+
+# ============================================================================
+# ENDPOINTS: GERENCIAMENTO DE SITES (MOVIDO DE /settings)
+# ============================================================================
+
+class SiteConfigModel(BaseModel):
+    """Configuração editável de um site"""
+    name: Optional[str] = Field(None, description="Nome descritivo do site")
+    color: Optional[str] = Field(None, description="Cor do badge (blue, green, orange, etc)")
+    is_default: Optional[bool] = Field(None, description="Se é o site padrão (sem sufixo)")
+
+
+@router.get("/config/sites")
+async def list_sites():
+    """
+    Lista sites lendo DIRETAMENTE do KV skills/eye/metadata/sites
+    
+    FONTE DOS DADOS:
+    - KV: skills/eye/metadata/sites (estrutura com external_labels no nível raiz)
+    
+    ESTRUTURA DO KV:
+    {
+      "sites": [
+        {
+          "code": "palmas",
+          "name": "Palmas (TO)",
+          "is_default": true,
+          "color": "blue",
+          "cluster": "palmas-master",
+          "datacenter": "skillsit-palmas-to",
+          "environment": "production",
+          "site": "palmas",
+          "prometheus_instance": "172.16.1.26",
+          "prometheus_host": "172.16.1.26",
+          "prometheus_port": 5522
+        }
+      ]
+    }
+    
+    CAMPOS:
+    - code, name, is_default, color: Editáveis pelo usuário
+    - cluster, datacenter, environment, site, prometheus_instance: External labels (readonly)
+    - prometheus_host, prometheus_port: Conexão SSH/Prometheus (readonly)
+    
+    RETORNA:
+        {
+            "success": true,
+            "sites": [...],
+            "total": 3
+        }
     """
     try:
-        multi_config = MultiConfigManager()
-
-        # Determinar servidores
-        if server_ids:
-            hosts = []
-            for server_id in server_ids:
-                for host in multi_config.hosts:
-                    if f"{host.hostname}:{host.port}" == server_id:
-                        hosts.append(host)
+        from core.kv_manager import KVManager
+        
+        kv = KVManager()
+        
+        # Buscar sites do KV (já tem tudo: external_labels + configs editáveis)
+        kv_data = await kv.get_json('skills/eye/metadata/sites') or {"data": {"sites": []}}
+        
+        # Estrutura pode ter wrapper 'data' ou ser direta
+        if 'data' in kv_data:
+            sites = kv_data.get('data', {}).get('sites', [])
         else:
-            hosts = multi_config.hosts
-
-        results = []
-        for host in hosts:
-            try:
-                client = multi_config._get_ssh_client(host)
-
-                # Executar reload
-                stdin, stdout, stderr = client.exec_command("systemctl reload prometheus")
-                exit_status = stdout.channel.recv_exit_status()
-
-                # Verificar se está ativo
-                stdin, stdout, stderr = client.exec_command("systemctl is-active prometheus")
-                is_active = stdout.read().decode('utf-8').strip()
-
-                client.close()
-
-                if exit_status == 0 and is_active == "active":
-                    results.append({
-                        "server": f"{host.hostname}:{host.port}",
-                        "success": True,
-                        "message": "Prometheus recarregado com sucesso",
-                        "status": "active"
-                    })
-                else:
-                    results.append({
-                        "server": f"{host.hostname}:{host.port}",
-                        "success": False,
-                        "message": f"Serviço não está ativo (status: {is_active})"
-                    })
-            except Exception as e:
-                results.append({
-                    "server": f"{host.hostname}:{host.port}",
-                    "success": False,
-                    "error": str(e)
-                })
-
-        success_count = sum(1 for r in results if r.get('success', False))
-
+            sites = kv_data.get('sites', [])
+        
+        if not sites:
+            logger.warning("[CONFIG SITES] KV vazio - execute migrate_sites_structure.py")
+            return {
+                "success": False,
+                "sites": [],
+                "total": 0,
+                "message": "KV skills/eye/metadata/sites vazio. Execute migração."
+            }
+        
+        logger.info(f"[CONFIG SITES] {len(sites)} sites carregados do KV")
+        
+        # Adicionar campos adicionais para compatibilidade
+        for site in sites:
+            # Campo external_labels para compatibilidade com código antigo
+            site["external_labels"] = {
+                "cluster": site.get("cluster", ""),
+                "datacenter": site.get("datacenter", ""),
+                "environment": site.get("environment", ""),
+                "site": site.get("site", site.get("code", "")),
+                "prometheus_instance": site.get("prometheus_instance", "")
+            }
+            
+            # Garantir que ssh_port e prometheus_port existam
+            # Se KV foi migrado corretamente, já terá ambos os campos
+            if "ssh_port" not in site:
+                site["ssh_port"] = 22  # Default SSH port
+            if "prometheus_port" not in site:
+                site["prometheus_port"] = 9090  # Default Prometheus port
+        
+        # Garantir que existe pelo menos um site default
+        if sites and not any(s.get("is_default") for s in sites):
+            sites[0]["is_default"] = True
+            logger.info(f"[CONFIG SITES] Marcado '{sites[0]['code']}' como default automaticamente")
+        
+        logger.info(f"[CONFIG SITES] Listados {len(sites)} sites do KV")
+        
         return {
-            "success": success_count > 0,
-            "message": f"Reinicialização concluída: {success_count}/{len(results)} servidores",
-            "results": results
+            "success": True,
+            "sites": sites,
+            "total": len(sites)
         }
+        
     except Exception as e:
-        logger.error(f"Erro ao reiniciar: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[CONFIG SITES] Erro ao listar sites: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao listar sites: {str(e)}"
+        )
 
 
+@router.patch("/config/sites/{code}")
+async def update_site_config(code: str, updates: SiteConfigModel):
+    """
+    Atualiza configurações editáveis de um site (name, color, is_default)
+    
+    CAMPOS EDITÁVEIS:
+    - name: Nome descritivo
+    - color: Cor do badge
+    - is_default: Site padrão (sem sufixo)
+    
+    CAMPOS READONLY (não podem ser alterados):
+    - code: Gerado automaticamente
+    - prometheus_host: Do .env
+    - prometheus_port: Do .env
+    - external_labels: Extraído do Prometheus
+    
+    Args:
+        code: Código do site
+        updates: Campos para atualizar
+        
+    Returns:
+        Site atualizado
+    """
+    try:
+        from core.kv_manager import KVManager
+        
+        kv = KVManager()
+        
+        # Buscar configurações atuais (estrutura com wrapper data)
+        kv_data = await kv.get_json('skills/eye/metadata/sites') or {"data": {"sites": []}}
+        
+        # Extrair sites considerando wrapper 'data'
+        if 'data' in kv_data:
+            # Estrutura nova: {"data": {"sites": [...]}, "meta": {...}}
+            data_wrapper = kv_data.get('data', {})
+            if isinstance(data_wrapper, dict) and 'data' in data_wrapper:
+                # Duplo wrapper: {"data": {"data": {"sites": [...]}}}
+                site_configs_array = data_wrapper.get('data', {}).get('sites', [])
+            else:
+                # Wrapper simples: {"data": {"sites": [...]}}
+                site_configs_array = data_wrapper.get('sites', [])
+        else:
+            # Estrutura antiga sem wrapper
+            site_configs_array = kv_data.get("sites", [])
+        
+        # Verificar se site existe (buscando da lista completa)
+        sites_response = await list_sites()
+        existing_site = None
+        for site in sites_response["sites"]:
+            if site["code"] == code:
+                existing_site = site
+                break
+        
+        if not existing_site:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Site '{code}' não encontrado"
+            )
+        
+        # Buscar config existente no array ou criar novo
+        site_config = None
+        site_index = -1
+        for i, s in enumerate(site_configs_array):
+            if s["code"] == code:
+                site_config = s
+                site_index = i
+                break
+        
+        if site_config is None:
+            # Criar nova config
+            site_config = {"code": code}
+            site_configs_array.append(site_config)
+            site_index = len(site_configs_array) - 1
+        
+        # Atualizar apenas campos editáveis
+        if updates.name is not None:
+            site_config["name"] = updates.name
+        if updates.color is not None:
+            site_config["color"] = updates.color
+        if updates.is_default is not None:
+            site_config["is_default"] = updates.is_default
+            
+            # Se marcar como default, desmarcar os outros
+            if updates.is_default:
+                for other_site in site_configs_array:
+                    if other_site["code"] != code:
+                        other_site["is_default"] = False
+        
+        # Atualizar no array
+        site_configs_array[site_index] = site_config
+        
+        # CRÍTICO: Preservar estrutura completa do KV (com wrapper data e meta)
+        # Reconstruir estrutura mantendo meta existente
+        if 'data' in kv_data:
+            # Manter wrapper data e meta
+            save_structure = kv_data.copy()
+            if 'data' in save_structure.get('data', {}):
+                # Duplo wrapper
+                save_structure['data']['data']['sites'] = site_configs_array
+            else:
+                # Wrapper simples
+                save_structure['data']['sites'] = site_configs_array
+        else:
+            # Estrutura antiga sem wrapper (migrar para nova)
+            save_structure = {
+                "data": {"sites": site_configs_array},
+                "meta": {
+                    "version": "2.0.0",
+                    "last_update": "manual_edit",
+                    "structure": "external_labels_at_root"
+                }
+            }
+        
+        # Atualizar timestamp do meta
+        if 'meta' in save_structure:
+            save_structure['meta']['updated_at'] = __import__('datetime').datetime.now().isoformat()
+            save_structure['meta']['updated_by'] = 'user'
+            save_structure['meta']['source'] = 'manual_edit'
+        
+        # Salvar mantendo estrutura completa
+        await kv.put_json(
+            key='skills/eye/metadata/sites',
+            value=save_structure,
+            metadata={'auto_updated': False, 'source': 'user_edit'}
+        )
+        
+        logger.info(f"[SITES] Configurações do site '{code}' atualizadas")
+        
+        # Retornar site completo atualizado
+        updated_site = existing_site.copy()
+        updated_site.update(site_config)
+        
+        return {
+            "success": True,
+            "site": updated_site,
+            "message": f"Site '{code}' atualizado com sucesso"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SITES] Erro ao atualizar site '{code}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao atualizar site: {str(e)}"
+        )
+
+
+@router.patch("/config/naming")
+async def update_naming_config(request: Request):
+    """
+    Atualiza configurações globais de naming strategy
+    
+    CAMPOS EDITÁVEIS:
+    - naming_strategy: "option1" ou "option2"
+    - suffix_enabled: boolean
+    
+    IMPORTANTE: Estas configurações afetam TODOS os sites
+    
+    Returns:
+        Configurações atualizadas
+    """
+    try:
+        from core.kv_manager import KVManager
+        
+        # Parse request body
+        body = await request.json()
+        naming_strategy = body.get('naming_strategy')
+        suffix_enabled = body.get('suffix_enabled')
+        
+        # Validar valores
+        if naming_strategy not in ['option1', 'option2']:
+            raise HTTPException(
+                status_code=400,
+                detail="naming_strategy deve ser 'option1' ou 'option2'"
+            )
+        
+        if not isinstance(suffix_enabled, bool):
+            raise HTTPException(
+                status_code=400,
+                detail="suffix_enabled deve ser booleano (true/false)"
+            )
+        
+        kv = KVManager()
+        
+        # Buscar configurações atuais
+        kv_data = await kv.get_json('skills/eye/metadata/sites') or {"data": {"sites": []}}
+        
+        # Garantir estrutura com wrapper data
+        if 'data' not in kv_data:
+            kv_data = {"data": kv_data, "meta": {}}
+        
+        # Atualizar naming_config no data wrapper
+        if 'naming_config' not in kv_data['data']:
+            kv_data['data']['naming_config'] = {}
+        
+        kv_data['data']['naming_config']['strategy'] = naming_strategy
+        kv_data['data']['naming_config']['suffix_enabled'] = suffix_enabled
+        
+        # Atualizar meta
+        if 'meta' not in kv_data:
+            kv_data['meta'] = {}
+        
+        kv_data['meta']['updated_at'] = __import__('datetime').datetime.now().isoformat()
+        kv_data['meta']['updated_by'] = 'user'
+        kv_data['meta']['source'] = 'naming_config_update'
+        
+        # Salvar no KV
+        await kv.put_json(
+            key='skills/eye/metadata/sites',
+            value=kv_data,
+            metadata={'auto_updated': False, 'source': 'user_edit'}
+        )
+        
+        logger.info(f"[NAMING CONFIG] Atualizado: strategy={naming_strategy}, suffix_enabled={suffix_enabled}")
+        
+        return {
+            "success": True,
+            "naming_strategy": naming_strategy,
+            "suffix_enabled": suffix_enabled,
+            "message": "Naming config atualizada com sucesso"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[NAMING CONFIG] Erro ao atualizar: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao atualizar naming config: {str(e)}"
+        )
+
+
+@router.post("/config/sites/sync")
+async def sync_sites_from_prometheus():
+    """
+    Sincroniza sites automaticamente baseado em external_labels do Prometheus
+    
+    PROCESSO:
+    1. Dispara extração SSH se necessário (força atualização de external_labels)
+    2. Auto-detecta sites a partir de external_labels.site
+    3. Cria/atualiza lista de sites no KV
+    4. Preserva configurações editáveis existentes (name, color, is_default)
+    
+    RETORNA:
+        {
+            "success": true,
+            "sites_synced": 3,
+            "new_sites": ["rio"],
+            "existing_sites": ["palmas", "dtc"],
+            "extraction_triggered": true
+        }
+    """
+    try:
+        from core.kv_manager import KVManager
+        
+        kv = KVManager()
+        logger.info("[SITES SYNC] Iniciando sincronização de sites...")
+        
+        # PASSO 1: Disparar extração forçada para atualizar external_labels
+        logger.info("[SITES SYNC] Disparando extração SSH para atualizar external_labels...")
+        extraction_result = await force_extract_fields()
+        extraction_triggered = extraction_result.get("success", False)
+        
+        # PASSO 2: Buscar configurações atuais do KV (estrutura ARRAY)
+        kv_data = await kv.get_json('skills/eye/metadata/sites') or {"sites": []}
+        site_configs_array = kv_data.get("sites", [])
+        
+        # Criar map para busca rápida
+        site_configs_map = {s["code"]: s for s in site_configs_array}
+        
+        # PASSO 3: Listar sites auto-detectados
+        sites_response = await list_sites()
+        detected_sites = sites_response["sites"]
+        
+        new_sites = []
+        existing_sites = []
+        
+        # PASSO 4: Processar cada site detectado
+        for site in detected_sites:
+            site_code = site["code"]
+            
+            if site_code not in site_configs_map:
+                # Novo site: criar configuração padrão
+                new_config = {
+                    "code": site_code,
+                    "name": site["name"],
+                    "color": site["color"],
+                    "is_default": site["is_default"]
+                }
+                site_configs_array.append(new_config)
+                new_sites.append(site_code)
+                logger.info(f"[SITES SYNC] 🆕 Novo site detectado: '{site_code}'")
+            else:
+                existing_sites.append(site_code)
+        
+        # PASSO 5: Salvar configurações atualizadas (estrutura ARRAY)
+        await kv.put_json(
+            key='skills/eye/metadata/sites',
+            value={"sites": site_configs_array},
+            metadata={'auto_updated': True, 'source': 'prometheus_sync'}
+        )
+        
+        logger.info(
+            f"[SITES SYNC] ✅ Sincronização completa: {len(new_sites)} novos, "
+            f"{len(existing_sites)} existentes"
+        )
+        
+        return {
+            "success": True,
+            "sites_synced": len(detected_sites),
+            "new_sites": new_sites,
+            "existing_sites": existing_sites,
+            "extraction_triggered": extraction_triggered,
+            "message": f"Sincronização completa: {len(new_sites)} site(s) novo(s) detectado(s)"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SITES SYNC] Erro ao sincronizar sites: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao sincronizar sites: {str(e)}"
+        )
+
+
+@router.post("/config/sites/cleanup")
+async def cleanup_orphan_sites():
+    """
+    Remove configurações de sites órfãos do KV
+    
+    Sites órfãos são sites que têm configurações no KV mas não existem
+    mais na lista de servidores ativos (PROMETHEUS_CONFIG_HOSTS no .env).
+    
+    QUANDO USAR:
+    - Após remover um servidor do .env
+    - Para limpar configs antigas que não são mais usadas
+    - Manutenção periódica do KV
+    
+    PROCESSO:
+    1. Lista sites ativos (GET /config/sites)
+    2. Compara com configs no KV
+    3. Remove configs que não têm servidor ativo correspondente
+    
+    RETORNA:
+        {
+            "success": true,
+            "orphans_removed": ["rio", "antigo"],
+            "removed_count": 2,
+            "active_sites": ["palmas", "dtc"]
+        }
+    """
+    try:
+        from core.kv_manager import KVManager
+        
+        kv = KVManager()
+        logger.info("[SITES CLEANUP] Iniciando limpeza de sites órfãos...")
+        
+        # PASSO 1: Buscar lista de sites ATIVOS (do .env)
+        sites_response = await list_sites()
+        active_sites = sites_response["sites"]
+        active_codes = {site["code"] for site in active_sites}
+        
+        logger.info(f"[SITES CLEANUP] {len(active_codes)} sites ativos: {active_codes}")
+        
+        # PASSO 2: Buscar configurações no KV (estrutura ARRAY)
+        kv_data = await kv.get_json('skills/eye/metadata/sites') or {"sites": []}
+        site_configs_array = kv_data.get("sites", [])
+        
+        all_config_codes = {s["code"] for s in site_configs_array}
+        
+        logger.info(f"[SITES CLEANUP] {len(all_config_codes)} configs no KV: {all_config_codes}")
+        
+        # PASSO 3: Identificar órfãos (configs sem servidor ativo)
+        orphan_codes = all_config_codes - active_codes
+        
+        if not orphan_codes:
+            logger.info("[SITES CLEANUP] ✅ Nenhum site órfão encontrado")
+            return {
+                "success": True,
+                "message": "Nenhum site órfão encontrado. KV já está limpo.",
+                "orphans_removed": [],
+                "removed_count": 0,
+                "active_sites": list(active_codes)
+            }
+        
+        logger.info(f"[SITES CLEANUP] 🗑️  {len(orphan_codes)} órfãos detectados: {orphan_codes}")
+        
+        # PASSO 4: Remover configs órfãos (filtrar array)
+        cleaned_configs_array = [s for s in site_configs_array if s["code"] in active_codes]
+        
+        await kv.put_json(
+            key='skills/eye/metadata/sites',
+            value={"sites": cleaned_configs_array},
+            metadata={'auto_updated': False, 'source': 'orphan_cleanup'}
+        )
+        
+        logger.info(f"[SITES CLEANUP] ✅ {len(orphan_codes)} configs órfãos removidos")
+        
+        return {
+            "success": True,
+            "message": f"Removidos {len(orphan_codes)} site(s) órfão(s) com sucesso",
+            "orphans_removed": list(orphan_codes),
+            "removed_count": len(orphan_codes),
+            "active_sites": list(active_codes)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[SITES CLEANUP] Erro ao limpar sites órfãos: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao limpar sites órfãos: {str(e)}"
+        )

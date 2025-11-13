@@ -76,25 +76,25 @@ Criar a base de dados (JSON schemas no Consul KV) e APIs backend para gerenciar 
 
 **JSON Schemas Iniciais no Consul KV:**
 
-- [ ] `skills/cm/monitoring-types/network-probes.json`
+- [ ] `skills/eye/monitoring-types/network-probes.json`
   - [ ] ICMP (ping)
   - [ ] TCP Connect
   - [ ] DNS Query
   - [ ] SSH Banner
 
-- [ ] `skills/cm/monitoring-types/web-probes.json`
+- [ ] `skills/eye/monitoring-types/web-probes.json`
   - [ ] HTTP 2xx
   - [ ] HTTP 4xx
   - [ ] HTTP 5xx
   - [ ] HTTPS
   - [ ] HTTP POST 2xx
 
-- [ ] `skills/cm/monitoring-types/system-exporters.json`
+- [ ] `skills/eye/monitoring-types/system-exporters.json`
   - [ ] Node Exporter (Linux)
   - [ ] Windows Exporter
   - [ ] SNMP Exporter
 
-- [ ] `skills/cm/monitoring-types/database-exporters.json`
+- [ ] `skills/eye/monitoring-types/database-exporters.json`
   - [ ] MySQL Exporter
   - [ ] PostgreSQL Exporter
   - [ ] Redis Exporter
@@ -104,10 +104,10 @@ Criar a base de dados (JSON schemas no Consul KV) e APIs backend para gerenciar 
 ```bash
 # Verificar se JSONs foram salvos no Consul KV
 curl -H "X-Consul-Token: ${TOKEN}" \
-  http://localhost:8500/v1/kv/skills/cm/monitoring-types/?keys
+  http://localhost:8500/v1/kv/skills/eye/monitoring-types/?keys
 
 # Deve retornar:
-# ["skills/cm/monitoring-types/network-probes.json", ...]
+# ["skills/eye/monitoring-types/network-probes.json", ...]
 ```
 
 ---
@@ -1246,18 +1246,18 @@ async function validateAndSave(values: any) {
       all_configs = {}
 
       # Export monitoring types
-      types_keys = await consul.kv_get_keys("skills/cm/monitoring-types/")
+      types_keys = await consul.kv_get_keys("skills/eye/monitoring-types/")
       all_configs['monitoring_types'] = {}
       for key in types_keys:
           data = await consul.kv_get(key)
           all_configs['monitoring_types'][key] = json.loads(data)
 
       # Export field schemas
-      fields = await consul.kv_get("skills/cm/field-schemas/metadata-fields.json")
+      fields = await consul.kv_get("skills/eye/field-schemas/metadata-fields.json")
       all_configs['field_schemas'] = json.loads(fields)
 
       # Export UI configs
-      ui_config = await consul.kv_get("skills/cm/ui-configs/page-layouts.json")
+      ui_config = await consul.kv_get("skills/eye/ui-configs/page-layouts.json")
       all_configs['ui_configs'] = json.loads(ui_config)
 
       return {
@@ -1450,7 +1450,7 @@ python scripts/migrate_to_config_driven.py
 
   Edite o arquivo JSON diretamente no Consul KV:
   ```
-  skills/cm/monitoring-types/web-probes.json
+  skills/eye/monitoring-types/web-probes.json
   ```
 
   Adicione novo objeto ao array `types`.
@@ -1551,7 +1551,7 @@ else:
 **Passo 3:** Backup do Consul KV antes de qualquer mudança
 ```bash
 # Backup
-consul kv export skills/cm/ > backup-$(date +%Y%m%d).json
+consul kv export skills/eye/ > backup-$(date +%Y%m%d).json
 
 # Restore
 consul kv import @backup-20251031.json

@@ -56,50 +56,26 @@ export function useMetadataFields(
       setLoading(true);
       setError(null);
 
-      // PASSO 1: Buscar campos do Prometheus (extraídos do prometheus.yml)
+      // USAR ENDPOINT OTIMIZADO QUE JÁ FAZ MERGE NO BACKEND
+      // Evita fazer 56+ requisições HTTP paralelas (um por campo)
       // Timeout de 60s pois faz SSH para múltiplos servidores no cold start
-      const prometheusResponse = await axios.get(`${API_URL}/prometheus-config/fields`, {
+      const response = await axios.get(`${API_URL}/metadata-fields/`, {
         timeout: 60000,
       });
 
-      if (!prometheusResponse.data.success) {
-        throw new Error('Erro ao carregar campos do Prometheus');
+      if (!response.data.success) {
+        throw new Error('Erro ao carregar campos metadata');
       }
 
-      const prometheusFields: MetadataFieldDynamic[] = prometheusResponse.data.fields;
+      const fieldsWithConfig: MetadataFieldDynamic[] = response.data.fields.map((field: any) => ({
+        ...field,
+        // Garantir defaults para campos que podem estar ausentes
+        show_in_services: field.show_in_services ?? true,
+        show_in_exporters: field.show_in_exporters ?? true,
+        show_in_blackbox: field.show_in_blackbox ?? true,
+      }));
 
-      // PASSO 2: Buscar configurações de visibilidade do KV para cada campo
-      const fieldsWithConfig = await Promise.all(
-        prometheusFields.map(async (field: MetadataFieldDynamic) => {
-          try {
-            // Buscar configuração de exibição do KV
-            const configResponse = await axios.get(
-              `${API_URL}/kv/metadata/field-config/${field.name}`
-            );
-
-            if (configResponse.data.success && configResponse.data.config) {
-              // Merge: dados do Prometheus + configuração do KV
-              return {
-                ...field,
-                show_in_services: configResponse.data.config.show_in_services ?? true,
-                show_in_exporters: configResponse.data.config.show_in_exporters ?? true,
-                show_in_blackbox: configResponse.data.config.show_in_blackbox ?? true,
-              };
-            }
-          } catch (error) {
-            // Se não existe config, usar valores padrão (todos true)
-            console.log(`[DEBUG] Usando config padrão para campo "${field.name}"`);
-          }
-
-          // Valores padrão se não houver configuração salva
-          return {
-            ...field,
-            show_in_services: true,
-            show_in_exporters: true,
-            show_in_blackbox: true,
-          };
-        })
-      );
+      console.log(`[useMetadataFields] ✅ ${fieldsWithConfig.length} campos carregados (1 requisição otimizada)`);
 
       // PASSO 3: Filtrar por contexto (services, exporters, blackbox)
       let filteredFields = fieldsWithConfig;
@@ -236,6 +212,10 @@ export function useTableFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
@@ -260,6 +240,10 @@ export function useFormFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_form === true)
@@ -284,6 +268,10 @@ export function useFilterFields(context?: string): {
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
+      if (context === 'network-probes') return f.show_in_network_probes !== false;
+      if (context === 'web-probes') return f.show_in_web_probes !== false;
+      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
+      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_filter === true)

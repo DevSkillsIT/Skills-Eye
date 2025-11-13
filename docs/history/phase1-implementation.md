@@ -13,7 +13,7 @@ This document summarizes the Phase 1 implementation of the enhanced Consul Manag
 **New Standardized Namespace Structure:**
 
 ```
-skills/cm/
+skills/eye/
 ├── blackbox/
 │   ├── targets/<id>.json         # Individual target configurations
 │   ├── groups/<group>.json       # Target group definitions
@@ -34,7 +34,7 @@ skills/cm/
 **Key Features:**
 
 - **Versioned Metadata**: All KV entries include metadata (created_at, updated_at, updated_by, version)
-- **Namespace Safety**: All operations validate keys start with `skills/cm/`
+- **Namespace Safety**: All operations validate keys start with `skills/eye/`
 - **Automatic Audit Logging**: All mutations are logged to audit trail
 - **Migration Support**: Tools to migrate from old TenSunS namespace
 
@@ -199,11 +199,11 @@ class BulkEnableDisableRequest(BaseModel):
 #### KV CRUD Operations
 
 ```
-GET    /api/v1/kv/get?key=skills/cm/...          # Get single key
+GET    /api/v1/kv/get?key=skills/eye/...          # Get single key
 POST   /api/v1/kv/put                            # Store value
-DELETE /api/v1/kv/delete?key=skills/cm/...      # Delete key
-GET    /api/v1/kv/list?prefix=skills/cm/...     # List keys
-GET    /api/v1/kv/tree?prefix=skills/cm/...     # Get tree
+DELETE /api/v1/kv/delete?key=skills/eye/...      # Delete key
+GET    /api/v1/kv/list?prefix=skills/eye/...     # List keys
+GET    /api/v1/kv/tree?prefix=skills/eye/...     # Get tree
 ```
 
 #### Audit Log
@@ -509,12 +509,12 @@ The API will be available at:
 curl -X POST "http://localhost:5000/api/v1/kv/put" \
   -H "Content-Type: application/json" \
   -d '{
-    "key": "skills/cm/test/hello.json",
+    "key": "skills/eye/test/hello.json",
     "value": {"message": "Hello World"},
     "metadata": {"updated_by": "test"}
   }'
 
-curl "http://localhost:5000/api/v1/kv/get?key=skills/cm/test/hello.json"
+curl "http://localhost:5000/api/v1/kv/get?key=skills/eye/test/hello.json"
 
 # Test group creation
 curl -X POST "http://localhost:5000/api/v1/blackbox/groups?user=admin" \
@@ -610,7 +610,7 @@ curl -X POST "http://localhost:5000/api/v1/kv/migrate?old_prefix=ConsulManager/r
    - Audit trail and versioning
    - UI preferences persistence
 
-### Why skills/cm/ Namespace?
+### Why skills/eye/ Namespace?
 
 - **Isolation**: Prevents conflicts with other apps using Consul
 - **Security**: Makes it easier to restrict KV access
@@ -662,7 +662,7 @@ Use `/api/v1/blackbox/enhanced` for new features without breaking existing clien
 
 ## Security Considerations
 
-1. **Namespace Validation**: All KV operations validate `skills/cm/` prefix
+1. **Namespace Validation**: All KV operations validate `skills/eye/` prefix
 2. **User Tracking**: All mutations track the user performing the operation
 3. **Audit Logging**: Complete audit trail of all changes
 4. **Metadata Wrapping**: Prevents accidental data loss with version tracking

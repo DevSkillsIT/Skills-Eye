@@ -224,7 +224,7 @@ const TagsInput: React.FC<TagsInputProps> = ({
             </div>
           ) : null
         }
-        dropdownRender={(menu) => (
+        popupRender={(menu) => (
           <>
             {menu}
             {!loading && (

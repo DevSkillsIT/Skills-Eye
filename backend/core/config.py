@@ -57,7 +57,7 @@ class Config:
         """
         Retorna todos os campos metadata extraídos do Prometheus.
 
-        NOTA: Agora busca do Consul KV (skills/cm/metadata/fields)
+        NOTA: Agora busca do Consul KV (skills/eye/metadata/fields)
         Os campos são extraídos dinamicamente do prometheus.yml via SSH
         """
         try:
@@ -66,7 +66,7 @@ class Config:
 
             # Buscar do KV (dados extraídos do Prometheus)
             import asyncio
-            fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
 
             if fields_data and 'fields' in fields_data:
                 return [field['name'] for field in fields_data['fields']]
@@ -89,7 +89,7 @@ class Config:
             kv = KVManager()
 
             import asyncio
-            fields_data = asyncio.run(kv.get_json('skills/cm/metadata/fields'))
+            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
 
             if fields_data and 'fields' in fields_data:
                 return [

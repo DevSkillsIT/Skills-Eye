@@ -28,6 +28,86 @@ import axios from 'axios';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
+// ============================================================================
+// CACHE GLOBAL PARA REFERENCE VALUES
+// ============================================================================
+// Evita que múltiplos componentes ReferenceValueInput façam requisições duplicadas
+// para o mesmo campo (exemplo: 5 formulários com campo "company" fazem 5 requests)
+//
+// ESTRUTURA DO CACHE:
+// {
+//   "company": { values: [...], timestamp: 1234567890, loading: false },
+//   "localizacao": { values: [...], timestamp: 1234567890, loading: false }
+// }
+//
+// TTL: 5 minutos (dados raramente mudam durante uma sessão de edição)
+// ============================================================================
+
+interface CacheEntry {
+  values: ReferenceValue[];
+  timestamp: number;
+  loading: boolean;
+}
+
+const globalCache: Record<string, CacheEntry> = {};
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+/**
+ * Verifica se cache está válido (não expirou)
+ */
+function isCacheValid(fieldName: string): boolean {
+  const entry = globalCache[fieldName];
+  if (!entry) return false;
+
+  const age = Date.now() - entry.timestamp;
+  return age < CACHE_TTL;
+}
+
+/**
+ * Retorna valores do cache se disponível e válido
+ */
+function getCachedValues(fieldName: string): ReferenceValue[] | null {
+  if (!isCacheValid(fieldName)) {
+    delete globalCache[fieldName]; // Limpar cache expirado
+    return null;
+  }
+
+  return globalCache[fieldName]?.values || null;
+}
+
+/**
+ * Salva valores no cache global
+ */
+function setCacheValues(fieldName: string, values: ReferenceValue[]): void {
+  globalCache[fieldName] = {
+    values,
+    timestamp: Date.now(),
+    loading: false
+  };
+}
+
+/**
+ * Marca campo como "carregando" para evitar requisições duplicadas simultâneas
+ */
+function markLoading(fieldName: string, loading: boolean): void {
+  if (!globalCache[fieldName]) {
+    globalCache[fieldName] = {
+      values: [],
+      timestamp: 0,
+      loading
+    };
+  } else {
+    globalCache[fieldName].loading = loading;
+  }
+}
+
+/**
+ * Verifica se campo já está sendo carregado por outro componente
+ */
+function isLoading(fieldName: string): boolean {
+  return globalCache[fieldName]?.loading ?? false;
+}
+
 export interface ReferenceValue {
   value: string;
   created_at: string;
@@ -77,7 +157,10 @@ export interface UseReferenceValuesReturn {
   /** Deleta valor (bloqueia se em uso) */
   deleteValue: (value: string, force?: boolean) => Promise<boolean>;
 
-  /** Recarrega lista de valores */
+  /** Renomeia valor (preserva referências) */
+  renameValue: (oldValue: string, newValue: string) => Promise<boolean>;
+
+  /** Recarrega lista de valores (limpa cache) */
   refreshValues: () => Promise<void>;
 }
 
@@ -104,7 +187,12 @@ export function useReferenceValues(
   }, [fieldName]);
 
   /**
-   * Carrega lista de valores existentes do backend
+   * Carrega lista de valores existentes do backend (COM CACHE GLOBAL)
+   *
+   * OTIMIZAÇÃO:
+   * - Verifica cache global primeiro (evita requisições duplicadas)
+   * - Se outro componente já está carregando, aguarda
+   * - Cache válido por 5 minutos (dados raramente mudam durante sessão)
    */
   const loadValues = useCallback(async () => {
     if (!fieldName) {
@@ -114,6 +202,42 @@ export function useReferenceValues(
     try {
       setLoading(true);
       setError(null);
+
+      // PASSO 1: Verificar se valores já estão em cache válido
+      const cached = getCachedValues(fieldName);
+      if (cached) {
+        console.log(`[useReferenceValues] Cache HIT para ${fieldName} (${cached.length} valores)`);
+
+        // Extrair apenas os valores (strings)
+        const valueStrings = cached.map((v: ReferenceValue) => v.value);
+        setValues(valueStrings);
+        setValuesWithMetadata(cached);
+        setLoading(false);
+        return; // Usar cache, não fazer requisição HTTP
+      }
+
+      // PASSO 2: Se outro componente já está carregando este campo, aguardar
+      if (isLoading(fieldName)) {
+        console.log(`[useReferenceValues] Aguardando carregamento em andamento para ${fieldName}...`);
+
+        // Aguardar 100ms e tentar novamente
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Verificar cache novamente (outro componente já carregou?)
+        const cachedAfterWait = getCachedValues(fieldName);
+        if (cachedAfterWait) {
+          const valueStrings = cachedAfterWait.map((v: ReferenceValue) => v.value);
+          setValues(valueStrings);
+          setValuesWithMetadata(cachedAfterWait);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // PASSO 3: Marcar como "carregando" para evitar requisições duplicadas simultâneas
+      markLoading(fieldName, true);
+
+      console.log(`[useReferenceValues] Cache MISS para ${fieldName} - fazendo requisição HTTP`);
 
       const response = await axios.get(
         `${API_URL}/reference-values/${fieldName}`,
@@ -132,13 +256,21 @@ export function useReferenceValues(
 
         // Guardar valores completos com metadata
         setValuesWithMetadata(loadedValues);
+
+        // PASSO 4: Salvar no cache global para outros componentes reutilizarem
+        setCacheValues(fieldName, loadedValues);
+        console.log(`[useReferenceValues] Cache SAVED para ${fieldName} (${loadedValues.length} valores)`);
       }
     } catch (err: any) {
       const errorMsg = err.response?.data?.detail || err.message || 'Erro ao carregar valores';
       setError(errorMsg);
       console.error(`Erro ao carregar reference values para ${fieldName}:`, err);
+
+      // Desmarcar loading em caso de erro
+      markLoading(fieldName, false);
     } finally {
       setLoading(false);
+      markLoading(fieldName, false);
     }
   }, [fieldName, includeStats]);
 
@@ -170,8 +302,9 @@ export function useReferenceValues(
         );
 
         if (response.data.success) {
-          // Se foi criado, recarregar lista
+          // Se foi criado, invalidar cache e recarregar lista
           if (response.data.created) {
+            delete globalCache[fieldName]; // Invalidar cache
             await loadValues();
           }
 
@@ -225,7 +358,8 @@ export function useReferenceValues(
         );
 
         if (response.data.success) {
-          // Recarregar lista
+          // Invalidar cache e recarregar lista
+          delete globalCache[fieldName];
           await loadValues();
           return true;
         }
@@ -259,7 +393,8 @@ export function useReferenceValues(
           }
         );
 
-        // Recarregar lista
+        // Invalidar cache e recarregar lista
+        delete globalCache[fieldName];
         await loadValues();
         return true;
       } catch (err: any) {
@@ -269,6 +404,53 @@ export function useReferenceValues(
     },
     [fieldName, loadValues]
   );
+
+  /**
+   * Renomeia valor existente (PRESERVA REFERÊNCIAS)
+   */
+  const renameValue = useCallback(
+    async (oldValue: string, newValue: string): Promise<boolean> => {
+      if (!oldValue || !newValue || !fieldName) {
+        return false;
+      }
+
+      try {
+        await axios.patch(
+          `${API_URL}/reference-values/${fieldName}/${encodeURIComponent(oldValue)}/rename`,
+          null,
+          {
+            params: { new_value: newValue },
+            timeout: 10000
+          }
+        );
+
+        // Invalidar cache e recarregar lista
+        delete globalCache[fieldName];
+        await loadValues();
+        return true;
+      } catch (err: any) {
+        console.error(`Erro ao renomear valor ${oldValue} → ${newValue} em ${fieldName}:`, err);
+        throw new Error(err.response?.data?.detail || 'Erro ao renomear valor');
+      }
+    },
+    [fieldName, loadValues]
+  );
+
+  /**
+   * Recarrega valores FORÇANDO limpeza de cache
+   */
+  const refreshValues = useCallback(async () => {
+    console.log(`[RefreshValues] 🔄 Botão RECARREGAR clicado para campo: ${fieldName}`);
+    console.log(`[RefreshValues] 🗑️  Limpando cache do campo: ${fieldName}`);
+
+    // CRÍTICO: Limpar cache ANTES de carregar
+    delete globalCache[fieldName];
+
+    console.log(`[RefreshValues] 📡 Fazendo requisição HTTP para buscar valores atualizados...`);
+    await loadValues();
+
+    console.log(`[RefreshValues] ✅ Valores recarregados com sucesso!`);
+  }, [fieldName, loadValues]);
 
   /**
    * Auto-load ao montar componente
@@ -287,7 +469,8 @@ export function useReferenceValues(
     ensureValue,
     createValue,
     deleteValue,
-    refreshValues: loadValues
+    renameValue,
+    refreshValues
   };
 }
 

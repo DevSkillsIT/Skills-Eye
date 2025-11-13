@@ -400,8 +400,22 @@ const Exporters: React.FC = () => {
           });
         }
 
-        // Aplicar filtros avançados (se houver)
-        const advancedRows = applyAdvancedFilters(nodeFilteredRows);
+        // PASSO 1: Filtrar por metadata (filtros dinâmicos) - CLIENT-SIDE
+        // Backend não suporta filtros metadata no endpoint otimizado, então aplicar aqui
+        let filteredRows = nodeFilteredRows;
+        if (filters && Object.keys(filters).length > 0) {
+          filteredRows = nodeFilteredRows.filter((item) => {
+            // Verificar se item atende a TODOS os filtros ativos
+            return Object.entries(filters).every(([fieldName, filterValue]) => {
+              if (!filterValue) return true; // Filtro vazio = não filtrar
+              const itemValue = item.meta?.[fieldName];
+              return itemValue && String(itemValue) === String(filterValue);
+            });
+          });
+        }
+
+        // PASSO 2: Aplicar filtros avançados (se houver)
+        const advancedRows = applyAdvancedFilters(filteredRows);
 
         // Usar summary do backend ou recalcular se houve filtros
         if (advancedRows.length === rows.length && backendSummary) {
@@ -425,25 +439,32 @@ const Exporters: React.FC = () => {
           setSummary(nextSummary);
         }
 
-        // Extrair metadataOptions
-        const companies = new Set<string>();
-        const projects = new Set<string>();
-        const envs = new Set<string>();
-        const types = new Set<string>();
+        // OTIMIZAÇÃO: Extrair metadataOptions dinamicamente dos dados JÁ CARREGADOS
+        // Usa filterFields para determinar quais campos extrair (ao invés de hardcoding)
+        const optionsSets: Record<string, Set<string>> = {};
 
+        // Inicializar Set para cada filterField
+        filterFields.forEach((field) => {
+          optionsSets[field.name] = new Set<string>();
+        });
+
+        // Extrair valores únicos de TODOS os registros
         advancedRows.forEach((item) => {
-          if (item.meta?.company) companies.add(item.meta.company);
-          if (item.meta?.project) projects.add(item.meta.project);
-          if (item.meta?.env) envs.add(item.meta.env);
-          if (item.exporterType) types.add(item.exporterType);
+          filterFields.forEach((field) => {
+            const value = item.meta?.[field.name];
+            if (value && typeof value === 'string') {
+              optionsSets[field.name].add(value);
+            }
+          });
         });
 
-        setMetadataOptions({
-          companies: Array.from(companies),
-          projects: Array.from(projects),
-          envs: Array.from(envs),
-          types: Array.from(types),
+        // Converter Sets para Arrays
+        const options: Record<string, string[]> = {};
+        Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
+          options[fieldName] = Array.from(valueSet);
         });
+
+        setMetadataOptions(options);
 
         // Aplicar busca por keyword
         const keywordRaw = (params?.keyword ?? searchValue) || '';
@@ -489,7 +510,7 @@ const Exporters: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, tableFields, searchValue, isAllNodes, selectedNodeAddr],
+    [applyAdvancedFilters, tableFields, searchValue, isAllNodes, selectedNodeAddr, filters],
   );
 
   const handleAdvancedSearch = useCallback(

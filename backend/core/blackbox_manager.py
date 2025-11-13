@@ -40,7 +40,8 @@ class BlackboxManager:
     """
 
     MODULE_KV_PATH = "ConsulManager/record/blackbox/module_list"  # Legacy path
-    ENABLE_KV_STORAGE = True  # Feature flag for dual storage mode
+    # NOTA: ENABLE_KV_STORAGE flag removida (2025-01-09) - dual storage eliminado
+    # Targets agora gerenciados EXCLUSIVAMENTE via Services API
 
     def __init__(self, consul: Optional[ConsulManager] = None, kv: Optional[KVManager] = None) -> None:
         self.consul = consul or ConsulManager()
@@ -78,9 +79,7 @@ class BlackboxManager:
             "group": group,
         }
 
-        kv_filters = {k: v for k, v in filters.items() if v}
-        kv_targets = await self.kv.list_blackbox_targets(kv_filters or None)
-        kv_map = {target.get("id"): target for target in kv_targets}
+        # NOTA: Código KV removido (2025-01-09) - dados agora exclusivamente no Services API
 
         for item in services:
             meta = item.get("Meta") or {}
@@ -90,7 +89,7 @@ class BlackboxManager:
                 continue
 
             target_id = item.get("ID")
-            kv_data = kv_map.get(target_id, {})
+            kv_data = {}  # Mantido por compatibilidade, sempre vazio
 
             composed_meta = self._compose_meta(meta, kv_data)
             if item.get("Node"):
@@ -334,37 +333,15 @@ class BlackboxManager:
         if not success:
             return False, "consul_error", "Failed to register service with Consul"
 
-        # Also store in KV if dual storage is enabled
-        if self.ENABLE_KV_STORAGE:
-            kv_data = {
-                "id": service_id,
-                "group": group,
-                "target": instance,
-                "module": module,
-                "labels": {
-                    "company": company,
-                    "project": project,
-                    "env": env,
-                    "name": name,
-                    **(labels or {})
-                },
-                "interval": interval,
-                "timeout": timeout,
-                "enabled": enabled,
-                "notes": notes,
-                "created_at": datetime.utcnow().isoformat()
-            }
-
-            await self.kv.put_blackbox_target(service_id, kv_data, user)
-
-            # Log audit event
-            await self.kv.log_audit_event(
-                action="CREATE",
-                resource_type="blackbox_target",
-                resource_id=service_id,
-                user=user,
-                details={"module": module, "instance": instance, "group": group}
-            )
+        # NOTA: Código KV removido (2025-01-09) - target agora apenas no Services API
+        # Mantém apenas audit log
+        await self.kv.log_audit_event(
+            action="CREATE",
+            resource_type="blackbox_target",
+            resource_id=service_id,
+            user=user,
+            details={"module": module, "instance": instance, "group": group}
+        )
 
         return True, "created", service_id
 
@@ -401,18 +378,15 @@ class BlackboxManager:
         if not success:
             return False, "Failed to deregister service from Consul"
 
-        # Also delete from KV if dual storage is enabled
-        if self.ENABLE_KV_STORAGE:
-            await self.kv.delete_blackbox_target(service_id)
-
-            # Log audit event
-            await self.kv.log_audit_event(
-                action="DELETE",
-                resource_type="blackbox_target",
-                resource_id=service_id,
-                user=user,
-                details={"module": module, "company": company, "project": project, "env": env, "name": name}
-            )
+        # NOTA: Código KV removido (2025-01-09) - target agora apenas no Services API
+        # Mantém apenas audit log
+        await self.kv.log_audit_event(
+            action="DELETE",
+            resource_type="blackbox_target",
+            resource_id=service_id,
+            user=user,
+            details={"module": module, "company": company, "project": project, "env": env, "name": name}
+        )
 
         return True, service_id
 
@@ -723,10 +697,17 @@ class BlackboxManager:
         """
         Get all targets belonging to a group.
 
+        IMPORTANTE: Agora busca diretamente do Services API (source of truth).
+        Grupos são armazenados em Meta.group dos services blackbox_exporter.
+
         Returns:
-            List of target configurations
+            List of target configurations (format: services from list_targets)
         """
-        return await self.kv.list_blackbox_targets(filters={"group": group_id})
+        # Buscar todos os targets do grupo via Services API
+        result = await self.list_targets(group=group_id)
+
+        # Retornar lista de services (cada service tem: service_id, meta, tags, etc)
+        return result.get("services", [])
 
     async def bulk_enable_disable(
         self,
@@ -738,6 +719,9 @@ class BlackboxManager:
         """
         Enable or disable multiple targets (by group or explicit list).
 
+        IMPORTANTE: Agora atualiza diretamente nos Services API (source of truth).
+        O campo enabled é armazenado em Meta.enabled do service.
+
         Args:
             group_id: Optional group ID to enable/disable all members
             target_ids: Optional explicit list of target IDs
@@ -747,41 +731,78 @@ class BlackboxManager:
         Returns:
             Summary of operation (success_count, failed_count, details)
         """
-        targets_to_update = []
+        services_to_update = []
 
+        # PASSO 1: Coletar targets do grupo OU da lista de IDs
         if group_id:
-            targets_to_update = await self.get_group_members(group_id)
+            # Buscar targets do grupo via Services API
+            services_to_update = await self.get_group_members(group_id)
         elif target_ids:
+            # Buscar cada target individualmente do Services API
             for tid in target_ids:
-                target = await self.kv.get_blackbox_target(tid)
-                if target:
-                    targets_to_update.append(target)
+                service = await self.consul.get_service_by_id(tid)
+                if service:
+                    services_to_update.append({"service_id": tid, "meta": service.get("Meta", {})})
 
         success_count = 0
         failed_count = 0
         details = []
 
-        for target in targets_to_update:
-            target["enabled"] = enabled
-            success = await self.kv.put_blackbox_target(target["id"], target, user)
+        # PASSO 2: Atualizar cada target via update_target()
+        for service_item in services_to_update:
+            try:
+                # Extrair meta atual do service
+                if "meta" in service_item:
+                    meta = service_item["meta"]
+                    target_id = service_item.get("service_id")
+                else:
+                    # Formato vindo de get_group_members (tem estrutura completa)
+                    meta = service_item.get("meta", {})
+                    target_id = service_item.get("service_id")
 
-            if success:
-                success_count += 1
-                await self.kv.log_audit_event(
-                    action="UPDATE",
-                    resource_type="blackbox_target",
-                    resource_id=target["id"],
-                    user=user,
-                    details={"enabled": enabled, "group": group_id}
-                )
-            else:
+                # Montar target no formato esperado por update_target()
+                old_target = {
+                    "module": meta.get("module", ""),
+                    "company": meta.get("company", ""),
+                    "project": meta.get("project", ""),
+                    "env": meta.get("env", ""),
+                    "name": meta.get("name", ""),
+                    "instance": meta.get("instance", ""),
+                    "group": meta.get("group"),
+                    "labels": meta.get("labels"),
+                    "interval": meta.get("interval", "30s"),
+                    "timeout": meta.get("timeout", "10s"),
+                    "enabled": not enabled  # Valor antigo (invertido)
+                }
+
+                new_target = old_target.copy()
+                new_target["enabled"] = enabled  # Novo valor
+
+                # Atualizar via update_target() que já gerencia Services API
+                update_success, update_msg = await self.update_target(old_target, new_target)
+
+                if update_success:
+                    success_count += 1
+                    # Log audit event
+                    await self.kv.log_audit_event(
+                        action="UPDATE",
+                        resource_type="blackbox_target",
+                        resource_id=target_id,
+                        user=user,
+                        details={"enabled": enabled, "group": group_id}
+                    )
+                else:
+                    failed_count += 1
+                    details.append({"id": target_id, "error": update_msg})
+
+            except Exception as e:
                 failed_count += 1
-                details.append({"id": target["id"], "error": "Failed to update"})
+                details.append({"id": service_item.get("service_id", "unknown"), "error": str(e)})
 
         return {
             "success_count": success_count,
             "failed_count": failed_count,
-            "total": len(targets_to_update),
+            "total": len(services_to_update),
             "details": details
         }
 

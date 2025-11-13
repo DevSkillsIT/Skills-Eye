@@ -13,7 +13,7 @@ Validar a recomendação do ChatGPT sobre arquitetura Prometheus distribuída e 
 
 1. ✅ **Job names devem ser idênticos** nos diferentes sites?
 2. ✅ **Arquitetura centralizada vs distribuída** - qual é a correta?
-3. ✅ **Existe sistema similar** no mercado ao Consul Manager Web?
+3. ✅ **Existe sistema similar** no mercado ao Skills Eye?
 4. ✅ **Blackbox Exporter** deve rodar local ou remoto?
 
 ---
@@ -280,9 +280,9 @@ remote_write:
 - ❌ **Curva de aprendizado** (setup não trivial)
 - ❌ **Não gerencia Consul service discovery** dinamicamente
 
-**Comparação com Consul Manager Web:**
+**Comparação com Skills Eye:**
 
-| Recurso | **Promgen** | **Consul Manager Web** |
+| Recurso | **Promgen** | **Skills Eye** |
 |---------|-------------|------------------------|
 | Edição direta do prometheus.yml | ❌ Não | ✅ Sim (via SSH) |
 | Gerenciamento de targets | ✅ Sim | ✅ Sim (via Consul API) |
@@ -315,7 +315,7 @@ remote_write:
 - ❌ Específico para Kubernetes
 - ❌ Não funciona fora de K8s
 
-**✅ CONCLUSÃO: Não existe sistema open-source equivalente ao Consul Manager Web.**
+**✅ CONCLUSÃO: Não existe sistema open-source equivalente ao Skills Eye.**
 
 **Por quê?**
 
@@ -325,7 +325,7 @@ remote_write:
 4. **Requer acesso SSH** para editar arquivos remotamente
 5. **Validação complexa** (promtool, relabel_configs, regex, etc.)
 
-**Diferenciais do Consul Manager Web:**
+**Diferenciais do Skills Eye:**
 
 - ✅ **Único sistema** que combina Consul + Prometheus + Blackbox em uma UI
 - ✅ **Edição YAML direta** via SSH multi-servidor
@@ -342,7 +342,7 @@ remote_write:
 ### **Arquivos Analisados:**
 
 ```
-C:\consul-manager-web\docs\Configuracoes-Exemplos-Prometheus-Blackbox\
+docs/Configuracoes-Exemplos-Prometheus-Blackbox/
 ├── palmas-master\
 │   ├── prometheus.yml (25KB - 14 jobs)
 │   └── blackbox.yml
@@ -797,4 +797,4 @@ consul_sd_configs:
 
 **STATUS FINAL:** ✅ **Validação Completa com Evidências da Web**
 **Recomendação ChatGPT:** ✅ **100% CORRETA e alinhada com best practices da comunidade Prometheus**
-**Sistema Similar no Mercado:** ❌ **Não existe equivalente open-source ao Consul Manager Web**
+**Sistema Similar no Mercado:** ❌ **Não existe equivalente open-source ao Skills Eye**

@@ -220,7 +220,7 @@ restart-app.bat
 ### 💾 KV Store Browser
 - **Navegação visual em árvore** do Consul KV
 - **Editor JSON integrado** com syntax highlighting
-- **Namespace isolado:** `skills/cm/`
+- **Namespace isolado:** `skills/eye/`
 - **Metadados automáticos:** created_at, updated_by, version
 - **Breadcrumb navigation** para facilitar navegação
 - **Página:** KvBrowser
@@ -419,115 +419,208 @@ http://localhost:5000/docs
 
 ```
 Skills-Eye/
-├── backend/
-│   ├── api/                          # Endpoints da API FastAPI
-│   │   ├── services.py               # Serviços Consul (10 endpoints)
-│   │   ├── monitoring_types.py       # Tipos de monitoramento (5 endpoints)
-│   │   ├── monitoring_types_dynamic.py  # Detecção dinâmica (2 endpoints)
-│   │   ├── metadata_fields_manager.py   # Campos dinâmicos (10 endpoints)
-│   │   ├── reference_values.py       # Reference values (6 endpoints)
-│   │   ├── blackbox.py               # Blackbox targets (6 endpoints)
-│   │   ├── presets.py                # Service presets (8 endpoints)
-│   │   ├── search.py                 # Busca avançada (8 endpoints)
-│   │   ├── prometheus_config.py      # Editor YAML remoto (12 endpoints)
-│   │   ├── dashboard.py              # Dashboard metrics (2 endpoints)
-│   │   ├── health.py                 # Health checks (2 endpoints)
-│   │   ├── audit.py                  # Audit log (3 endpoints)
-│   │   ├── kv.py                     # KV store (4 endpoints)
-│   │   ├── nodes.py                  # Nodes Consul (4 endpoints)
-│   │   ├── installer.py              # Remote installer (8 endpoints)
-│   │   ├── settings.py               # Settings (5 endpoints)
-│   │   ├── service_tags.py           # Tags (5 endpoints)
-│   │   ├── consul_insights.py        # Insights (2 endpoints)
-│   │   ├── optimized_endpoints.py    # Endpoints otimizados (8 endpoints)
-│   │   ├── config.py                 # Configurações gerais
-│   │   └── models.py                 # Pydantic models
-│   ├── core/
-│   │   ├── consul_manager.py         # Client Consul async
-│   │   ├── blackbox_manager.py       # Blackbox logic
-│   │   ├── service_preset_manager.py # Presets logic
+│
+├── 📁 backend/                       # API FastAPI + Business Logic
+│   ├── api/                          # 100+ REST endpoints
+│   │   ├── services.py               # Serviços Consul (CRUD)
+│   │   ├── monitoring_types*.py      # Detecção dinâmica de tipos
+│   │   ├── metadata_fields*.py       # Campos extraídos do Prometheus
+│   │   ├── reference_values.py       # Auto-cadastro de valores
+│   │   ├── blackbox.py               # Monitoring targets
+│   │   ├── presets.py                # Templates de serviços
+│   │   ├── search.py                 # 12 operadores de busca
+│   │   ├── prometheus_config.py      # Editor YAML remoto (SSH)
+│   │   ├── installer.py              # Multi-connector installers
+│   │   └── ... (20+ módulos)
+│   ├── core/                         # Business logic
+│   │   ├── consul_manager.py         # Client async Consul
+│   │   ├── yaml_config_service.py    # Editor YAML com SSH
+│   │   ├── multi_config_manager.py   # Multi-servidor SSH
 │   │   ├── advanced_search.py        # Search engine
-│   │   ├── kv_manager.py             # KV operations
-│   │   ├── yaml_config_service.py    # YAML editing via SSH
-│   │   ├── multi_config_manager.py   # Multi-server SSH
-│   │   ├── installers/
-│   │   │   ├── base.py               # Base installer class
-│   │   │   ├── linux_ssh.py          # Linux SSH installer
-│   │   │   ├── windows_ssh.py        # Windows SSH installer
-│   │   │   ├── windows_winrm.py      # Windows WinRM installer
-│   │   │   └── windows_psexec.py     # Windows PSExec installer
-│   │   └── config.py                 # App configuration
-│   ├── config/
-│   │   └── metadata_fields.json      # Esquema de campos dinâmicos
-│   ├── app.py                        # FastAPI application
-│   └── requirements.txt              # Python dependencies
-├── frontend/
+│   │   └── installers/               # SSH/WinRM/PSExec
+│   ├── config/                       # Configurações
+│   │   └── metadata_fields.json      # Schema de campos dinâmicos
+│   ├── app.py                        # FastAPI app
+│   └── requirements.txt              # Dependências Python
+│
+├── 📁 frontend/                      # React 19 + TypeScript
 │   ├── src/
-│   │   ├── pages/                    # 17 páginas React
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── Services.tsx
-│   │   │   ├── Exporters.tsx
-│   │   │   ├── Hosts.tsx
-│   │   │   ├── BlackboxTargets.tsx
-│   │   │   ├── BlackboxGroups.tsx
-│   │   │   ├── ServiceGroups.tsx
-│   │   │   ├── ServicePresets.tsx
-│   │   │   ├── MonitoringTypes.tsx
-│   │   │   ├── ReferenceValues.tsx
-│   │   │   ├── MetadataFields.tsx
-│   │   │   ├── KvBrowser.tsx
-│   │   │   ├── AuditLog.tsx
-│   │   │   ├── Installer.tsx
-│   │   │   ├── PrometheusConfig.tsx
-│   │   │   ├── Settings.tsx
-│   │   │   └── TestMonitoringTypes.tsx
-│   │   ├── components/               # 12 componentes reutilizáveis
-│   │   │   ├── AdvancedSearchPanel.tsx
-│   │   │   ├── ColumnSelector.tsx
-│   │   │   ├── FormFieldRenderer.tsx
-│   │   │   ├── ListPageLayout.tsx
-│   │   │   ├── MetadataFilterBar.tsx
-│   │   │   ├── NodeSelector.tsx
-│   │   │   ├── ReferenceValueInput.tsx
-│   │   │   ├── ResizableTitle.tsx
-│   │   │   ├── ServerSelector.tsx
-│   │   │   ├── ServiceNamePreview.tsx
-│   │   │   ├── SiteBadge.tsx
-│   │   │   └── TagsInput.tsx
-│   │   ├── contexts/
-│   │   │   └── MetadataFieldsContext.tsx  # Context API global
+│   │   ├── pages/                    # 17 páginas
+│   │   │   ├── Dashboard.tsx         # Métricas + gráficos
+│   │   │   ├── Services.tsx          # Lista de serviços
+│   │   │   ├── Exporters.tsx         # Exporters por tipo
+│   │   │   ├── BlackboxTargets.tsx   # Probes de rede/web
+│   │   │   ├── PrometheusConfig.tsx  # Editor YAML multi-server
+│   │   │   ├── MetadataFields.tsx    # Campos dinâmicos
+│   │   │   ├── Installer.tsx         # Instalação remota
+│   │   │   └── ... (10+ páginas)
+│   │   ├── components/               # 12 componentes
+│   │   │   ├── AdvancedSearchPanel   # Construtor de queries
+│   │   │   ├── ColumnSelector        # Drag & drop colunas
+│   │   │   ├── ListPageLayout        # Layout padronizado
+│   │   │   └── ... (9+ componentes)
+│   │   ├── contexts/                 # Context API
+│   │   │   └── MetadataFieldsContext # Cache global de campos
 │   │   ├── hooks/                    # 6 custom hooks
-│   │   │   ├── useConsulDelete.ts
-│   │   │   ├── useMetadataFields.ts
-│   │   │   ├── useMonitoringType.ts
-│   │   │   ├── usePrometheusFields.ts
-│   │   │   ├── useReferenceValues.ts
-│   │   │   └── useServiceTags.ts
-│   │   ├── services/
-│   │   │   └── api.ts                # Axios HTTP client
-│   │   ├── types/
-│   │   │   └── monitoring.ts         # TypeScript types
-│   │   ├── utils/
-│   │   │   └── namingUtils.ts        # Naming utilities
-│   │   ├── App.tsx                   # Main App component
-│   │   └── main.tsx                  # Entry point
+│   │   ├── services/api.ts           # Client HTTP
+│   │   └── types/monitoring.ts       # TypeScript interfaces
 │   ├── package.json
-│   └── vite.config.ts                # Vite configuration
-├── docs/                             # Documentação organizada
-│   ├── guides/                       # Guias de uso
-│   ├── architecture/                 # Documentação de arquitetura
-│   ├── api/                          # API reference
-│   ├── development/                  # Para desenvolvedores
-│   ├── planning/                     # Roadmap e planejamento
-│   ├── performance/                  # Análises de performance
-│   ├── research/                     # Pesquisas e estudos
-│   ├── incidents/                    # Relatórios de incidentes
-│   ├── history/                      # Documentação histórica
-│   └── obsolete/                     # Documentos obsoletos
-├── README.md                         # Este arquivo
-├── CLAUDE.md                         # Instruções para IA
-├── CHANGELOG-SESSION.md              # Changelog de sessões
-└── restart-app.bat                   # Script de restart (Windows)
+│   └── vite.config.ts
+│
+├── 📁 docs/                          # Documentação Organizada
+│   ├── features/                     # 📄 15 documentos de funcionalidades
+│   │   ├── NAMING_SYSTEM_COMPLETE.md       # Sistema de nomenclatura (100+ pgs)
+│   │   ├── ADVANCED_SEARCH_IMPLEMENTATION.md
+│   │   ├── BLACKBOX_TARGETS_COMPLETE.md
+│   │   ├── METADATA_FIELDS_COMPLETE.md
+│   │   ├── MONITORING_TYPES_COMPLETE.md
+│   │   ├── PROMETHEUS_CONFIG_EDITOR_COMPLETE.md
+│   │   └── ... (9+ docs)
+│   ├── developer/                    # 📄 Para desenvolvedores
+│   │   ├── corrections/              # Correções aplicadas
+│   │   │   ├── CHANGELOG-SESSION.md
+│   │   │   ├── CORRECOES_2025-11-11.md
+│   │   │   └── ... (10 docs)
+│   │   ├── architecture/             # Análises técnicas
+│   │   │   ├── METADATA_FIELDS_ANALYSIS.md
+│   │   │   ├── SERVER_DETECTION_INTEGRATION.md
+│   │   │   └── ... (8 docs)
+│   │   └── troubleshooting/          # (futuro)
+│   ├── guides/                       # 📄 Guias de uso
+│   ├── planning/                     # 📄 Roadmap e refatoração
+│   ├── performance/                  # 📄 Análises de performance
+│   ├── obsolete/                     # 📄 Documentos antigos
+│   └── user/                         # 📄 Documentação para usuários finais
+│
+├── 📁 Tests/                         # 34 Testes Organizados
+│   ├── naming/                       # 3 testes de nomenclatura
+│   ├── metadata/                     # 12 testes de campos dinâmicos
+│   ├── performance/                  # 5 testes de performance
+│   ├── integration/                  # 14 testes de integração
+│   └── README.md                     # Documentação completa de testes
+│
+├── 📁 scripts/                       # Scripts de Automação
+│   ├── deployment/                   # 🔧 15 scripts de deploy/restart
+│   │   ├── restart-all.sh
+│   │   ├── restart-backend.sh
+│   │   ├── start-app.sh
+│   │   └── ... (12+ scripts)
+│   ├── migration/                    # 🔧 5 scripts de migração
+│   │   ├── migrate_consul_kv.py
+│   │   ├── migrate_namespace.py
+│   │   ├── migrate_naming_to_kv.py
+│   │   └── validate_migration.py
+│   ├── development/                  # 🔧 7 scripts de análise
+│   │   ├── analyze_profile.py
+│   │   ├── analyze_react_complexity.py
+│   │   ├── compare_pages_performance.py
+│   │   └── ... (4+ scripts)
+│   └── benchmarks/                   # 🔧 3 scripts de benchmark
+│       ├── benchmark-api-before.bat
+│       └── run-benchmark-api.ps1
+│
+├── 📁 data/                          # Dados de Teste e Baselines
+│   ├── baselines/                    # JSON de baseline
+│   │   ├── BASELINE_ENDPOINTS.json
+│   │   ├── BASELINE_PRE_MIGRATION.json
+│   │   └── TESTE_POS_FASE1_API.json
+│   ├── fixtures/                     # Fixtures de teste
+│   │   ├── test_3servers.json
+│   │   ├── test_exporters_fields.json
+│   │   └── ... (4 fixtures)
+│   └── temp/                         # Temporários (gitignored)
+│       ├── temp_final.json
+│       └── temp_response*.json
+│
+├── 📁 logs/                          # Logs (gitignored)
+│   ├── backend.log
+│   ├── TESTE_POS_FASE1.log
+│   └── migration_report.txt
+│
+├── 📁 assets/                        # Assets do Projeto
+│   └── screenshots/
+│       ├── screenshot_blackboxtargets.png
+│       └── screenshot_services.png
+│
+├── 📁 tools/                         # Ferramentas auxiliares (futuro)
+│
+├── 📁 TenSunS/                       # Legado (embedded repo)
+├── 📁 obsolete/                      # Código obsoleto
+│
+├── 📄 README.md                      # Este arquivo - Documentação principal
+├── 📄 CLAUDE.md                      # Instruções para IA (desenvolvedor)
+├── 📄 COMANDOS_RAPIDOS.md            # Quick reference de comandos
+├── 📄 DOCUMENTATION_INDEX.md         # Índice completo de documentação
+├── 📄 .gitignore                     # Git ignore rules
+└── 📄 _ul                            # Arquivo de controle
+```
+
+### 📂 Organização por Tipo de Conteúdo
+
+| Pasta | Conteúdo | Quem Usa | Git |
+|-------|----------|----------|-----|
+| **backend/** | API + business logic | Desenvolvedores | ✅ Commitado |
+| **frontend/** | Interface React | Desenvolvedores | ✅ Commitado |
+| **docs/** | Documentação organizada | Todos | ✅ Commitado |
+| **Tests/** | Testes automatizados | Desenvolvedores | ✅ Commitado |
+| **scripts/** | Automação e deploy | DevOps | ✅ Commitado |
+| **data/baselines/** | Dados de baseline | QA | ✅ Commitado |
+| **data/fixtures/** | Fixtures de teste | QA | ✅ Commitado |
+| **data/temp/** | Temporários | Sistema | ❌ Ignorado |
+| **logs/** | Arquivos de log | Sistema | ❌ Ignorado |
+| **assets/** | Screenshots, imagens | Documentação | ✅ Commitado |
+| **tools/** | Ferramentas auxiliares | Desenvolvedores | ✅ Commitado |
+
+### 🎯 Navegação Rápida
+
+**Para Usuários:**
+- 📖 [Início Rápido](docs/guides/quick-start.md)
+- 📖 [Guias de Uso](docs/guides/)
+- 📖 [FAQ](docs/user/)
+
+**Para Desenvolvedores:**
+- 🔧 [Arquitetura](docs/developer/architecture/)
+- 🔧 [Correções Aplicadas](docs/developer/corrections/)
+- 🔧 [Roadmap](docs/planning/)
+- 🔧 [Testes](Tests/README.md)
+- 🔧 [Scripts](scripts/)
+
+**Documentação Técnica:**
+- 📚 [Features Completas](docs/features/)
+- 📚 [API Reference](docs/api/endpoints-reference.md)
+- 📚 [Performance Analysis](docs/performance/)
+
+### 🔍 Como Encontrar Algo
+
+**Buscar funcionalidade específica:**
+```bash
+# Ver índice completo
+cat DOCUMENTATION_INDEX.md
+
+# Buscar por palavra-chave
+grep -r "monitoring types" docs/
+```
+
+**Entender uma feature:**
+```
+docs/features/ → Documentação completa de cada funcionalidade
+```
+
+**Resolver problema:**
+```
+docs/developer/corrections/ → Correções já aplicadas
+docs/developer/troubleshooting/ → Soluções comuns (futuro)
+```
+
+**Analisar performance:**
+```
+docs/performance/ → Análises e otimizações
+Tests/performance/ → Testes de performance
+```
+
+**Executar testes:**
+```
+Tests/ → Todos os testes com README.md explicativo
 ```
 
 ---

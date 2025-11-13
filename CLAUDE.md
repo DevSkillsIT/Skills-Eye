@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Consul Manager Web** is a comprehensive web application for managing HashiCorp Consul services, with specialized focus on Prometheus monitoring infrastructure. It transforms a 2980+ line CLI Python script into a modern web UI for managing Blackbox Exporter targets, service discovery, and remote exporter installation.
+**Skills Eye** is a comprehensive web application for managing HashiCorp Consul services, with specialized focus on Prometheus monitoring infrastructure. It transforms a 2980+ line CLI Python script into a modern web UI for managing Blackbox Exporter targets, service discovery, and remote exporter installation.
 
 **Primary User:** Non-developer infrastructure analyst with 25 years experience. Explanations should be clear and interfaces intuitive.
 
@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2. **Dual Storage Pattern**
    - **Consul Services**: Primary storage for Prometheus service discovery
-   - **Consul KV**: Metadata, groups, presets, audit logs under `skills/cm/` namespace
+   - **Consul KV**: Metadata, groups, presets, audit logs under `skills/eye/` namespace
    - All KV operations go through `KVManager` with namespace validation
 
 3. **BlackboxManager** (`backend/core/blackbox_manager.py`)
@@ -59,7 +59,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 7. **KV Namespace Structure:**
    ```
-   skills/cm/
+   skills/eye/
    ├── blackbox/
    │   ├── targets/{id}.json
    │   ├── groups/{id}.json
@@ -124,7 +124,7 @@ All endpoints under `/api/v1/`:
 - **Basic Authentication**: Installer endpoints protected with HTTP Basic Auth
 - **Token Management**: Consul ACL token validation
 - **SSH Key Support**: Public key authentication for remote installers
-- **Credential Storage**: Encrypted storage in Consul KV under `skills/cm/settings/credentials`
+- **Credential Storage**: Encrypted storage in Consul KV under `skills/eye/settings/credentials`
 - **CORS Policy**: Restrictive CORS with configurable origins in .env
 
 ### Frontend (React 19 + TypeScript + Ant Design Pro)
@@ -398,9 +398,9 @@ Frontend automatically includes credentials when configured in Settings.
 When testing against the production Consul (172.16.1.26):
 - **Use a test namespace** for services: prefix with `test_` or use `env=dev` metadata
 - **Never delete production services** without confirmation
-- **Test KV writes** under `skills/cm/test/` first
+- **Test KV writes** under `skills/eye/test/` first
 - **Monitor Prometheus** for unexpected scrape errors
-- **Backup KV data** before bulk operations: `GET /api/v1/kv/tree?prefix=skills/cm`
+- **Backup KV data** before bulk operations: `GET /api/v1/kv/tree?prefix=skills/eye`
 - **Test Prometheus config changes** on a single server before batch updates
 
 ## Common Patterns

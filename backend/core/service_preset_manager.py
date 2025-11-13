@@ -69,6 +69,10 @@ class ServicePresetManager:
         Returns:
             Tuple of (success, message)
         """
+        # PASSO 1: Verificar se preset já existe (evitar audit logs duplicados)
+        existing_preset = await self.get_preset(preset_id)
+        is_update = existing_preset is not None
+
         preset_data = {
             "id": preset_id,
             "name": name,
@@ -79,27 +83,38 @@ class ServicePresetManager:
             "checks": checks or [],
             "description": description,
             "category": category,
-            "created_at": datetime.utcnow().isoformat()
         }
 
-        # Validate preset structure
+        # PASSO 2: Preservar created_at se for update, ou criar novo timestamp
+        if is_update and "created_at" in existing_preset:
+            preset_data["created_at"] = existing_preset["created_at"]
+            preset_data["updated_at"] = datetime.utcnow().isoformat()
+        else:
+            preset_data["created_at"] = datetime.utcnow().isoformat()
+
+        # PASSO 3: Validar estrutura do preset
         is_valid, errors = self._validate_preset(preset_data)
         if not is_valid:
             return False, f"Validation failed: {', '.join(errors)}"
 
-        # Store in KV
+        # PASSO 4: Salvar no KV
         success = await self.kv.put_service_preset(preset_id, preset_data, user)
 
         if success:
-            # Log audit event
-            await self.kv.log_audit_event(
-                action="CREATE",
-                resource_type="service_preset",
-                resource_id=preset_id,
-                user=user,
-                details={"name": name, "category": category}
-            )
-            return True, f"Preset '{name}' created successfully"
+            # PASSO 5: Logar audit event APENAS se for criação nova
+            # Isso evita centenas de logs duplicados durante desenvolvimento/testes
+            if not is_update:
+                await self.kv.log_audit_event(
+                    action="CREATE",
+                    resource_type="service_preset",
+                    resource_id=preset_id,
+                    user=user,
+                    details={"name": name, "category": category}
+                )
+                return True, f"Preset '{name}' created successfully"
+            else:
+                # Update silencioso - não loga para evitar poluição do audit
+                return True, f"Preset '{name}' already exists (updated silently)"
 
         return False, "Failed to create preset"
 

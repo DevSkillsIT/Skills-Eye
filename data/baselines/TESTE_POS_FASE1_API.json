@@ -1,0 +1,37 @@
+{
+  "timestamp": "2025-11-12T19:10:00.289517",
+  "tests": {
+    "naming_config": {
+      "actual": {
+        "naming_strategy": "option2",
+        "suffix_enabled": true,
+        "default_site": "palmas"
+      },
+      "expected": {
+        "naming_strategy": "option2",
+        "suffix_enabled": true,
+        "default_site": "palmas"
+      },
+      "passed": true,
+      "notes": "Config agora vem do KV (antes era .env)"
+    },
+    "sites_colors": {
+      "actual": {
+        "palmas": "red",
+        "rio": "gold",
+        "dtc": "blue"
+      },
+      "expected": {
+        "palmas": "red",
+        "rio": "gold",
+        "dtc": "blue"
+      },
+      "passed": true,
+      "notes": "Cores devem vir do KV"
+    }
+  },
+  "summary": {
+    "passed": 2,
+    "failed": 0
+  }
+}

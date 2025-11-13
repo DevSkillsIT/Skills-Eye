@@ -316,4 +316,4 @@ cat /etc/prometheus/prometheus.yml | grep -A 10 "global:"
 ---
 
 **Data:** 2025-11-05
-**Autor:** Sistema Consul Manager Web
+**Autor:** Sistema Skills Eye

@@ -71,15 +71,10 @@ export function applySiteSuffix(
     if (site) {
       effectiveSite = site.toLowerCase();
     } else if (cluster) {
-      // Extrair site do cluster se possível
-      const clusterLower = cluster.toLowerCase();
-      if (clusterLower.includes('rio')) {
-        effectiveSite = 'rio';
-      } else if (clusterLower.includes('dtc') || clusterLower.includes('genesis')) {
-        effectiveSite = 'dtc';
-      } else if (clusterLower.includes('palmas')) {
-        effectiveSite = 'palmas';
-      }
+      // ❌ REMOVIDO HARDCODING - Função precisa receber lista de sites como parâmetro
+      // Para usar esta função dinamicamente, components devem passar sites do useSites()
+      // Exemplo: applySiteSuffix(name, site, cluster, sites)
+      console.warn('[namingUtils] applySiteSuffix: cluster fornecido mas sem lista de sites. Use useSites() e passe sites como parâmetro.');
     }
 
     // Se não conseguiu determinar site, não adiciona sufixo
@@ -114,21 +109,11 @@ export function extractSiteFromMetadata(metadata: Record<string, any>): string |
     return metadata.site.toLowerCase();
   }
 
-  // Segunda prioridade: inferir do 'cluster'
-  if (metadata.cluster) {
-    const cluster = metadata.cluster.toLowerCase();
-    if (cluster.includes('rio')) return 'rio';
-    if (cluster.includes('dtc') || cluster.includes('genesis')) return 'dtc';
-    if (cluster.includes('palmas')) return 'palmas';
-  }
-
-  // Terceira prioridade: 'datacenter'
-  if (metadata.datacenter) {
-    const dc = metadata.datacenter.toLowerCase();
-    if (['rio', 'palmas', 'dtc', 'genesis', 'genesis-dtc'].includes(dc)) {
-      return dc.replace('genesis-dtc', 'dtc');
-    }
-  }
+  // ❌ REMOVIDO HARDCODING
+  // Components devem usar useSites() e passar sites como parâmetro
+  // Segunda e terceira prioridade (cluster/datacenter) requerem lista dinâmica de sites
+  
+  console.warn('[namingUtils] extractSiteFromMetadata: metadata fornecido mas sem lista de sites. Use useSites() e passe sites como parâmetro.');
 
   return undefined;
 }
@@ -172,38 +157,31 @@ export function calculateFinalServiceName(
 
 /**
  * Obtém cor do badge baseado no site
+ * 
+ * ❌ DEPRECATED: Use useSites().getSiteColor() ao invés desta função
+ * Esta função mantida apenas para compatibilidade temporária
  */
-export function getSiteBadgeColor(site: string): string {
-  const colors: Record<string, string> = {
-    palmas: 'blue',
-    rio: 'green',
-    dtc: 'orange',
-    genesis: 'purple',
-  };
-  return colors[site.toLowerCase()] || 'default';
+export function getSiteBadgeColor(_site: string): string {
+  console.warn('[namingUtils] getSiteBadgeColor DEPRECATED: Use useSites().getSiteColor() para cores dinâmicas');
+  return 'default';  // Retorna cor neutra - force uso do hook
 }
 
 /**
  * Verifica se um service name tem sufixo de site
+ * 
+ * ❌ DEPRECATED: Regex hardcoded removido
+ * Components devem usar lógica dinâmica com useSites()
  */
-export function hasSiteSuffix(serviceName: string): {
+export function hasSiteSuffix(_serviceName: string): {
   hasSuffix: boolean;
   baseName: string;
   site: string | undefined;
 } {
-  const match = serviceName.match(/^(.+)_(rio|palmas|dtc|genesis)$/);
-
-  if (match) {
-    return {
-      hasSuffix: true,
-      baseName: match[1],
-      site: match[2],
-    };
-  }
-
+  console.warn('[namingUtils] hasSiteSuffix DEPRECATED: Use lógica dinâmica com useSites().sites');
+  
   return {
     hasSuffix: false,
-    baseName: serviceName,
+    baseName: _serviceName,
     site: undefined,
   };
 }

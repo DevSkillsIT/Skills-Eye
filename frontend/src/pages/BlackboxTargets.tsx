@@ -110,15 +110,13 @@ const mapRecordToPayload = (record: BlackboxTargetRecord): BlackboxTargetPayload
   env: record.meta?.env || '',
   name: record.meta?.name || '',
   instance: record.meta?.instance || '',
-  group: record.meta?.group || (record.kv as any)?.group || undefined,
-  interval: record.meta?.interval || (record.kv as any)?.interval || '30s',
-  timeout: record.meta?.timeout || (record.kv as any)?.timeout || '10s',
-  enabled: record.meta?.enabled ?? ((record.kv as any)?.enabled ?? true),
-  labels:
-    (record.meta?.labels as Record<string, string> | undefined) ||
-    ((record.kv as any)?.labels as Record<string, string> | undefined) ||
-    undefined,
-  notes: (record.meta as any)?.notes || (record.kv as any)?.notes || undefined,
+  // NOTA: Referências ao KV removidas (2025-01-09) - dados agora apenas em Meta (Services API)
+  group: record.meta?.group || undefined,
+  interval: record.meta?.interval || '30s',
+  timeout: record.meta?.timeout || '10s',
+  enabled: record.meta?.enabled ?? true,
+  labels: (record.meta?.labels as Record<string, string> | undefined) || undefined,
+  notes: (record.meta as any)?.notes || undefined,
 });
 
 const stringifyLabels = (labels?: Record<string, string>) => {
@@ -420,7 +418,22 @@ const BlackboxTargets: React.FC = () => {
           });
         }
 
-        const advancedRows = applyAdvancedFilters(services);
+        // PASSO 1: Filtrar por metadata (filtros dinâmicos) - CLIENT-SIDE
+        // Backend não suporta filtros metadata no endpoint otimizado, então aplicar aqui
+        let filteredRows = services;
+        if (filters && Object.keys(filters).length > 0) {
+          filteredRows = services.filter((item) => {
+            // Verificar se item atende a TODOS os filtros ativos
+            return Object.entries(filters).every(([fieldName, filterValue]) => {
+              if (!filterValue) return true; // Filtro vazio = não filtrar
+              const itemValue = item.meta?.[fieldName];
+              return itemValue && String(itemValue) === String(filterValue);
+            });
+          });
+        }
+
+        // PASSO 2: Aplicar filtros avançados (se houver)
+        const advancedRows = applyAdvancedFilters(filteredRows);
 
         const keywordRaw = (params?.keyword ?? searchValue) || '';
         const keyword = keywordRaw.trim().toLowerCase();
@@ -463,7 +476,7 @@ const BlackboxTargets: React.FC = () => {
         };
       }
     },
-    [applyAdvancedFilters, searchValue],
+    [applyAdvancedFilters, searchValue, filters, filterFields],
   );
   const handleAdvancedSearch = useCallback(
     (conditions: SearchCondition[], operator: string) => {

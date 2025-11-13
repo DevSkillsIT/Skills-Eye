@@ -1,0 +1,423 @@
+# prometheus-stress-test.yml
+# TESTE DE CENÁRIOS COMPLEXOS COM YAML ANCHORS
+# Nota: YAML não suporta merge (<<:) em arrays, apenas em objetos
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  # ========================================================================
+  # CENÁRIO 1: DEFINIR ANCHOR BASE
+  # ========================================================================
+  - job_name: 'node_exporter_master'
+    consul_sd_configs:
+      - server: '172.16.1.26:8500'
+        services: ['node_exporter']
+    relabel_configs: &relabel_base  # ANCHOR BASE DEFINIDO
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+
+  # ========================================================================
+  # CENÁRIO 2: REUSO SIMPLES DO ANCHOR
+  # ========================================================================
+  - job_name: 'node_exporter_slave1'
+    consul_sd_configs:
+      - server: '172.16.1.27:8500'
+        services: ['node_exporter']
+    relabel_configs: *relabel_base  # REUSO IDÊNTICO (5 campos)
+
+  # ========================================================================
+  # CENÁRIO 3: ANCHOR EXTENDIDO (novo anchor baseado no anterior)
+  # ========================================================================
+  - job_name: 'node_exporter_slave2_extended'
+    consul_sd_configs:
+      - server: '172.16.1.28:8500'
+        services: ['node_exporter']
+    relabel_configs: &relabel_extended  # NOVO ANCHOR COM MAIS CAMPOS
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      # Campos adicionais
+      - source_labels: [__meta_consul_service_metadata_datacenter]
+        target_label: datacenter
+      - source_labels: [__meta_consul_service_metadata_rack]
+        target_label: rack
+      - source_labels: [__meta_consul_service_metadata_os]
+        target_label: operating_system
+      # Total: 8 campos
+
+  # ========================================================================
+  # CENÁRIO 4: REUSO DO ANCHOR EXTENDIDO
+  # ========================================================================
+  - job_name: 'node_exporter_slave3'
+    consul_sd_configs:
+      - server: '172.16.1.29:8500'
+        services: ['node_exporter']
+    relabel_configs: *relabel_extended  # REUSO DO EXTENDIDO (8 campos)
+
+  # ========================================================================
+  # CENÁRIO 5: ANCHOR PARA BLACKBOX (MULTI-TARGET)
+  # ========================================================================
+  - job_name: 'blackbox_http'
+    consul_sd_configs:
+      - server: '172.16.1.26:8500'
+        services: ['blackbox_exporter']
+        tags: ['http']
+    relabel_configs: &relabel_blackbox  # ANCHOR PARA BLACKBOX
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_monitor_type]
+        target_label: monitor_type
+      - source_labels: [__meta_consul_service_metadata_expected_status]
+        target_label: expected_status
+      - source_labels: [__meta_consul_service_metadata_timeout]
+        target_label: timeout
+      - source_labels: [__meta_consul_service_metadata_interval]
+        target_label: check_interval
+      # Multi-target pattern
+      - source_labels: [__meta_consul_service_metadata_instance]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: '172.16.1.26:9115'
+      # Total: 8 campos visíveis
+
+  # ========================================================================
+  # CENÁRIO 6: REUSO DO BLACKBOX ANCHOR
+  # ========================================================================
+  - job_name: 'blackbox_tcp'
+    consul_sd_configs:
+      - server: '172.16.1.26:8500'
+        services: ['blackbox_exporter']
+        tags: ['tcp']
+    relabel_configs: *relabel_blackbox  # REUSO (8 campos)
+
+  # ========================================================================
+  # CENÁRIO 7: BLACKBOX COM CAMPOS EXTRAS (novo anchor)
+  # ========================================================================
+  - job_name: 'blackbox_icmp'
+    consul_sd_configs:
+      - server: '172.16.1.26:8500'
+        services: ['blackbox_exporter']
+        tags: ['icmp']
+    relabel_configs: &relabel_blackbox_plus  # NOVO ANCHOR
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_monitor_type]
+        target_label: monitor_type
+      - source_labels: [__meta_consul_service_metadata_expected_status]
+        target_label: expected_status
+      - source_labels: [__meta_consul_service_metadata_timeout]
+        target_label: timeout
+      - source_labels: [__meta_consul_service_metadata_interval]
+        target_label: check_interval
+      # Campos extras para ICMP
+      - source_labels: [__meta_consul_service_metadata_packet_size]
+        target_label: packet_size
+      - source_labels: [__meta_consul_service_metadata_ttl]
+        target_label: ttl
+      # Multi-target pattern
+      - source_labels: [__meta_consul_service_metadata_instance]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: '172.16.1.26:9115'
+      # Total: 10 campos visíveis
+
+  # ========================================================================
+  # CENÁRIO 8: WINDOWS EXPORTER COM ANCHOR PRÓPRIO
+  # ========================================================================
+  - job_name: 'windows_exporter'
+    consul_sd_configs:
+      - server: '172.16.1.30:8500'
+        services: ['windows_exporter']
+    relabel_configs: &relabel_windows  # ANCHOR WINDOWS
+      - source_labels: [__meta_consul_service]
+        target_label: cservice
+      - source_labels: [__meta_consul_service_metadata_company]
+        target_label: company
+      - source_labels: [__meta_consul_service_metadata_env]
+        target_label: env
+      - source_labels: [__meta_consul_service_metadata_region]
+        target_label: region
+      - source_labels: [__meta_consul_service_metadata_vendor]
+        target_label: vendor
+      - source_labels: [__meta_consul_service_metadata_windows_version]
+        target_label: windows_version
+      - source_labels: [__meta_consul_service_metadata_domain]
+        target_label: domain
+      - source_labels: [__meta_consul_service_metadata_role]
+        target_label: server_role
+      # Total: 8 campos
+
+  # ========================================================================
+  # CENÁRIO 9: REUSO DO WINDOWS ANCHOR
+  # ========================================================================
+  - job_name: 'windows_exporter_dc'
+    consul_sd_configs:
+      - server: '172.16.1.31:8500'
+        services: ['windows_exporter_dc']
+    relabel_configs: *relabel_windows  # REUSO (8 campos)
+
+  # ========================================================================
+  # CENÁRIO 10: KUBERNETES COM ANCHOR
+  # ========================================================================
+  - job_name: 'kubernetes_pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs: &relabel_k8s
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        target_label: app
+      - source_labels: [__meta_kubernetes_pod_label_version]
+        target_label: version
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_annotation_team]
+        target_label: team
+      - source_labels: [__meta_kubernetes_pod_label_env]
+        target_label: environment
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: 'true'
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: '${1}:9090'
+      # Total: 5 campos visíveis
+
+  # ========================================================================
+  # CENÁRIO 11: EC2 COM ANCHOR
+  # ========================================================================
+  - job_name: 'ec2_instances'
+    ec2_sd_configs:
+      - region: us-east-1
+        port: 9100
+    relabel_configs: &relabel_ec2
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: instance_name
+      - source_labels: [__meta_ec2_tag_Environment]
+        target_label: environment
+      - source_labels: [__meta_ec2_tag_Team]
+        target_label: team
+      - source_labels: [__meta_ec2_tag_Cost_Center]
+        target_label: cost_center
+      - source_labels: [__meta_ec2_instance_type]
+        target_label: instance_type
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: az
+      - source_labels: [__meta_ec2_private_ip]
+        target_label: __address__
+        replacement: '${1}:9100'
+      # Total: 6 campos visíveis
+
+  # ========================================================================
+  # CENÁRIO 12: SNMP COM ANCHOR (MULTI-TARGET)
+  # ========================================================================
+  - job_name: 'snmp_switches'
+    static_configs:
+      - targets:
+        - 10.0.0.1
+        - 10.0.0.2
+        - 10.0.0.3
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+    relabel_configs: &relabel_snmp
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 'localhost:9116'
+      - source_labels: [__param_target]
+        regex: '10\.0\.0\.1'
+        target_label: device_type
+        replacement: 'core_switch'
+      - source_labels: [__param_target]
+        regex: '10\.0\.0\.[2-3]'
+        target_label: device_type
+        replacement: 'access_switch'
+      - source_labels: [__param_target]
+        regex: '10\.0\.0\.\d+'
+        target_label: location
+        replacement: 'datacenter_1'
+      # Total: 2 campos (device_type, location)
+
+  # ========================================================================
+  # CENÁRIO 13: REUSO DO SNMP ANCHOR
+  # ========================================================================
+  - job_name: 'snmp_routers'
+    static_configs:
+      - targets:
+        - 192.168.1.1
+        - 192.168.1.2
+    metrics_path: /snmp
+    params:
+      module: [cisco_router]
+    relabel_configs: *relabel_snmp  # REUSO (2 campos)
+
+  # ========================================================================
+  # CENÁRIO 14: FILE SERVICE DISCOVERY COM ANCHOR
+  # ========================================================================
+  - job_name: 'file_sd'
+    file_sd_configs:
+      - files:
+        - '/etc/prometheus/targets/*.json'
+    relabel_configs: &relabel_file
+      - source_labels: [__meta_filepath]
+        regex: '.*/([^/]+)\.json'
+        target_label: target_group
+        replacement: '${1}'
+      - source_labels: [datacenter]
+        target_label: dc
+      - source_labels: [rack]
+        target_label: rack_id
+      - source_labels: [environment]
+        target_label: env
+      # Total: 4 campos
+
+  # ========================================================================
+  # CENÁRIO 15: STATIC COM TRANSFORMAÇÕES
+  # ========================================================================
+  - job_name: 'static_nodes'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          env: 'prod'
+          team: 'platform'
+      - targets: ['localhost:9100']
+        labels:
+          env: 'staging'
+          team: 'sre'
+    relabel_configs: &relabel_static
+      - source_labels: [env]
+        regex: 'prod'
+        target_label: priority
+        replacement: 'high'
+      - source_labels: [env]
+        regex: 'staging'
+        target_label: priority
+        replacement: 'low'
+      - source_labels: [team]
+        target_label: responsible_team
+      # Total: 2 campos (priority, responsible_team)
+
+  # ========================================================================
+  # CENÁRIO 16: DIGITALOCEAN COM ANCHOR
+  # ========================================================================
+  - job_name: 'digitalocean_droplets'
+    digitalocean_sd_configs:
+      - bearer_token: 'fake_token_for_test'
+    relabel_configs: &relabel_do
+      - source_labels: [__meta_digitalocean_droplet_name]
+        target_label: instance_name
+      - source_labels: [__meta_digitalocean_region]
+        target_label: region
+      - source_labels: [__meta_digitalocean_droplet_status]
+        target_label: status
+      - source_labels: [__meta_digitalocean_size]
+        target_label: size
+      - source_labels: [__meta_digitalocean_tag_environment]
+        target_label: environment
+      # Total: 5 campos
+
+  # ========================================================================
+  # CENÁRIO 17: DNS SERVICE DISCOVERY
+  # ========================================================================
+  - job_name: 'dns_services'
+    dns_sd_configs:
+      - names:
+        - 'service.example.com'
+        type: 'A'
+        port: 9100
+    relabel_configs: &relabel_dns
+      - source_labels: [__meta_dns_name]
+        regex: 'service\.(.+?)\.example\.com'
+        target_label: 'service_name'
+        replacement: '${1}'
+      - source_labels: [__meta_dns_name]
+        target_label: dns_record
+      # Total: 2 campos
+
+  # ========================================================================
+  # CENÁRIO 18: DOCKER SWARM
+  # ========================================================================
+  - job_name: 'docker_swarm'
+    dockerswarm_sd_configs:
+      - host: 'tcp://localhost:2377'
+        role: 'services'
+    relabel_configs: &relabel_swarm
+      - source_labels: [__meta_dockerswarm_service_name]
+        target_label: service
+      - source_labels: [__meta_dockerswarm_service_label_version]
+        target_label: version
+      - source_labels: [__meta_dockerswarm_service_label_environment]
+        target_label: environment
+      - source_labels: [__meta_dockerswarm_network_name]
+        target_label: network
+      # Total: 4 campos
+
+  # ========================================================================
+  # CENÁRIO 19: REUSO MÚLTIPLO - JOB USA MESMO ANCHOR
+  # ========================================================================
+  - job_name: 'node_exporter_backup1'
+    consul_sd_configs:
+      - server: '172.16.1.40:8500'
+        services: ['node_exporter']
+    relabel_configs: *relabel_base  # REUSO 1
+
+  - job_name: 'node_exporter_backup2'
+    consul_sd_configs:
+      - server: '172.16.1.41:8500'
+        services: ['node_exporter']
+    relabel_configs: *relabel_base  # REUSO 2
+
+  - job_name: 'node_exporter_backup3'
+    consul_sd_configs:
+      - server: '172.16.1.42:8500'
+        services: ['node_exporter']
+    relabel_configs: *relabel_base  # REUSO 3
+    # Todos com 5 campos idênticos
+
+  # ========================================================================
+  # CENÁRIO 20: ANCHOR VAZIO
+  # ========================================================================
+  - job_name: 'empty_config'
+    static_configs:
+      - targets: ['localhost:9999']
+    relabel_configs: &empty_anchor
+      []  # Lista vazia
+
+  - job_name: 'reuse_empty'
+    static_configs:
+      - targets: ['localhost:9998']
+    relabel_configs: *empty_anchor  # Reuso de vazio (0 campos)

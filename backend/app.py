@@ -27,8 +27,7 @@ from api.optimized_endpoints import router as optimized_router
 from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
 # from api.metadata_dynamic import router as metadata_dynamic_router  # REMOVIDO: Usar prometheus_config em vez disso
-from api.monitoring_types import router as monitoring_types_router  # NOVO: Configuration-driven types
-from api.monitoring_types_dynamic import router as monitoring_types_dynamic_router  # NOVO: Tipos extraídos de Prometheus.yml
+from api.monitoring_types_dynamic import router as monitoring_types_dynamic_router  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
 from api.reference_values import router as reference_values_router  # NOVO: Sistema de auto-cadastro/retroalimentação
 from api.service_tags import router as service_tags_router  # NOVO: Sistema de tags retroalimentáveis
 from api.settings import router as settings_router  # NOVO: Configurações globais (naming strategy, etc)
@@ -41,13 +40,204 @@ except ImportError:
 
 load_dotenv()
 
-# Configuração do lifecycle
+# ============================================
+# FUNÇÕES DE PRÉ-AQUECIMENTO (PRE-WARMING)
+# ============================================
+
+# Status global do PRE-WARM (para sincronização com endpoints)
+_prewarm_status = {
+    'running': False,
+    'completed': False,
+    'failed': False,
+    'error': None
+}
+
+async def _prewarm_metadata_fields_cache():
+    """
+    Pré-aquece o cache de campos metadata em background
+
+    OBJETIVO:
+    - Garante que o KV do Consul esteja sempre populado com campos recentes
+    - Evita cold start lento na primeira requisição após reiniciar o backend
+    - Roda em background para não bloquear o startup da aplicação
+
+    FLUXO:
+    1. Aguarda 5 segundos para o servidor terminar de inicializar
+    2. Extrai campos de TODOS os servidores Prometheus via SSH
+    3. Salva automaticamente no Consul KV (skills/eye/metadata/fields)
+    4. Campos ficam disponíveis instantaneamente para requisições HTTP
+
+    PERFORMANCE:
+    - Tempo estimado: 20-30 segundos (SSH para 3 servidores)
+    - Não bloqueia startup (roda em background via asyncio.create_task)
+    - Primeira requisição HTTP após startup será rápida (~2s lendo do KV)
+
+    TRATAMENTO DE ERROS:
+    - Erros são logados mas NÃO quebram a aplicação
+    - Se falhar, requisições HTTP farão extração sob demanda (fallback)
+
+    BEST PRACTICES (baseado em pesquisa web 2025):
+    - Keep startup quick (<3s): ✅ Usa background task
+    - Wrap em try-except: ✅ Implementado
+    - Log errors without crashing: ✅ Implementado
+    """
+    global _prewarm_status
+    _prewarm_status['running'] = True
+
+    try:
+        # PASSO 1: Aguardar servidor terminar de inicializar (REDUZIDO PARA 1s)
+        # Garante que todos os módulos estejam carregados antes de usar
+        print("[PRE-WARM] Aguardando 1s para servidor inicializar completamente...")
+        await asyncio.sleep(1)
+
+        # PASSO 2: Importar dependências (após startup completo)
+        from api.prometheus_config import multi_config
+        from core.kv_manager import KVManager
+        from datetime import datetime
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info("[PRE-WARM P2] Iniciando extração ULTRA RÁPIDA com AsyncSSH + TAR...")
+
+        # PASSO 3: Extrair campos via AsyncSSH + TAR (P2 - ULTRA RÁPIDO!)
+        # Tempo estimado P0: 20-30 segundos
+        # Tempo estimado P1: 15 segundos
+        # Tempo estimado P2: 2-3 segundos ← GANHO MASSIVO!
+        extraction_result = await multi_config.extract_all_fields_with_asyncssh_tar()
+
+        fields = extraction_result['fields']
+        successful_servers = extraction_result.get('successful_servers', 0)
+        total_servers = extraction_result.get('total_servers', 0)
+
+        logger.info(
+            f"[PRE-WARM P2] ✓ Extração ULTRA RÁPIDA completa: {len(fields)} campos de "
+            f"{successful_servers}/{total_servers} servidores"
+        )
+
+        # PASSO 4: VERIFICAR SE KV JÁ TEM CAMPOS
+        kv_manager = KVManager()
+        existing_config = await kv_manager.get_json('skills/eye/metadata/fields')
+
+        # LÓGICA CORRETA: EXTRAIR ≠ SINCRONIZAR
+        # - Se KV VAZIO (primeira vez): Popular KV com campos extraídos
+        # - Se KV JÁ TEM CAMPOS: NÃO adicionar campos novos automaticamente
+        #   (campos novos devem ser adicionados via "Sincronizar Campos" no frontend)
+
+        if existing_config and 'fields' in existing_config and len(existing_config['fields']) > 0:
+            # KV JÁ TEM CAMPOS: NÃO ADICIONAR NOVOS AUTOMATICAMENTE
+            logger.info(
+                f"[PRE-WARM] ✓ KV já possui {len(existing_config['fields'])} campos. "
+                f"Não adicionando campos novos automaticamente."
+            )
+            logger.info(
+                f"[PRE-WARM] ℹ️ {len(fields)} campos extraídos do Prometheus. "
+                f"Novos campos devem ser adicionados via 'Sincronizar Campos' no frontend."
+            )
+            print(f"[PRE-WARM] ✓ KV já populado ({len(existing_config['fields'])} campos). Prewarm concluído sem modificar KV.")
+
+            # Marcar como concluído
+            _prewarm_status['completed'] = True
+            _prewarm_status['running'] = False
+            return  # ← IMPORTANTE: Não modificar KV
+
+        # KV VAZIO: POPULAR PELA PRIMEIRA VEZ
+        logger.info("[PRE-WARM] 🆕 KV vazio detectado - primeira população")
+        print("[PRE-WARM] 🆕 KV vazio - populando pela primeira vez...")
+
+        # Converter MetadataField objects para dict
+        fields_dicts = [f.to_dict() for f in fields]
+
+        # Salvar campos extraídos no KV (APENAS PRIMEIRA VEZ)
+        await kv_manager.put_json(
+            key='skills/eye/metadata/fields',
+            value={
+                'version': '2.0.0',
+                'last_updated': datetime.now().isoformat(),
+                'source': 'prewarm_startup_initial',
+                'total_fields': len(fields_dicts),
+                'fields': fields_dicts,
+                'extraction_status': {
+                    'total_servers': total_servers,
+                    'successful_servers': successful_servers,
+                    'server_status': extraction_result.get('server_status', []),
+                },
+            },
+            metadata={'auto_updated': True, 'source': 'startup_prewarm_initial'}
+        )
+
+        logger.info(
+            f"[PRE-WARM] ✓ KV populado pela PRIMEIRA VEZ com {len(fields_dicts)} campos extraídos do Prometheus"
+        )
+        print(f"[PRE-WARM] ✓ SUCESSO: {len(fields_dicts)} campos adicionados ao KV (primeira população)")
+
+        # Marcar como concluído com sucesso
+        _prewarm_status['completed'] = True
+        _prewarm_status['running'] = False
+
+    except asyncio.TimeoutError:
+        # Timeout: PRE-WARM demorou muito (>60s)
+        _prewarm_status['failed'] = True
+        _prewarm_status['running'] = False
+        _prewarm_status['error'] = "Timeout ao conectar servidores Prometheus (>60s)"
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("[PRE-WARM] ✗ TIMEOUT: PRE-WARM demorou mais de 60s")
+        print(f"[PRE-WARM] ✗ TIMEOUT: {_prewarm_status['error']}")
+        print("[PRE-WARM] Aplicação continuará funcionando. Tente sincronizar manualmente.")
+
+    except Exception as e:
+        # IMPORTANTE: NÃO deixar erro quebrar a aplicação
+        # Se falhar, requisições HTTP farão extração sob demanda
+        _prewarm_status['failed'] = True
+        _prewarm_status['running'] = False
+        _prewarm_status['error'] = str(e)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[PRE-WARM] ✗ Erro ao pré-aquecer cache: {e}", exc_info=True)
+        print(f"[PRE-WARM] ✗ ERRO: {e}")
+        print("[PRE-WARM] Aplicação continuará funcionando. Cache será populado na primeira requisição.")
+
+async def _prewarm_with_timeout():
+    """
+    Wrapper para adicionar timeout de 60s ao PRE-WARM
+
+    IMPORTANTE: Timeout de 60s para evitar que a aplicação trave
+    se algum servidor Prometheus estiver inacessível na inicialização.
+    """
+    try:
+        await asyncio.wait_for(
+            _prewarm_metadata_fields_cache(),
+            timeout=60.0
+        )
+    except asyncio.TimeoutError:
+        # Timeout já é tratado dentro da função _prewarm_metadata_fields_cache
+        # mas garantimos aqui também caso a função não trate
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("[PRE-WARM-WRAPPER] Timeout de 60s excedido (wrapper)")
+        print("[PRE-WARM-WRAPPER] ✗ TIMEOUT de 60s excedido")
+
+# ============================================
+# CONFIGURAÇÃO DO LIFECYCLE
+# ============================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    """
+    Gerencia o ciclo de vida da aplicação FastAPI
+
+    STARTUP:
+    - Inicializa sistema de auditoria com eventos de exemplo
+    - Pré-aquece cache de campos metadata (background task)
+
+    SHUTDOWN:
+    - Finaliza recursos (futuro: fechar conexões, etc)
+    """
+    # ============================================
+    # STARTUP - Inicialização da Aplicação
+    # ============================================
     print(">> Iniciando Consul Manager API...")
 
-    # Inicializar sistema de auditoria com eventos de exemplo
+    # PASSO 1: Inicializar sistema de auditoria com eventos de exemplo
     from core.audit_manager import audit_manager
     from datetime import datetime, timedelta
 
@@ -92,8 +282,18 @@ async def lifespan(app: FastAPI):
 
     print(f">> Sistema de auditoria inicializado com {len(audit_manager.events)} eventos de exemplo")
 
+    # PASSO 2: Pré-aquecer cache de campos metadata (BACKGROUND TASK)
+    # IMPORTANTE: Roda em background para não bloquear o startup
+    # Best Practice: Manter startup rápido (<3s), jobs longos vão para background
+    # Timeout de 60s para evitar que servidores inacessíveis travem a aplicação
+    asyncio.create_task(_prewarm_with_timeout())
+    print(">> Background task de pré-aquecimento do cache iniciado (timeout: 60s)")
+
     yield
-    # Shutdown
+
+    # ============================================
+    # SHUTDOWN - Finalização da Aplicação
+    # ============================================
     print(">> Desligando Consul Manager API...")
 
 # Criar aplicação FastAPI
@@ -181,8 +381,7 @@ app.include_router(optimized_router, prefix="/api/v1", tags=["optimized"])
 app.include_router(prometheus_config_router, prefix="/api/v1", tags=["prometheus-config"])
 app.include_router(metadata_fields_router, prefix="/api/v1", tags=["metadata-fields"])
 # app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["metadata-dynamic"])  # REMOVIDO: Usar prometheus-config
-app.include_router(monitoring_types_router, prefix="/api/v1", tags=["monitoring-types"])  # NOVO: Configuration-driven
-app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["monitoring-types-dynamic"])  # NOVO: Tipos de Prometheus.yml
+app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["monitoring-types-dynamic"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["reference-values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["service-tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["settings"])  # NOVO: Configurações globais

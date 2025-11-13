@@ -20,7 +20,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useConsulDelete } from '../hooks/useConsulDelete';
+import CategoryManagementModal from '../components/CategoryManagementModal';
 import {
   PageContainer,
   ProCard,
@@ -37,6 +39,7 @@ import {
   Tooltip,
   Popconfirm,
   message,
+  Modal,
   Statistic,
   Row,
   Col,
@@ -47,6 +50,8 @@ import {
   Empty,
   Typography,
   Tabs,
+  Spin,
+  Alert,
 } from 'antd';
 import {
   PlusOutlined,
@@ -57,60 +62,43 @@ import {
   InfoCircleOutlined,
   DatabaseOutlined,
   CheckCircleOutlined,
+  LoadingOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useReferenceValues } from '../hooks/useReferenceValues';
+import axios from 'axios';
 
 const { Text, Title, Paragraph } = Typography;
 const { Search } = Input;
 
-// Organização de campos por categoria (extraídos do Prometheus)
-const FIELD_CATEGORIES = {
-  basic: {
-    label: 'Básico',
-    icon: '📝',
-    description: 'Campos básicos e obrigatórios',
-    fields: [
-      { name: 'company', label: 'Empresa', icon: '🏢', color: 'blue' },
-      { name: 'tipo_monitoramento', label: 'Tipo Monitoramento', icon: '🎯', color: 'cyan' },
-      { name: 'grupo_monitoramento', label: 'Grupo Monitoramento', icon: '📊', color: 'green' },
-    ],
-  },
-  infrastructure: {
-    label: 'Infraestrutura',
-    icon: '☁️',
-    description: 'Campos relacionados à infraestrutura e cloud',
-    fields: [
-      { name: 'vendor', label: 'Fornecedor', icon: '🏪', color: 'lime' },
-      { name: 'group', label: 'Grupo/Cluster', icon: '🔗', color: 'geekblue' },
-    ],
-  },
-  device: {
-    label: 'Dispositivo',
-    icon: '💻',
-    description: 'Campos de hardware e dispositivos',
-    fields: [
-      { name: 'localizacao', label: 'Localização', icon: '📍', color: 'orange' },
-      { name: 'tipo', label: 'Tipo', icon: '🏷️', color: 'purple' },
-      { name: 'modelo', label: 'Modelo', icon: '📦', color: 'cyan' },
-      { name: 'cod_localidade', label: 'Código Localidade', icon: '🔢', color: 'geekblue' },
-      { name: 'tipo_dispositivo_abrev', label: 'Tipo Dispositivo', icon: '💻', color: 'magenta' },
-      { name: 'cidade', label: 'Cidade', icon: '🏙️', color: 'volcano' },
-      { name: 'fabricante', label: 'Fabricante', icon: '🏭', color: 'red' },
-    ],
-  },
-  extra: {
-    label: 'Extras',
-    icon: '➕',
-    description: 'Campos adicionais e opcionais',
-    fields: [
-      { name: 'provedor', label: 'Provedor', icon: '🌐', color: 'gold' },
-      { name: 'field_category', label: 'Categoria de Campo', icon: '📂', color: 'purple' },
-    ],
-  },
-};
+// Tipos para dados carregados da API
+interface CategoryInfo {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  order: number;
+}
 
-// Lista plana de todos os campos (para compatibilidade)
-const AVAILABLE_FIELDS = Object.values(FIELD_CATEGORIES).flatMap((category) => category.fields);
+interface FieldInfo {
+  name: string;
+  display_name: string;
+  description: string;
+  categories: string[]; // Array de categorias (campo pode estar em múltiplas)
+  icon: string;
+  color: string;
+  required: boolean;
+  editable: boolean;
+  field_type: string;
+  order: number;
+}
+
+interface FieldCategoryData {
+  label: string;
+  icon: string;
+  description: string;
+  fields: FieldInfo[];
+}
 
 interface ReferenceValue {
   value: string;
@@ -122,7 +110,19 @@ interface ReferenceValue {
 }
 
 const ReferenceValuesPage: React.FC = () => {
-  const [selectedField, setSelectedField] = useState<string>('company');
+  const navigate = useNavigate();
+
+  // Estados para dados dinâmicos carregados da API
+  const [categories, setCategories] = useState<CategoryInfo[]>([]);
+  const [allFields, setAllFields] = useState<FieldInfo[]>([]);
+  const [fieldCategories, setFieldCategories] = useState<Record<string, FieldCategoryData>>({});
+  const [availableFields, setAvailableFields] = useState<FieldInfo[]>([]);
+  const [loadingConfig, setLoadingConfig] = useState<boolean>(true);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState<boolean>(false);
+
+  // Estados da página
+  const [selectedField, setSelectedField] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -135,6 +135,7 @@ const ReferenceValuesPage: React.FC = () => {
     ensureValue,
     createValue,
     deleteValue,
+    renameValue,
     refreshValues,
   } = useReferenceValues({
     fieldName: selectedField,
@@ -152,8 +153,115 @@ const ReferenceValuesPage: React.FC = () => {
     },
   });
 
-  // Campo selecionado info
-  const selectedFieldInfo = AVAILABLE_FIELDS.find((f) => f.name === selectedField);
+  // Função para carregar configuração (pode ser chamada externamente)
+  const loadConfig = async () => {
+    try {
+      setLoadingConfig(true);
+      setConfigError(null);
+
+      // Carregar categorias e campos em paralelo
+      const [categoriesRes, fieldsRes] = await Promise.all([
+        axios.get('http://localhost:5000/api/v1/reference-values/categories'),
+        axios.get('http://localhost:5000/api/v1/reference-values/'),
+      ]);
+
+      if (!categoriesRes.data.success || !fieldsRes.data.success) {
+        throw new Error('Erro ao carregar configuração');
+      }
+
+      const loadedCategories: CategoryInfo[] = categoriesRes.data.categories;
+      const loadedFields: FieldInfo[] = fieldsRes.data.fields;
+
+      // Ordenar categorias por order
+      loadedCategories.sort((a, b) => a.order - b.order);
+
+      // Agrupar campos por categoria (um campo pode estar em múltiplas)
+      const categoriesMap: Record<string, FieldCategoryData> = {};
+
+      loadedCategories.forEach((cat) => {
+        categoriesMap[cat.key] = {
+          label: cat.label,
+          icon: cat.icon,
+          description: cat.description,
+          fields: [],
+        };
+      });
+
+      // Adicionar campos às categorias (campo pode aparecer em múltiplas)
+      loadedFields.forEach((field) => {
+        field.categories.forEach((catKey) => {
+          if (categoriesMap[catKey]) {
+            categoriesMap[catKey].fields.push(field);
+          }
+        });
+      });
+
+      // Ordenar campos dentro de cada categoria por order
+      Object.values(categoriesMap).forEach((cat) => {
+        cat.fields.sort((a, b) => a.order - b.order);
+      });
+
+      setCategories(loadedCategories);
+      setAllFields(loadedFields);
+      setFieldCategories(categoriesMap);
+      setAvailableFields(loadedFields);
+
+      // Definir primeiro campo como selecionado (apenas se ainda não tem)
+      if (loadedFields.length > 0 && !selectedField) {
+        setSelectedField(loadedFields[0].name);
+      }
+
+      console.log('[ReferenceValues] ✅ Configuração dinâmica carregada:', {
+        categories: loadedCategories.length,
+        fields: loadedFields.length,
+      });
+    } catch (err: any) {
+      console.error('[ReferenceValues] ❌ Erro ao carregar configuração:', err);
+      setConfigError(err.message || 'Erro ao carregar configuração');
+    } finally {
+      setLoadingConfig(false);
+    }
+  };
+
+  // Carregar configuração dinâmica de campos e categorias da API ao montar
+  useEffect(() => {
+    loadConfig();
+  }, []); // Executa apenas uma vez ao montar
+
+  // Verificar se não há campos disponíveis e mostrar modal explicativo
+  useEffect(() => {
+    if (!loadingConfig && !configError && availableFields.length === 0) {
+      Modal.warning({
+        title: '⚠️ Nenhum Campo Disponível para Reference Values',
+        width: 600,
+        content: (
+          <div>
+            <p>Não há campos habilitados para auto-cadastro de valores de referência.</p>
+
+            <p style={{ marginTop: 16 }}><strong>O que fazer?</strong></p>
+            <ol>
+              <li>Acesse a página <strong>Metadata Fields</strong></li>
+              <li>Escolha os campos que deseja gerenciar valores</li>
+              <li>Clique em <strong>Editar</strong> no campo</li>
+              <li>Ative o toggle <strong>Auto-Cadastro</strong></li>
+              <li>Salve e retorne para esta página</li>
+            </ol>
+
+            <p style={{ marginTop: 16, color: '#faad14' }}>
+              💡 <strong>Dica:</strong> Campos como "company", "cidade", "fabricante" são bons candidatos!
+            </p>
+          </div>
+        ),
+        okText: 'Ir para Metadata Fields',
+        onOk: () => {
+          navigate('/metadata-fields');
+        },
+      });
+    }
+  }, [loadingConfig, configError, availableFields, navigate]);
+
+  // Campo selecionado info (agora dinâmico)
+  const selectedFieldInfo = availableFields.find((f) => f.name === selectedField);
 
   // Filtrar valores com base na busca
   const filteredValues = valuesWithMetadata.filter((v) =>
@@ -191,6 +299,39 @@ const ReferenceValuesPage: React.FC = () => {
   };
 
   // Colunas da tabela
+  // Renderizar loading state enquanto carrega configuração
+  if (loadingConfig) {
+    return (
+      <PageContainer>
+        <div style={{ textAlign: 'center', padding: '100px 0' }}>
+          <Spin size="large" indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />} />
+          <div style={{ marginTop: 16 }}>
+            <Text>Carregando configuração de campos...</Text>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  // Renderizar erro se falhou ao carregar
+  if (configError) {
+    return (
+      <PageContainer>
+        <Alert
+          message="Erro ao Carregar Configuração"
+          description={configError}
+          type="error"
+          showIcon
+          action={
+            <Button size="small" danger onClick={() => window.location.reload()}>
+              Recarregar Página
+            </Button>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
   const columns: ProColumns<ReferenceValue>[] = [
     {
       title: 'Valor',
@@ -293,9 +434,20 @@ const ReferenceValuesPage: React.FC = () => {
       subTitle="Gerencie todos os valores usados nos autocompletes do sistema"
       extra={[
         <Button
+          key="manage"
+          icon={<SettingOutlined />}
+          onClick={() => setCategoryModalOpen(true)}
+          type="default"
+        >
+          Gerenciar Categorias
+        </Button>,
+        <Button
           key="reload"
           icon={<ReloadOutlined />}
-          onClick={() => refreshValues()}
+          onClick={() => {
+            console.log(`[ReferenceValues] 🔄 Botão RECARREGAR clicado - Campo selecionado: ${selectedField}`);
+            refreshValues();
+          }}
           loading={loading}
         >
           Recarregar
@@ -310,26 +462,26 @@ const ReferenceValuesPage: React.FC = () => {
         </Button>,
       ]}
     >
-      {/* Seletor de Campo por Categoria */}
+      {/* Seletor de Campo por Categoria (DINÂMICO) */}
       <ProCard title="📋 Selecione o Campo" bordered style={{ marginBottom: 16 }}>
         <Tabs
-          defaultActiveKey="basic"
+          defaultActiveKey={categories.length > 0 ? categories[0].key : 'basic'}
           type="card"
           size="large"
-          items={Object.entries(FIELD_CATEGORIES).map(([key, category]) => ({
-            key,
+          items={categories.map((cat) => ({
+            key: cat.key,
             label: (
               <span>
-                {category.icon} {category.label}
+                {cat.icon} {cat.label}
               </span>
             ),
             children: (
               <div>
                 <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                  {category.description}
+                  {cat.description}
                 </Paragraph>
                 <Row gutter={[16, 16]}>
-                  {category.fields.map((field) => (
+                  {(fieldCategories[cat.key]?.fields || []).map((field) => (
                     <Col key={field.name} xs={24} sm={12} md={8} lg={6} xl={4}>
                       <Card
                         hoverable
@@ -343,7 +495,7 @@ const ReferenceValuesPage: React.FC = () => {
                         <Space direction="vertical" size="small" style={{ width: '100%' }}>
                           <div style={{ fontSize: 32, textAlign: 'center' }}>{field.icon}</div>
                           <Text strong style={{ textAlign: 'center', display: 'block' }}>
-                            {field.label}
+                            {field.display_name}
                           </Text>
                           <Tag color={field.color} style={{ margin: '0 auto', display: 'block', width: 'fit-content' }}>
                             {field.name}
@@ -398,7 +550,7 @@ const ReferenceValuesPage: React.FC = () => {
         title={
           <Space>
             {selectedFieldInfo?.icon}
-            <span>Valores de {selectedFieldInfo?.label}</span>
+            <span>Valores de {selectedFieldInfo?.display_name}</span>
             <Tag color={selectedFieldInfo?.color}>{totalValues} valores</Tag>
           </Space>
         }
@@ -446,7 +598,7 @@ const ReferenceValuesPage: React.FC = () => {
                   description={
                     searchText
                       ? `Nenhum valor encontrado para "${searchText}"`
-                      : `Nenhum valor cadastrado para ${selectedFieldInfo?.label}`
+                      : `Nenhum valor cadastrado para ${selectedFieldInfo?.display_name}`
                   }
                 >
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
@@ -461,7 +613,7 @@ const ReferenceValuesPage: React.FC = () => {
 
       {/* Modal: Criar Valor */}
       <ModalForm
-        title={`➕ Adicionar Novo Valor - ${selectedFieldInfo?.label}`}
+        title={`➕ Adicionar Novo Valor - ${selectedFieldInfo?.display_name}`}
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
         onFinish={handleCreate}
@@ -473,7 +625,7 @@ const ReferenceValuesPage: React.FC = () => {
         <ProFormText
           name="value"
           label="Valor"
-          placeholder={`Digite o novo valor para ${selectedFieldInfo?.label}`}
+          placeholder={`Digite o novo valor para ${selectedFieldInfo?.display_name}`}
           rules={[
             { required: true, message: 'Valor é obrigatório' },
             { min: 1, message: 'Valor muito curto' },
@@ -496,6 +648,77 @@ const ReferenceValuesPage: React.FC = () => {
           tooltip="Metadata adicional em formato JSON. Exemplo: {&quot;estado&quot;: &quot;SP&quot;, &quot;regiao&quot;: &quot;Sudeste&quot;}"
         />
       </ModalForm>
+
+      {/* Modal: Editar Valor */}
+      <ModalForm
+        title={`✏️ Editar Valor - ${selectedFieldInfo?.display_name}`}
+        open={editModalOpen}
+        onOpenChange={(open) => {
+          setEditModalOpen(open);
+          if (!open) setEditingValue(null);
+        }}
+        onFinish={async (formData: { value: string; metadata?: string }) => {
+          try {
+            if (editingValue) {
+              // CRÍTICO: Usa renameValue para PRESERVAR REFERÊNCIAS
+              await renameValue(editingValue.value, formData.value);
+              message.success(`Valor renomeado de "${editingValue.value}" para "${formData.value}" (referências preservadas)`);
+              setEditModalOpen(false);
+              setEditingValue(null);
+              await refreshValues();
+            }
+            return true;
+          } catch (err: any) {
+            const errorMsg = err.message || 'Erro ao renomear valor';
+            message.error(errorMsg);
+            return false;
+          }
+        }}
+        width={600}
+        modalProps={{
+          destroyOnHidden: true,
+        }}
+        initialValues={{
+          value: editingValue?.value || '',
+          metadata: editingValue?.metadata ? JSON.stringify(editingValue.metadata, null, 2) : '',
+        }}
+      >
+        <ProFormText
+          name="value"
+          label="Valor"
+          placeholder={`Digite o novo valor para ${selectedFieldInfo?.display_name}`}
+          rules={[
+            { required: true, message: 'Valor é obrigatório' },
+            { min: 1, message: 'Valor muito curto' },
+            { max: 200, message: 'Valor muito longo (máximo 200 caracteres)' },
+          ]}
+          tooltip="O valor será automaticamente normalizado (primeira letra maiúscula)"
+          fieldProps={{
+            prefix: selectedFieldInfo?.icon,
+            maxLength: 200,
+          }}
+        />
+        <ProFormTextArea
+          name="metadata"
+          label="Metadata (JSON - Opcional)"
+          placeholder='{"key": "value"}'
+          fieldProps={{
+            rows: 4,
+            placeholder: 'Adicione metadata adicional em formato JSON (opcional)',
+          }}
+          tooltip="Metadata adicional em formato JSON. Exemplo: {&quot;estado&quot;: &quot;SP&quot;, &quot;regiao&quot;: &quot;Sudeste&quot;}"
+        />
+      </ModalForm>
+
+      {/* Modal de Gerenciamento de Categorias */}
+      <CategoryManagementModal
+        open={categoryModalOpen}
+        onCancel={() => {
+          setCategoryModalOpen(false);
+          // Recarregar categorias após fechar modal
+          loadConfig();
+        }}
+      />
     </PageContainer>
   );
 };

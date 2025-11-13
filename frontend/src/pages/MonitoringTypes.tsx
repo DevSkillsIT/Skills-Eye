@@ -7,7 +7,7 @@
  * FONTE DA VERDADE: prometheus.yml (não JSONs estáticos)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { PageContainer, ProCard } from '@ant-design/pro-components';
 import {
   Card,
@@ -125,9 +125,10 @@ export default function MonitoringTypes() {
     };
 
     fetchServers();
-  }, [viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]); // selectedServerId é atualizado dentro, não precisa estar nas dependências
 
-  const loadTypes = async () => {
+  const loadTypes = useCallback(async () => {
     setLoading(true);
     try {
       const response = await axios.get(`${API_URL}/monitoring-types-dynamic/from-prometheus`, {
@@ -156,13 +157,13 @@ export default function MonitoringTypes() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [viewMode, selectedServerInfo]);
 
   useEffect(() => {
     if (viewMode === 'all' || selectedServerInfo) {
       loadTypes();
     }
-  }, [viewMode, selectedServerId, selectedServerInfo]);
+  }, [viewMode, selectedServerInfo, loadTypes]);
 
   const handleServerChange = (serverId: string, server: Server) => {
     setSelectedServerId(serverId);

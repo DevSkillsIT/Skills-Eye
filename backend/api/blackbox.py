@@ -155,8 +155,7 @@ async def delete_target(request: BlackboxDeleteRequest):
 
             if success:
                 logger.info(f"[DELETE MÉTODO 1] ✅ SUCESSO! Removido via agent no {request.node_addr}")
-                # Limpar KV também
-                await kv.delete_blackbox_target(request.service_id)
+                # NOTA: Código KV removido (2025-01-09) - mantém apenas audit log
                 await kv.log_audit_event(
                     action="DELETE",
                     resource_type="blackbox_target",
@@ -234,8 +233,7 @@ async def delete_target(request: BlackboxDeleteRequest):
 
             logger.info(f"[DELETE MÉTODO 2] ✅ SUCESSO! Removido via catalog")
 
-            # Limpar KV também
-            await kv.delete_blackbox_target(request.service_id)
+            # NOTA: Código KV removido (2025-01-09) - mantém apenas audit log
             await kv.log_audit_event(
                 action="DELETE",
                 resource_type="blackbox_target",
