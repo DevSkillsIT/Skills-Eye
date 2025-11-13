@@ -22,12 +22,47 @@ class Config:
     CONSUL_TOKEN = os.getenv("CONSUL_TOKEN", "8382a112-81e0-cd6d-2b92-8565925a0675")
     CONSUL_PORT = int(os.getenv("CONSUL_PORT", "8500"))
 
-    # Nós conhecidos
-    KNOWN_NODES = {
-        "glpi-grafana-prometheus.skillsit.com.br": "172.16.1.26",
-        "consul-DTC-Genesis-Skills": "11.144.0.21",
-        "consul-RMD-LDC-Rio": "172.16.200.14"
-    }
+    @staticmethod
+    def get_known_nodes() -> Dict[str, str]:
+        """
+        Retorna mapa de nós conhecidos (hostname → IP).
+
+        NOTA: Agora busca do Consul KV (skills/eye/metadata/sites)
+        Se KV não disponível, usa fallback estático.
+        """
+        # Fallback estático (caso KV não disponível)
+        fallback = {
+            "glpi-grafana-prometheus.skillsit.com.br": "172.16.1.26",
+            "consul-DTC-Genesis-Skills": "11.144.0.21",
+            "consul-RMD-LDC-Rio": "172.16.200.14"
+        }
+
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            import asyncio
+            sites_data = asyncio.run(kv.get_json('skills/eye/metadata/sites'))
+
+            if sites_data:
+                # Converter lista de sites para dict {hostname: prometheus_instance}
+                nodes = {}
+                for site in sites_data:
+                    # Usar hostname se disponível, senão usar name
+                    hostname = site.get('hostname') or site.get('name', 'unknown')
+                    ip = site.get('prometheus_instance')
+                    if ip:
+                        nodes[hostname] = ip
+
+                # Se conseguiu dados do KV, retornar
+                if nodes:
+                    return nodes
+
+            # Fallback: retornar valores estáticos se KV vazio
+            return fallback
+        except Exception:
+            # Se falhar, retornar fallback estático
+            return fallback
 
     # Service Names
     SERVICE_NAMES = {
@@ -113,3 +148,9 @@ class Config:
     def REQUIRED_FIELDS(self) -> List[str]:
         """DEPRECATED: Use Config.get_required_fields() - Agora busca do Prometheus/KV"""
         return Config.get_required_fields()
+
+
+# Inicializar KNOWN_NODES ao carregar módulo (compatibilidade legado)
+# Código legado pode continuar usando Config.KNOWN_NODES
+# Novo código deve usar Config.get_known_nodes() para valores dinâmicos
+Config.KNOWN_NODES = Config.get_known_nodes()

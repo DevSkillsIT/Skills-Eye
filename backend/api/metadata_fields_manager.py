@@ -1046,7 +1046,10 @@ async def get_sync_status(
             field_name = field.get('name')
             field_display_name = field.get('display_name', field_name)
             field_source_label = field.get('source_label')
-            discovered_in = field.get('discovered_in', [])  # Lista de servidores onde foi descoberto
+            # TODO Issue #7: discovered_in foi movido para server_status[].fields[]
+            # Este código precisa ser refatorado para calcular discovered_in dinamicamente
+            # usando get_discovered_in_for_field(field_name, server_status)
+            discovered_in = field.get('discovered_in', [])  # DEPRECATED - será removido
 
             if not field_source_label:
                 # Campo sem source_label definido
