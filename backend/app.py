@@ -413,7 +413,7 @@ app.include_router(metadata_fields_router, prefix="/api/v1", tags=["Metadata Fie
 # app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["Dynamic Metadata"])  # REMOVIDO: Usar prometheus-config
 app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["Monitoring Types"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
 app.include_router(monitoring_unified_router, prefix="/api/v1", tags=["Monitoring Unified"])  # ⭐ NOVO: API unificada (v2.0 2025-11-13)
-app.include_router(categorization_rules_router, prefix="/api/v1/categorization-rules", tags=["Categorization Rules"])  # ⭐ NOVO: CRUD de regras (v2.0 2025-11-13)
+app.include_router(categorization_rules_router, prefix="/api/v1", tags=["Categorization Rules"])  # ⭐ NOVO: CRUD de regras (v2.0 2025-11-13)
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["Reference Values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais
