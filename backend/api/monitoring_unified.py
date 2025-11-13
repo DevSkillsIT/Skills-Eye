@@ -4,16 +4,19 @@ API Unificada de Monitoramento - Endpoint Único para Todas as Páginas
 RESPONSABILIDADES:
 - Endpoint unificado GET /api/v1/monitoring/data (busca do Consul)
 - Endpoint unificado GET /api/v1/monitoring/metrics (busca do Prometheus via PromQL)
-- Endpoint POST /api/v1/monitoring/sync-cache (sincronização forçada)
 - Filtra por categoria (network-probes, web-probes, etc)
 - Executa queries PromQL dinamicamente
 - Retorna dados formatados para ProTable
 
+ARQUITETURA REFATORADA (2025-11-13):
+- USA metadata/fields para campos disponíveis (descobertos do prometheus.yml)
+- USA metadata/sites para mapear IP → site code
+- USA categorization/rules para determinar categoria de serviços
+- ELIMINA monitoring-types/cache (redundante)
+- REUTILIZA código existente de monitoring_types_dynamic.py
+
 AUTOR: Sistema de Refatoração Skills Eye v2.0
 DATA: 2025-11-13
-
-IMPORTANTE: Este arquivo implementa a ESTRATÉGIA DUPLA conforme
-documento NOTA_AJUSTES_PLANO_V2.md - Seção 2️⃣
 """
 
 from fastapi import APIRouter, HTTPException, Query
@@ -25,14 +28,16 @@ import httpx
 from core.consul_kv_config_manager import ConsulKVConfigManager
 from core.dynamic_query_builder import DynamicQueryBuilder, QUERY_TEMPLATES
 from core.consul_manager import ConsulManager
+from core.categorization_rule_engine import CategorizationRuleEngine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring", tags=["Monitoring Unified"])
 
 # Inicializar componentes globais
-config_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
+kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 query_builder = DynamicQueryBuilder()
 consul_manager = ConsulManager()
+categorization_engine = CategorizationRuleEngine(kv_manager)
 
 
 # ============================================================================
@@ -49,16 +54,16 @@ async def get_monitoring_data(
     """
     Endpoint para buscar SERVIÇOS do Consul filtrados por categoria
 
-    Este endpoint busca do Consul Service Registry (igual Services.tsx faz),
-    NÃO do Prometheus. É a fonte primária de dados para as 4 novas páginas.
-
-    FLUXO:
-    1. Busca tipos de monitoramento do cache KV
-    2. Identifica módulos/jobs da categoria solicitada
-    3. Busca TODOS os serviços do Consul
-    4. Filtra serviços por módulo/job da categoria
-    5. Aplica filtros adicionais (company, site, env)
-    6. Retorna dados formatados
+    FLUXO REFATORADO:
+    1. Busca sites do KV (metadata/sites) - mapeia IP → site code
+    2. Busca campos do KV (metadata/fields) - campos disponíveis
+    3. Busca regras de categorização (categorization/rules)
+    4. Busca TODOS os serviços do Consul
+    5. Aplica categorização usando CategorizationRuleEngine
+    6. Filtra serviços por categoria solicitada
+    7. Adiciona informações do site (code, name) ao serviço
+    8. Aplica filtros adicionais (company, site, env)
+    9. Retorna dados formatados
 
     Args:
         category: Categoria de monitoramento (ex: network-probes)
@@ -77,93 +82,80 @@ async def get_monitoring_data(
                     "Service": "blackbox",
                     "Address": "10.0.0.1",
                     "Port": 9115,
-                    "Tags": ["icmp", "network"],
+                    "Node": "consul-server-1",
+                    "site_code": "palmas",
+                    "site_name": "Palmas",
                     "Meta": {
                         "module": "icmp",
                         "company": "Empresa Ramada",
                         "site": "palmas",
                         "env": "prod",
-                        "name": "Gateway Principal",
-                        "instance": "10.0.0.1"
+                        "name": "Gateway Principal"
                     }
                 }
             ],
             "total": 150,
-            "modules": ["icmp", "tcp", "dns"],  # Para categoria network-probes
-            "cache_age_seconds": 42
+            "available_fields": ["company", "site", "env", "name", ...]
         }
         ```
-
-    Example:
-        GET /api/v1/monitoring/data?category=network-probes&company=Ramada
-        GET /api/v1/monitoring/data?category=system-exporters&site=palmas
     """
     try:
         logger.info(f"[MONITORING DATA] Buscando dados da categoria '{category}'")
 
         # ==================================================================
-        # PASSO 1: Buscar tipos de monitoramento do cache KV
+        # PASSO 1: Buscar SITES do KV (metadata/sites)
         # ==================================================================
-        types_cache = await config_manager.get('monitoring-types/cache')
+        from core.kv_manager import KVManager
+        kv = KVManager()
 
-        if not types_cache:
-            raise HTTPException(
-                status_code=500,
-                detail=(
-                    "Cache de tipos não disponível. "
-                    "Execute o script de migração: 'python backend/migrate_categorization_to_json.py' "
-                    "OU sincronize via API: 'POST /api/v1/monitoring/sync-cache'"
-                )
-            )
+        sites_data = await kv.get_json('skills/eye/metadata/sites')
+        sites = []
+        sites_map = {}  # IP → site data
 
-        cache_stats = config_manager.get_cache_stats()
-        logger.debug(f"[MONITORING DATA] Cache stats: {cache_stats}")
+        if sites_data and 'data' in sites_data:
+            sites = sites_data['data'].get('sites', [])
+            # Criar mapa IP → site para lookup rápido
+            for site in sites:
+                prometheus_ip = site.get('prometheus_instance') or site.get('prometheus_host')
+                if prometheus_ip:
+                    sites_map[prometheus_ip] = site
 
-        # ==================================================================
-        # PASSO 2: Filtrar tipos pela categoria solicitada
-        # ==================================================================
-        category_types = []
-        for category_data in types_cache.get('categories', []):
-            if category_data['category'] == category:
-                category_types = category_data['types']
-                break
-
-        if not category_types:
-            # Categoria não encontrada - listar categorias disponíveis
-            available_categories = [c['category'] for c in types_cache.get('categories', [])]
-            raise HTTPException(
-                status_code=404,
-                detail=f"Categoria '{category}' não encontrada. Categorias disponíveis: {available_categories}"
-            )
-
-        logger.info(f"[MONITORING DATA] Categoria '{category}' tem {len(category_types)} tipos")
+        logger.debug(f"[MONITORING DATA] Carregados {len(sites)} sites do KV")
 
         # ==================================================================
-        # PASSO 3: Mapear categoria → módulos/jobs para filtrar serviços
+        # PASSO 2: Buscar CAMPOS do KV (metadata/fields)
         # ==================================================================
-        # Extrair módulos (para blackbox) e job_names (para exporters)
-        modules = set()
-        job_names = set()
+        fields_data = await kv.get_json('skills/eye/metadata/fields')
+        available_fields = []
 
-        for type_def in category_types:
-            if type_def.get('module'):  # Blackbox probe
-                modules.add(type_def['module'])
-            if type_def.get('job_name'):
-                job_names.add(type_def['job_name'])
+        if fields_data and 'fields' in fields_data:
+            # Filtrar apenas campos relevantes para a categoria
+            for field in fields_data['fields']:
+                # Verificar se campo deve aparecer nesta categoria
+                show_in_key = f"show_in_{category.replace('-', '_')}"
+                if field.get(show_in_key, True):  # Default True
+                    available_fields.append({
+                        'name': field['name'],
+                        'display_name': field.get('display_name', field['name']),
+                        'field_type': field.get('field_type', 'string')
+                    })
 
-        logger.debug(f"[MONITORING DATA] Módulos: {modules}, Jobs: {job_names}")
+        logger.debug(f"[MONITORING DATA] {len(available_fields)} campos disponíveis para '{category}'")
+
+        # ==================================================================
+        # PASSO 3: Carregar regras de categorização
+        # ==================================================================
+        await categorization_engine.load_rules()
 
         # ==================================================================
         # PASSO 4: Buscar TODOS os serviços do Consul
         # ==================================================================
-        # Buscar serviços de todos os nós (retorna {node_name: {service_id: service_data}})
         all_services_dict = await consul_manager.get_all_services_from_all_nodes()
 
         # Converter estrutura aninhada para lista plana
         all_services = []
         for node_name, services_dict in all_services_dict.items():
             for service_id, service_data in services_dict.items():
-                # Adicionar node e ID aos dados do serviço
                 service_data['Node'] = node_name
                 service_data['ID'] = service_id
                 all_services.append(service_data)
@@ -171,41 +163,56 @@ async def get_monitoring_data(
         logger.info(f"[MONITORING DATA] Total de serviços no Consul: {len(all_services)}")
 
         # ==================================================================
-        # PASSO 5: Filtrar serviços pela categoria
+        # PASSO 5: Categorizar serviços e filtrar pela categoria solicitada
         # ==================================================================
         filtered_services = []
 
         for svc in all_services:
-            # Verificar se serviço pertence à categoria
-            # Regra 1: Se tem módulo nos metadata, comparar com módulos da categoria
+            # Categorizar serviço usando engine
+            svc_job_name = svc.get('Service', '')
             svc_module = svc.get('Meta', {}).get('module', '')
-            svc_belongs_to_category = False
+            svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
 
-            if svc_module and svc_module in modules:
-                # Este serviço é um blackbox probe da categoria
-                svc_belongs_to_category = True
-            # Regra 2: Se job_name está na lista de jobs da categoria
-            elif svc.get('Service') in job_names:
-                # Este serviço é um exporter da categoria
-                svc_belongs_to_category = True
+            svc_category = categorization_engine.categorize(
+                job_name=svc_job_name,
+                module=svc_module,
+                metrics_path=svc_metrics_path
+            )
 
-            # Se serviço não pertence à categoria, pular
-            if not svc_belongs_to_category:
+            # Verificar se serviço pertence à categoria solicitada
+            if svc_category != category:
                 continue
 
             # ========================================================
-            # Aplicar filtros adicionais (company, site, env)
+            # PASSO 6: Adicionar informações do site
+            # ========================================================
+            # Tentar mapear IP do nó para site code
+            node_address = svc.get('Address', '')
+            site_info = sites_map.get(node_address)
+
+            if site_info:
+                svc['site_code'] = site_info.get('code')
+                svc['site_name'] = site_info.get('name')
+            else:
+                # Fallback: usar metadata.site se disponível
+                svc['site_code'] = svc.get('Meta', {}).get('site')
+                svc['site_name'] = None
+
+            # ========================================================
+            # PASSO 7: Aplicar filtros adicionais
             # ========================================================
             svc_meta = svc.get('Meta', {})
 
             if company and svc_meta.get('company') != company:
-                continue  # Filtrar por company
+                continue
 
-            if site and svc_meta.get('site') != site:
-                continue  # Filtrar por site
+            if site:
+                # Filtrar por site_code OU metadata.site
+                if svc.get('site_code') != site and svc_meta.get('site') != site:
+                    continue
 
             if env and svc_meta.get('env') != env:
-                continue  # Filtrar por env
+                continue
 
             # Serviço passou em todos os filtros
             filtered_services.append(svc)
@@ -216,27 +223,22 @@ async def get_monitoring_data(
         )
 
         # ==================================================================
-        # PASSO 6: Retornar dados formatados
+        # PASSO 8: Retornar dados formatados
         # ==================================================================
         return {
             "success": True,
             "category": category,
             "data": filtered_services,
             "total": len(filtered_services),
-            "modules": list(modules),
-            "job_names": list(job_names),
-            "cache_age_seconds": (
-                (datetime.now() - config_manager._cache.get(
-                    f"{config_manager.prefix}monitoring-types/cache",
-                    type('obj', (), {'timestamp': datetime.now()})()
-                ).timestamp).total_seconds()
-                if f"{config_manager.prefix}monitoring-types/cache" in config_manager._cache
-                else 0
-            ),
+            "available_fields": available_fields,
             "filters_applied": {
                 "company": company,
                 "site": site,
                 "env": env
+            },
+            "metadata": {
+                "total_sites": len(sites),
+                "categorization_engine": "loaded"
             }
         }
 
@@ -254,7 +256,7 @@ async def get_monitoring_data(
 @router.get("/metrics")
 async def get_monitoring_metrics(
     category: str = Query(..., description="Categoria: network-probes, web-probes, etc"),
-    server: Optional[str] = Query(None, description="Servidor Prometheus"),
+    server: Optional[str] = Query(None, description="Servidor Prometheus (IP ou site code)"),
     time_range: str = Query("5m", description="Intervalo de tempo (ex: 5m, 1h)"),
     company: Optional[str] = Query(None),
     site: Optional[str] = Query(None)
@@ -262,142 +264,132 @@ async def get_monitoring_metrics(
     """
     Endpoint para buscar MÉTRICAS do Prometheus via PromQL
 
-    Este endpoint executa queries PromQL e retorna métricas atuais,
-    diferente de /data que busca serviços cadastrados no Consul.
-
-    USO TÍPICO:
-    - Dashboards com métricas em tempo real
-    - Gráficos de performance
-    - Alertas baseados em métricas
-
-    FLUXO:
-    1. Busca tipos de monitoramento do cache KV
-    2. Determina servidor Prometheus (ou usa padrão)
-    3. Constrói query PromQL baseado na categoria
-    4. Executa query no Prometheus
-    5. Processa e formata resultados
-    6. Retorna métricas
+    FLUXO REFATORADO:
+    1. Busca sites do KV para resolver server (pode ser IP ou site code)
+    2. Busca regras de categorização
+    3. Determina jobs/módulos da categoria
+    4. Constrói query PromQL baseado na categoria
+    5. Executa query no Prometheus
+    6. Processa e formata resultados
 
     Args:
         category: Categoria de monitoramento
-        server: Servidor Prometheus específico (opcional, padrão: primeiro disponível)
-        time_range: Intervalo de tempo para métricas (ex: 5m)
+        server: Servidor Prometheus (IP ou site code, opcional)
+        time_range: Intervalo de tempo para métricas
         company: Filtro de empresa
         site: Filtro de site
 
     Returns:
-        ```json
-        {
-            "success": true,
-            "category": "network-probes",
-            "metrics": [
-                {
-                    "instance": "10.0.0.1",
-                    "job": "blackbox",
-                    "module": "icmp",
-                    "status": 1,
-                    "latency_ms": 25.3,
-                    "timestamp": "2025-11-13T10:30:00Z",
-                    "company": "Ramada",
-                    "site": "palmas"
-                }
-            ],
-            "query": "probe_success{job='blackbox',__param_module=~'icmp|tcp'}",
-            "prometheus_server": "172.16.1.26:9090",
-            "total": 45
-        }
-        ```
+        Métricas do Prometheus formatadas
     """
     try:
         logger.info(f"[MONITORING METRICS] Buscando métricas da categoria '{category}'")
 
         # ==================================================================
-        # PASSO 1: Buscar tipos de monitoramento do cache
+        # PASSO 1: Resolver servidor Prometheus
         # ==================================================================
-        types_cache = await config_manager.get('monitoring-types/cache')
+        from core.kv_manager import KVManager
+        kv = KVManager()
 
-        if not types_cache:
+        prometheus_host = None
+        prometheus_port = 9090
+
+        if server:
+            # Tentar resolver como site code primeiro
+            sites_data = await kv.get_json('skills/eye/metadata/sites')
+            if sites_data and 'data' in sites_data:
+                for site_info in sites_data['data'].get('sites', []):
+                    if site_info.get('code') == server or site_info.get('prometheus_instance') == server:
+                        prometheus_host = site_info.get('prometheus_host') or site_info.get('prometheus_instance')
+                        prometheus_port = site_info.get('prometheus_port', 9090)
+                        break
+
+            # Se não encontrou, usar como IP direto
+            if not prometheus_host:
+                prometheus_host = server
+        else:
+            # Usar primeiro site disponível
+            sites_data = await kv.get_json('skills/eye/metadata/sites')
+            if sites_data and 'data' in sites_data:
+                sites = sites_data['data'].get('sites', [])
+                if sites:
+                    default_site = next((s for s in sites if s.get('is_default')), sites[0])
+                    prometheus_host = default_site.get('prometheus_host') or default_site.get('prometheus_instance')
+                    prometheus_port = default_site.get('prometheus_port', 9090)
+
+        if not prometheus_host:
             raise HTTPException(
                 status_code=500,
-                detail="Cache de tipos não disponível"
+                detail="Nenhum servidor Prometheus configurado"
             )
 
-        # ==================================================================
-        # PASSO 2: Determinar servidor Prometheus
-        # ==================================================================
-        if not server:
-            # Usar primeiro servidor disponível
-            servers = list(types_cache.get('servers', {}).keys())
-            if not servers:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Nenhum servidor Prometheus configurado"
-                )
-            server = servers[0]
-
-        logger.info(f"[MONITORING METRICS] Usando servidor Prometheus: {server}")
+        logger.info(f"[MONITORING METRICS] Usando Prometheus: {prometheus_host}:{prometheus_port}")
 
         # ==================================================================
-        # PASSO 3: Buscar tipos da categoria
+        # PASSO 2: Carregar regras e determinar jobs/módulos da categoria
         # ==================================================================
-        category_types = []
-        for cat_data in types_cache.get('categories', []):
-            if cat_data['category'] == category:
-                category_types = cat_data['types']
-                break
+        await categorization_engine.load_rules()
 
-        if not category_types:
+        # Obter todas as regras da categoria
+        rules = categorization_engine.get_rules_by_category(category)
+
+        if not rules:
             raise HTTPException(
                 status_code=404,
-                detail=f"Categoria '{category}' não encontrada"
+                detail=f"Nenhuma regra de categorização encontrada para '{category}'"
             )
 
+        # Extrair job_name_pattern e module_pattern das regras
+        jobs_patterns = []
+        modules_patterns = []
+
+        for rule in rules:
+            conditions = rule.get('conditions', {})
+            if conditions.get('job_name_pattern'):
+                jobs_patterns.append(conditions['job_name_pattern'].replace('^', '').replace('.*', ''))
+            if conditions.get('module_pattern'):
+                modules_patterns.append(conditions['module_pattern'].replace('^', '').replace('$', ''))
+
         # ==================================================================
-        # PASSO 4: Construir query PromQL baseado na categoria
+        # PASSO 3: Construir query PromQL baseado na categoria
         # ==================================================================
         query = None
 
         if category in ['network-probes', 'web-probes']:
-            # Blackbox probes - usar template network_probe_success
-            modules = [t['module'] for t in category_types if t.get('module')]
-
-            query = query_builder.build(
-                QUERY_TEMPLATES['network_probe_success'],
-                {
-                    'modules': modules,
-                    'company': company,
-                    'site': site
-                }
-            )
+            # Blackbox probes
+            if modules_patterns:
+                modules_regex = '|'.join(modules_patterns)
+                query = f"probe_success{{__param_module=~\"{modules_regex}\"}}"
 
         elif category == 'system-exporters':
-            # Node/Windows exporters - usar template node_cpu_usage
-            jobs = [t['job_name'] for t in category_types]
-
-            query = query_builder.build(
-                QUERY_TEMPLATES['node_cpu_usage'],
-                {
-                    'jobs': jobs,
-                    'time_range': time_range
-                }
-            )
+            # Node/Windows exporters - CPU usage
+            if jobs_patterns:
+                jobs_regex = '|'.join(jobs_patterns)
+                query = f"100 - (avg by (instance) (irate(node_cpu_seconds_total{{job=~\"{jobs_regex}\",mode=\"idle\"}}[{time_range}])) * 100)"
 
         elif category == 'database-exporters':
-            # Database exporters - query de up status
-            jobs = [t['job_name'] for t in category_types]
-            query = f"up{{job=~\"{'|'.join(jobs)}\"}}"
-
+            # Database exporters - up status
+            if jobs_patterns:
+                jobs_regex = '|'.join(jobs_patterns)
+                query = f"up{{job=~\"{jobs_regex}\"}}"
         else:
-            # Categoria genérica - query up
-            jobs = [t['job_name'] for t in category_types]
-            query = f"up{{job=~\"{'|'.join(jobs)}\"}}"
+            # Categoria genérica - up status
+            if jobs_patterns:
+                jobs_regex = '|'.join(jobs_patterns)
+                query = f"up{{job=~\"{jobs_regex}\"}}"
 
-        logger.info(f"[MONITORING METRICS] Query PromQL: {query[:100]}...")
+        if not query:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Não foi possível construir query para categoria '{category}'"
+            )
+
+        logger.info(f"[MONITORING METRICS] Query PromQL: {query}")
 
         # ==================================================================
-        # PASSO 5: Executar query no Prometheus
+        # PASSO 4: Executar query no Prometheus
         # ==================================================================
-        prometheus_url = f"http://{server}:9090"
+        prometheus_url = f"http://{prometheus_host}:{prometheus_port}"
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -415,7 +407,7 @@ async def get_monitoring_metrics(
             )
 
         # ==================================================================
-        # PASSO 6: Processar resultados
+        # PASSO 5: Processar resultados
         # ==================================================================
         results = prom_data['data']['result']
 
@@ -441,7 +433,7 @@ async def get_monitoring_metrics(
             "category": category,
             "metrics": formatted_metrics,
             "query": query,
-            "prometheus_server": server,
+            "prometheus_server": f"{prometheus_host}:{prometheus_port}",
             "total": len(formatted_metrics)
         }
 
@@ -453,148 +445,75 @@ async def get_monitoring_metrics(
 
 
 # ============================================================================
-# ENDPOINT 3: /monitoring/sync-cache - SINCRONIZAÇÃO FORÇADA
+# ENDPOINT 3: /monitoring/categories - LISTA CATEGORIAS DISPONÍVEIS
 # ============================================================================
 
-@router.post("/sync-cache")
-async def sync_monitoring_cache():
+@router.get("/categories")
+async def get_monitoring_categories():
     """
-    Força sincronização do cache de tipos de monitoramento
+    Lista todas as categorias de monitoramento disponíveis
 
-    Este endpoint:
-    1. Extrai tipos de TODOS os servidores Prometheus via SSH
-    2. Invalida cache existente
-    3. Salva novos tipos no KV
-    4. Retorna status
-
-    IMPORTANTE:
-    - Operação pode demorar 20-30 segundos (SSH para múltiplos servidores)
-    - Use apenas quando necessário (mudanças em prometheus.yml)
-    - Cache normal tem TTL de 5 minutos
+    FONTE: categorization/rules no KV
 
     Returns:
         ```json
         {
             "success": true,
-            "message": "Cache sincronizado com sucesso",
-            "total_types": 45,
-            "total_servers": 3,
             "categories": [
-                {"category": "network-probes", "count": 8},
-                {"category": "system-exporters", "count": 12},
+                {
+                    "id": "network-probes",
+                    "display_name": "Network Probes (Rede)",
+                    "total_rules": 7
+                },
+                {
+                    "id": "web-probes",
+                    "display_name": "Web Probes (Aplicações)",
+                    "total_rules": 5
+                },
                 ...
-            ],
-            "duration_seconds": 23.5
+            ]
         }
         ```
     """
     try:
-        logger.info("[SYNC CACHE] Iniciando sincronização forçada...")
-        start_time = datetime.now()
+        # Carregar regras
+        await categorization_engine.load_rules()
 
-        # ==================================================================
-        # PASSO 1: Importar função de extração
-        # ==================================================================
-        from api.monitoring_types_dynamic import extract_types_from_prometheus_jobs
-        from core.multi_config_manager import MultiConfigManager
+        # Obter categorias do engine
+        rules_data = await kv_manager.get('monitoring-types/categorization/rules')
 
-        multi_config = MultiConfigManager()
+        if not rules_data:
+            return {
+                "success": True,
+                "categories": [],
+                "message": "Nenhuma regra de categorização configurada"
+            }
 
-        # ==================================================================
-        # PASSO 2: Extrair tipos de todos os servidores
-        # ==================================================================
-        result_servers = {}
-        all_types_dict = {}
+        categories_list = rules_data.get('categories', [])
 
-        for host in multi_config.hosts:
-            server_host = host.hostname
+        # Contar regras por categoria
+        rules = rules_data.get('rules', [])
+        category_counts = {}
+        for rule in rules:
+            cat = rule.get('category')
+            category_counts[cat] = category_counts.get(cat, 0) + 1
 
-            try:
-                logger.info(f"[SYNC CACHE] Extraindo de {server_host}...")
-
-                # Buscar prometheus.yml
-                prom_files = multi_config.list_config_files(service='prometheus', hostname=server_host)
-
-                if not prom_files:
-                    logger.warning(f"[SYNC CACHE] prometheus.yml não encontrado em {server_host}")
-                    continue
-
-                prom_file = prom_files[0]
-                config = multi_config.read_config_file(prom_file)
-
-                # Extrair tipos dos jobs
-                scrape_configs = config.get('scrape_configs', [])
-                types = await extract_types_from_prometheus_jobs(scrape_configs, server_host)
-
-                result_servers[server_host] = {
-                    "types": types,
-                    "total": len(types)
-                }
-
-                # Adicionar ao all_types (deduplicar por id)
-                for type_def in types:
-                    type_id = type_def['id']
-                    if type_id not in all_types_dict:
-                        all_types_dict[type_id] = type_def.copy()
-
-            except Exception as e:
-                logger.error(f"[SYNC CACHE] Erro em {server_host}: {e}")
-                result_servers[server_host] = {
-                    "error": str(e),
-                    "types": [],
-                    "total": 0
-                }
-
-        # ==================================================================
-        # PASSO 3: Agrupar por categoria
-        # ==================================================================
-        categories_dict = {}
-        for type_def in all_types_dict.values():
-            cat = type_def['category']
-            if cat not in categories_dict:
-                categories_dict[cat] = []
-            categories_dict[cat].append(type_def)
-
-        categories = [
-            {"category": cat, "types": types_list}
-            for cat, types_list in categories_dict.items()
-        ]
-
-        # ==================================================================
-        # PASSO 4: Preparar dados para cache
-        # ==================================================================
-        cache_data = {
-            "version": "1.0.0",
-            "last_updated": datetime.now().isoformat(),
-            "ttl_seconds": 300,
-            "servers": result_servers,
-            "categories": categories,
-            "all_types": list(all_types_dict.values()),
-            "total_types": len(all_types_dict),
-            "total_servers": len(result_servers)
-        }
-
-        # ==================================================================
-        # PASSO 5: Salvar no KV (invalidando cache)
-        # ==================================================================
-        await config_manager.put('monitoring-types/cache', cache_data, invalidate_cache=True)
-
-        duration = (datetime.now() - start_time).total_seconds()
-
-        logger.info(f"[SYNC CACHE] ✓ Sincronizado: {cache_data['total_types']} tipos em {duration:.1f}s")
+        # Formatar resposta
+        formatted_categories = []
+        for cat_info in categories_list:
+            cat_id = cat_info.get('id')
+            formatted_categories.append({
+                'id': cat_id,
+                'display_name': cat_info.get('display_name', cat_id),
+                'total_rules': category_counts.get(cat_id, 0)
+            })
 
         return {
             "success": True,
-            "message": "Cache sincronizado com sucesso",
-            "total_types": cache_data['total_types'],
-            "total_servers": cache_data['total_servers'],
-            "categories": [
-                {"category": c['category'], "count": len(c['types'])}
-                for c in categories
-            ],
-            "duration_seconds": round(duration, 2)
+            "categories": formatted_categories,
+            "total_categories": len(formatted_categories)
         }
 
     except Exception as e:
-        logger.error(f"[SYNC CACHE ERROR] {e}", exc_info=True)
+        logger.error(f"[MONITORING CATEGORIES ERROR] {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
