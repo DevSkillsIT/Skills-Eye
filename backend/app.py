@@ -229,6 +229,7 @@ async def lifespan(app: FastAPI):
 
     STARTUP:
     - Inicializa sistema de auditoria com eventos de exemplo
+    - Auto-migração de regras de categorização (se KV vazio)
     - Pré-aquece cache de campos metadata (background task)
 
     SHUTDOWN:
@@ -284,7 +285,16 @@ async def lifespan(app: FastAPI):
 
     print(f">> Sistema de auditoria inicializado com {len(audit_manager.events)} eventos de exemplo")
 
-    # PASSO 2: Pré-aquecer cache de campos metadata (BACKGROUND TASK)
+    # PASSO 2: Auto-migração de regras de categorização
+    # Popula KV com regras padrão se não existirem (40+ regras)
+    from migrate_categorization_to_json import run_migration as migrate_categorization
+    migration_success = await migrate_categorization(force=False)
+    if migration_success:
+        print(">> Regras de categorização disponíveis no KV (auto-migração OK)")
+    else:
+        print(">> ⚠️  AVISO: Falha na auto-migração de regras de categorização")
+
+    # PASSO 3: Pré-aquecer cache de campos metadata (BACKGROUND TASK)
     # IMPORTANTE: Roda em background para não bloquear o startup
     # Best Practice: Manter startup rápido (<3s), jobs longos vão para background
     # Timeout de 60s para evitar que servidores inacessíveis travem a aplicação
