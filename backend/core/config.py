@@ -14,13 +14,38 @@ class Config:
     do metadata_fields.json via metadata_loader!
     """
 
-    # Servidor Principal
-    MAIN_SERVER = os.getenv("CONSUL_HOST", "172.16.1.26")
-    MAIN_SERVER_NAME = "glpi-grafana-prometheus.skillsit.com.br"
-
     # Consul
     CONSUL_TOKEN = os.getenv("CONSUL_TOKEN", "8382a112-81e0-cd6d-2b92-8565925a0675")
     CONSUL_PORT = int(os.getenv("CONSUL_PORT", "8500"))
+
+    @staticmethod
+    def get_main_server() -> str:
+        """
+        Retorna IP do servidor principal.
+
+        FONTE: Primeiro nó do KV metadata/sites
+        ZERO HARDCODE - Se KV vazio, usa variável de ambiente ou localhost
+        """
+        nodes = Config.get_known_nodes()
+        if nodes:
+            # Retornar primeiro IP do dicionário
+            return list(nodes.values())[0]
+        # Fallback: variável de ambiente ou localhost (ZERO IPs hardcoded)
+        return os.getenv("CONSUL_HOST", "localhost")
+
+    @staticmethod
+    def get_main_server_name() -> str:
+        """
+        Retorna nome do servidor principal.
+
+        FONTE: Primeiro hostname do KV metadata/sites
+        ZERO HARDCODE - Se KV vazio, retorna "localhost"
+        """
+        nodes = Config.get_known_nodes()
+        if nodes:
+            # Retornar primeiro hostname do dicionário
+            return list(nodes.keys())[0]
+        return "localhost"
 
     @staticmethod
     def get_known_nodes() -> Dict[str, str]:
@@ -140,7 +165,7 @@ class Config:
         return Config.get_required_fields()
 
 
-# Inicializar KNOWN_NODES ao carregar módulo (compatibilidade legado)
-# Código legado pode continuar usando Config.KNOWN_NODES
-# Novo código deve usar Config.get_known_nodes() para valores dinâmicos
+# Inicializar ao carregar módulo (compatibilidade legado)
 Config.KNOWN_NODES = Config.get_known_nodes()
+Config.MAIN_SERVER = Config.get_main_server()
+Config.MAIN_SERVER_NAME = Config.get_main_server_name()
