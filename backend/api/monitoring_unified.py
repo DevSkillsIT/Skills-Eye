@@ -171,7 +171,7 @@ async def get_monitoring_data(
             svc_module = svc.get('Meta', {}).get('module', '')
             svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
 
-            # Categorizar serviço usando engine (passar um dict conforme contrato do engine)
+            # FIX BUG #1: categorize() espera dict, não kwargs
             svc_category, svc_type_info = categorization_engine.categorize({
                 'job_name': svc_job_name,
                 'module': svc_module,
