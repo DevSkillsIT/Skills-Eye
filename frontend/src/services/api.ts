@@ -527,7 +527,7 @@ export interface ConsulNode {
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 30000,
+  timeout: 60000, // 60s - StrictMode causa requisições duplicadas em dev
   headers: {
     'Content-Type': 'application/json',
   },
