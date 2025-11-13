@@ -171,11 +171,12 @@ async def get_monitoring_data(
             svc_module = svc.get('Meta', {}).get('module', '')
             svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
 
-            svc_category = categorization_engine.categorize(
-                job_name=svc_job_name,
-                module=svc_module,
-                metrics_path=svc_metrics_path
-            )
+            # FIX BUG #1: categorize() espera dict, não kwargs
+            svc_category, svc_type_info = categorization_engine.categorize({
+                'job_name': svc_job_name,
+                'module': svc_module,
+                'metrics_path': svc_metrics_path
+            })
 
             # Verificar se serviço pertence à categoria solicitada
             if svc_category != category:
