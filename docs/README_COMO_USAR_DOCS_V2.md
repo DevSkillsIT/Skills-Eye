@@ -1,31 +1,52 @@
 # 📚 COMO USAR A DOCUMENTAÇÃO DO PLANO V2.0
 
 **Data:** 13/11/2025  
+**Versão:** 2.0 - ESTRUTURA 2 PARTES  
 **Status:** DOCUMENTAÇÃO COMPLETA E VALIDADA
 
 ---
 
 ## 🎯 ESTRUTURA DA DOCUMENTAÇÃO
 
-Você tem **3 documentos principais** para a implementação:
+Você tem **5 documentos** para a implementação, divididos em 2 categorias:
 
-### 1️⃣ **PLANO DE REFATORAÇÃO SKILLS EYE - VERSÃO COMPLETA 2.0.md**
-- **Tamanho:** 3466 linhas
-- **Quando usar:** Como referência arquitetural geral
+### 📘 CATEGORIA 1: PLANO PRINCIPAL (2 PARTES - SUBSTITUI O ORIGINAL)
+
+#### 1️⃣ **PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md**
+- **Tamanho:** ~900 linhas (~50 KB)
+- **Quando usar:** Antes de implementar (contexto técnico)
 - **O que contém:**
-  - Análise completa do sistema atual
-  - Visão geral da arquitetura V2.0
-  - Estrutura de pastas
-  - Cronograma de 13 dias
-  - Diagramas de fluxo
+  - Sumário executivo (12-13 dias, não 10-15)
+  - Análise do projeto atual
+  - ⚠️ **AVISOS sobre show_in_* existentes**
+  - Recomendações técnicas (dual endpoint)
+  - Arquitetura proposta (diagramas atualizados)
+  - Componentes a criar (specs completas)
+- **Por que ler:** Entender decisões técnicas e "POR QUÊ"
 
-### 2️⃣ **GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md** ⭐ **USE ESTE PRIMEIRO**
-- **Tamanho:** 642 linhas
-- **Quando usar:** Durante a codificação (Dias 3-6)
+#### 2️⃣ **PLANO_V2_PARTE2_IMPLEMENTACAO.md**
+- **Tamanho:** ~1000 linhas (~60 KB)
+- **Quando usar:** Durante implementação (guia dia-a-dia)
+- **O que contém:**
+  - FASE 1: Preparação (Dias 1-2)
+  - FASE 2: Backend (Dias 3-5)
+  - FASE 3: Frontend (Dias 6-8)
+  - FASE 4: Testes (Dias 9-10)
+  - **Dia 9.5:** ⭐ Testes de persistência (NOVO)
+  - FASE 5: Migração e Deploy (Dias 11-13)
+  - **Dia 11:** ⭐ Migração categorização (NOVO)
+  - Checklists de validação
+- **Por que ler:** Saber "QUANDO" e "COMO" fazer cada passo
+
+### 📗 CATEGORIA 2: GUIAS E CORREÇÕES
+
+#### 3️⃣ **GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md** ⭐ **USE DURANTE CODIFICAÇÃO**
+- **Tamanho:** 642 linhas (23 KB)
+- **Quando usar:** Durante a codificação (Dias 3-8)
 - **O que contém:**
   - Código Python/TypeScript pronto para copiar
-  - Substituições de seções problemáticas do plano original
-  - Implementações completas de:
+  - Substituições de seções problemáticas
+  - Implementações completas:
     - MetadataFieldModel com 4 novos campos
     - Endpoint `/monitoring/data` (Consul)
     - Endpoint `/monitoring/metrics` (Prometheus)
@@ -33,14 +54,30 @@ Você tem **3 documentos principais** para a implementação:
     - Métodos novos em consulAPI
   - Checklist de validação final
 
-### 3️⃣ **AJUSTES_CRITICOS_PLANO_V2.md**
-- **Tamanho:** 1162 linhas
+#### 4️⃣ **AJUSTES_CRITICOS_PLANO_V2.md**
+- **Tamanho:** 1162 linhas (35 KB)
 - **Quando usar:** Para entender PORQUÊ das mudanças
 - **O que contém:**
   - Explicação detalhada dos 5 ajustes
   - Contexto histórico das correções
   - Script de migração completo
   - Integração com testes de persistência
+
+#### 5️⃣ **NOTA_AJUSTES_PLANO_V2.md** ⭐ **LER PRIMEIRO**
+- **Tamanho:** 3.4 KB
+- **Quando usar:** Antes de tudo (resumo executivo)
+- **O que contém:**
+  - Resumo dos 5 ajustes críticos
+  - Impacto de cada ajuste
+  - Checklist rápido
+
+#### 6️⃣ **README_COMO_USAR_DOCS_V2.md** (este arquivo)
+- **Tamanho:** 7 KB
+- **Quando usar:** Sempre que estiver perdido
+- **O que contém:**
+  - Guia de navegação
+  - Workflow de implementação
+  - Ordem de leitura recomendada
 
 ---
 
@@ -49,9 +86,10 @@ Você tem **3 documentos principais** para a implementação:
 ### ANTES DE COMEÇAR
 ```bash
 # 1. Ler documentos na ordem:
-1º → GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md    # Código pronto
-2º → AJUSTES_CRITICOS_PLANO_V2.md          # Entender razões
-3º → PLANO original (seções não corrigidas) # Contexto geral
+1º → NOTA_AJUSTES_PLANO_V2.md              # Resumo executivo rápido
+2º → PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md  # Contexto técnico e POR QUÊ
+3º → PLANO_V2_PARTE2_IMPLEMENTACAO.md      # Cronograma dia-a-dia
+4º → GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md    # Código pronto para copiar
 
 # 2. Validar pré-requisitos:
 ✓ Backend rodando (http://localhost:5000)
@@ -63,7 +101,7 @@ Você tem **3 documentos principais** para a implementação:
 ### DURANTE A IMPLEMENTAÇÃO
 
 #### **Dias 1-2: Análise e Setup**
-- **Use:** PLANO original - Seção 3 (Análise Atual)
+- **Use:** PLANO_V2_PARTE2_IMPLEMENTACAO.md - FASE 1 (Dias 1-2)
 - **Ação:** Mapear código existente, identificar pontos de integração
 
 #### **Dia 3: Metadata Fields (Backend)**
@@ -76,9 +114,9 @@ Você tem **3 documentos principais** para a implementação:
   ```
 
 #### **Dia 4: ConsulKVConfigManager + Regras**
-- **Use:** PLANO original - Seção 5.1.2 e 5.1.3
+- **Use:** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seções 5.1.1, 5.1.2, 5.1.3
 - **Ação:** Implementar cache de KV e categorization_rule_engine
-- **Nota:** Não precisa de ajustes, código original está correto
+- **Nota:** Código completo está no GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md
 
 #### **Dia 5: Endpoints Backend**
 - **Use:** GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seções 2 e 3
@@ -101,19 +139,19 @@ Você tem **3 documentos principais** para a implementação:
 #### **Dias 7-8: DynamicMonitoringPage**
 - **Use:** 
   - GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seção 4 (requestHandler)
-  - PLANO original - Seção 5.2.1 (resto do componente)
+  - PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 5.2.2 (componente completo)
 - **Ação:**
   1. Criar componente base
-  2. Substituir `requestHandler` pela versão do guia
-  3. Manter restante do código do plano original
+  2. Usar `requestHandler` da versão corrigida
+  3. Seguir estrutura do PLANO_V2_PARTE1
 - **Validar:**
   - Página carrega sem erros
   - Filtros funcionam
   - Botão "Sincronizar" funciona
 
 #### **Dias 9-10: 4 Páginas Específicas + Testes**
-- **Use:** PLANO original - Seção 5.2.2 e Day 9 implementation
-- **Dia 9.5:** AJUSTES_CRITICOS_PLANO_V2.md - Seção "Ajuste 5" (testes)
+- **Use:** PLANO_V2_PARTE2_IMPLEMENTACAO.md - FASE 4 (Dias 9-10)
+- **Dia 9.5:** PLANO_V2_PARTE2_IMPLEMENTACAO.md - DIA 9.5 (Testes de Persistência)
 - **Validar:**
   ```bash
   ./run_all_persistence_tests.sh
@@ -136,9 +174,9 @@ Você tem **3 documentos principais** para a implementação:
 
 Se houver conflito entre documentos:
 
-**PRIORIDADE 1:** `GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md`  
-**PRIORIDADE 2:** `AJUSTES_CRITICOS_PLANO_V2.md`  
-**PRIORIDADE 3:** `PLANO DE REFATORAÇÃO... 2.0.md`
+**PRIORIDADE 1:** `GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md` (código pronto)  
+**PRIORIDADE 2:** `PLANO_V2_PARTE2_IMPLEMENTACAO.md` (cronograma)  
+**PRIORIDADE 3:** `PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md` (contexto técnico)
 
 ### Exemplos de Conflitos Resolvidos:
 
@@ -155,20 +193,20 @@ Se houver conflito entre documentos:
 
 ### Preciso de código para...
 
-- **Adicionar 4 campos show_in_*:** Seção 1 do Guia Corrigido
-- **Endpoint que busca serviços do Consul:** Seção 2 do Guia Corrigido
-- **Endpoint que busca métricas do Prometheus:** Seção 3 do Guia Corrigido
-- **Frontend chamar backend:** Seção 5 do Guia Corrigido
-- **Script de migração:** Ajustes Críticos - Seção "Ajuste 4"
-- **Entender arquitetura geral:** Plano Original - Seção 4
-- **Ver cronograma completo:** Plano Original - Seção 8
+- **Adicionar 4 campos show_in_*:** GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seção 1
+- **Endpoint que busca serviços do Consul:** GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seção 2
+- **Endpoint que busca métricas do Prometheus:** GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seção 3
+- **Frontend chamar backend:** GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md - Seção 5
+- **Script de migração:** AJUSTES_CRITICOS_PLANO_V2.md - Seção "Ajuste 4"
+- **Entender arquitetura geral:** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 4
+- **Ver cronograma completo:** PLANO_V2_PARTE2_IMPLEMENTACAO.md - Todas as fases
 
 ### Preciso entender...
 
-- **Por que 2 endpoints (data + metrics)?** Ajustes Críticos - "Ajuste 2"
-- **Por que não usar lógica de Services.tsx?** Ajustes Críticos - "Ajuste 3"
-- **Como funciona cache de tipos?** Plano Original - Seção 5.1.2
-- **Estrutura de pastas:** Plano Original - Seção 6
+- **Por que 2 endpoints (data + metrics)?** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 3.2
+- **Por que não usar lógica de Services.tsx?** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 2.2
+- **Como funciona cache de tipos?** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 3.3
+- **Estrutura de componentes:** PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md - Seção 5
 
 ---
 
@@ -176,15 +214,16 @@ Se houver conflito entre documentos:
 
 Antes de começar Dia 1:
 
-- [ ] Li GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md completamente
-- [ ] Li AJUSTES_CRITICOS_PLANO_V2.md - seção "Resumo dos Ajustes"
-- [ ] Revisei seções 3 e 4 do PLANO original
+- [ ] Li NOTA_AJUSTES_PLANO_V2.md (resumo executivo)
+- [ ] Li PLANO_V2_PARTE1_ANALISE_ARQUITETURA.md (contexto)
+- [ ] Li PLANO_V2_PARTE2_IMPLEMENTACAO.md (cronograma dias 1-13)
+- [ ] Li GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md (código pronto)
 - [ ] Verifiquei que `show_in_*` já existe no código atual:
   ```bash
   grep -n "show_in_services" backend/api/metadata_fields_manager.py
   ```
 - [ ] Entendi diferença entre `/monitoring/data` (Consul) e `/monitoring/metrics` (Prometheus)
-- [ ] Tenho ambiente dev rodando e testado
+- [ ] Tenho ambiente dev rodando e testado (backend:5000, frontend:8081)
 
 ---
 
@@ -197,11 +236,11 @@ Quando estiver pronto:
 git checkout -b feature/monitoring-v2
 
 # 2. Abrir documentos lado a lado
+code docs/PLANO_V2_PARTE2_IMPLEMENTACAO.md
 code docs/GUIA_IMPLEMENTACAO_CORRIGIDO_V2.md
-code docs/AJUSTES_CRITICOS_PLANO_V2.md
 
 # 3. Seguir cronograma do Dia 1
-# (Plano Original - Seção 8 - Implementation Plan)
+# (PLANO_V2_PARTE2_IMPLEMENTACAO.md - FASE 1 - Dia 1)
 ```
 
 ---
