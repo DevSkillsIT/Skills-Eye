@@ -33,7 +33,12 @@ backend/
 │
 ├── api/
 │   ├── monitoring_unified.py          # ✨ NOVO - API unificada
+│   ├── categorization_rules.py        # ✨ NOVO - CRUD de regras
 │   └── metadata_fields_manager.py     # 🔄 ATUALIZADO - 4 propriedades
+│
+├── test_consul_kv_config_manager.py   # ✨ NOVO - Testes unitários (14 testes)
+├── test_categorization_rule_engine.py # ✨ NOVO - Testes unitários (10 testes)
+├── test_dynamic_query_builder.py      # ✨ NOVO - Testes unitários (15 testes)
 │
 └── migrate_categorization_to_json.py  # ✨ NOVO - Script de migração
 ```
@@ -44,6 +49,7 @@ backend/
 frontend/src/
 ├── pages/
 │   ├── DynamicMonitoringPage.tsx      # ✨ NOVO - Componente base único
+│   ├── MonitoringRules.tsx            # ✨ NOVO - Gerenciamento de regras
 │   └── MetadataFields.tsx             # 🔄 ATUALIZADO - 4 checkboxes
 │
 ├── services/
