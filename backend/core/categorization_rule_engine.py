@@ -87,19 +87,29 @@ class CategorizationRule:
         metrics_path = job_data.get('metrics_path', '/metrics')
         module = job_data.get('module', '')
 
-        # Verificar job_name_pattern (regex)
+        # Verificar job_name_pattern (regex) - OPCIONAL
+        # Só aplicar se a regra especificar esta condição
         if 'job_name_pattern' in self.conditions:
             pattern = self._compiled_patterns.get('job_name_pattern')
             if pattern and not pattern.match(job_name):
-                return False
+                # EXCETO: Se houver module_pattern E module bater, ignorar job_name_pattern
+                # Isso permite jobs genéricos "blackbox" serem categorizados pelo module
+                if 'module_pattern' in self.conditions and module:
+                    module_pattern = self._compiled_patterns.get('module_pattern')
+                    if not (module_pattern and module_pattern.match(module)):
+                        return False
+                else:
+                    return False
 
-        # Verificar metrics_path (match exato)
+        # Verificar metrics_path (match exato) - OBRIGATÓRIO se especificado
         if 'metrics_path' in self.conditions:
             if metrics_path != self.conditions['metrics_path']:
                 return False
 
-        # Verificar module_pattern (regex) - apenas para blackbox
-        if 'module_pattern' in self.conditions:
+        # Verificar module_pattern (regex) - OPCIONAL
+        # Só aplicar se module estiver presente no job_data
+        # Se job não tem module, ignorar esta condição
+        if 'module_pattern' in self.conditions and module:
             pattern = self._compiled_patterns.get('module_pattern')
             if pattern and not pattern.match(module):
                 return False
@@ -259,13 +269,14 @@ class CategorizationRuleEngine:
                 {
                     'job_name': 'icmp',
                     'metrics_path': '/probe',
-                    'module': 'icmp'  # opcional
+                    'module': 'icmp',  # opcional (ou em relabel_configs)
+                    'relabel_configs': [...]  # opcional
                 }
 
         Returns:
             Tupla (categoria, type_info):
                 - categoria: string ('network-probes', 'system-exporters', etc)
-                - type_info: dict com display_name, exporter_type, module
+                - type_info: dict com display_name, exporter_type, module, id
 
         Exemplo:
             ```python
@@ -277,12 +288,20 @@ class CategorizationRuleEngine:
 
             # Retorna:
             # ('network-probes', {
+            #     'id': 'icmp',
             #     'display_name': 'ICMP (Ping)',
             #     'exporter_type': 'blackbox',
             #     'module': 'icmp'
             # })
             ```
         """
+        # Extrair module de relabel_configs se não estiver presente
+        if 'module' not in job_data and 'relabel_configs' in job_data:
+            for config in job_data.get('relabel_configs', []):
+                if config.get('target_label') == '__param_module':
+                    job_data['module'] = config.get('replacement', '')
+                    break
+        
         # Se não tem regras carregadas, usar categoria padrão
         if not self.rules:
             logger.debug(
@@ -299,8 +318,10 @@ class CategorizationRuleEngine:
                 )
 
                 type_info = {
+                    'id': job_data.get('module') or job_data.get('job_name'),
                     'display_name': rule.display_name or self._format_display_name(job_data.get('job_name', '')),
                     'exporter_type': rule.exporter_type or 'custom',
+                    'priority': rule.priority
                 }
 
                 # Adicionar module se presente
@@ -329,6 +350,7 @@ class CategorizationRuleEngine:
         job_name = job_data.get('job_name', 'unknown')
 
         type_info = {
+            'id': job_data.get('module') or job_name,
             'display_name': self._format_display_name(job_name),
             'exporter_type': 'custom'
         }
