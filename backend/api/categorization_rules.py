@@ -93,7 +93,7 @@ class RuleUpdateRequest(BaseModel):
 # ENDPOINTS
 # ============================================================================
 
-@router.get("/")
+@router.get("/categorization-rules")
 async def get_categorization_rules():
     """
     Retorna todas as regras de categorização do KV
@@ -135,7 +135,7 @@ async def get_categorization_rules():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/")
+@router.post("/categorization-rules")
 async def create_categorization_rule(request: RuleCreateRequest):
     """
     Cria uma nova regra de categorização

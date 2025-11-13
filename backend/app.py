@@ -239,20 +239,6 @@ async def lifespan(app: FastAPI):
     # ============================================
     print(">> Iniciando Consul Manager API...")
 
-    # ⚠️ VALIDAÇÃO CRÍTICA: Verificar se cache de monitoramento foi inicializado
-    try:
-        from core.consul_kv_config_manager import ConsulKVConfigManager
-        config_manager = ConsulKVConfigManager()
-        types_cache = await config_manager.get('monitoring-types/cache', use_cache=False)
-        if not types_cache:
-            print("\n⚠️  WARNING: Cache de tipos de monitoramento NÃO INICIALIZADO!")
-            print("   Execute: python backend/migrate_categorization_to_json.py")
-            print("   OU via API: POST /api/v1/monitoring/sync-cache\n")
-        else:
-            print(f"✓ Cache de tipos: {types_cache.get('total_types', 0)} tipos em {len(types_cache.get('categories', []))} categorias")
-    except Exception as e:
-        print(f"⚠️  Não foi possível validar cache de tipos: {e}")
-
     # PASSO 1: Inicializar sistema de auditoria com eventos de exemplo
     from core.audit_manager import audit_manager
     from datetime import datetime, timedelta
@@ -399,7 +385,7 @@ app.include_router(metadata_fields_router, prefix="/api/v1", tags=["Metadata Fie
 # app.include_router(metadata_dynamic_router, prefix="/api/v1", tags=["Dynamic Metadata"])  # REMOVIDO: Usar prometheus-config
 app.include_router(monitoring_types_dynamic_router, prefix="/api/v1", tags=["Monitoring Types"])  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
 app.include_router(monitoring_unified_router, prefix="/api/v1", tags=["Monitoring Unified"])  # ⭐ NOVO: API unificada (v2.0 2025-11-13)
-app.include_router(categorization_rules_router, prefix="/api/v1/categorization-rules", tags=["Categorization Rules"])  # ⭐ NOVO: CRUD de regras (v2.0 2025-11-13)
+app.include_router(categorization_rules_router, prefix="/api/v1", tags=["Categorization Rules"])  # ⭐ NOVO: CRUD de regras (v2.0 2025-11-13)
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["Reference Values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais

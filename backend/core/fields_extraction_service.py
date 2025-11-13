@@ -48,15 +48,14 @@ class MetadataField:
     validation: Optional[Dict[str, Any]] = None  # Validação (objeto)
     default_value: Optional[Any] = None  # Valor padrão
     placeholder: str = ""  # Placeholder para input
-    discovered_in: List[str] = None  # Lista de hostnames onde campo foi descoberto (MULTI-SERVER)
+
+    # NOTA: discovered_in foi removido! (Issue #7 - unificação)
+    # Agora essa informação está em server_status[].fields[]
+    # Use get_discovered_in_for_field(field_name, server_status) para calcular dinamicamente
 
     def to_dict(self) -> Dict[str, Any]:
         """Converte para dicionário"""
-        result = asdict(self)
-        # Garantir que discovered_in seja sempre uma lista (não None)
-        if result.get('discovered_in') is None:
-            result['discovered_in'] = []
-        return result
+        return asdict(self)
 
 
 class FieldsExtractionService:
@@ -801,3 +800,72 @@ class FieldsExtractionService:
 
         logger.info(f"Sugeridos {len(suggested_fields)} campos baseados em serviços existentes")
         return suggested_fields
+
+
+# ============================================================================
+# HELPER FUNCTIONS - Issue #7: Unificação discovered_in
+# ============================================================================
+
+def get_discovered_in_for_field(field_name: str, server_status: List[Dict[str, Any]]) -> List[str]:
+    """
+    Calcula dinamicamente em quais servidores um campo foi descoberto.
+
+    IMPORTANTE: Esta é a SINGLE SOURCE OF TRUTH para descoberta de campos!
+    Substitui o antigo campo discovered_in que existia em cada MetadataField.
+
+    Args:
+        field_name: Nome do campo (ex: "company")
+        server_status: Lista de status de servidores com fields[]
+
+    Returns:
+        Lista de hostnames onde o campo foi descoberto
+
+    Exemplo:
+        >>> server_status = [
+        ...     {"hostname": "172.16.1.26", "fields": ["company", "env"]},
+        ...     {"hostname": "172.16.200.14", "fields": ["company", "site"]}
+        ... ]
+        >>> get_discovered_in_for_field("company", server_status)
+        ['172.16.1.26', '172.16.200.14']
+        >>> get_discovered_in_for_field("site", server_status)
+        ['172.16.200.14']
+    """
+    discovered_servers = []
+    for server_info in server_status:
+        hostname = server_info.get('hostname')
+        fields = server_info.get('fields', [])
+
+        if hostname and field_name in fields:
+            discovered_servers.append(hostname)
+
+    return discovered_servers
+
+
+def get_fields_for_server(hostname: str, server_status: List[Dict[str, Any]]) -> List[str]:
+    """
+    Retorna lista de campos disponíveis em um servidor específico.
+
+    Esta função resolve o problema inverso de get_discovered_in_for_field():
+    - get_discovered_in_for_field(): "quais servers têm campo X?"
+    - get_fields_for_server(): "quais campos tem server Y?"
+
+    Args:
+        hostname: Hostname do servidor (ex: "172.16.1.26")
+        server_status: Lista de status de servidores com fields[]
+
+    Returns:
+        Lista de nomes de campos disponíveis neste servidor
+
+    Exemplo:
+        >>> server_status = [
+        ...     {"hostname": "172.16.1.26", "fields": ["company", "env"]},
+        ...     {"hostname": "172.16.200.14", "fields": ["company", "site"]}
+        ... ]
+        >>> get_fields_for_server("172.16.1.26", server_status)
+        ['company', 'env']
+    """
+    for server_info in server_status:
+        if server_info.get('hostname') == hostname:
+            return server_info.get('fields', [])
+
+    return []

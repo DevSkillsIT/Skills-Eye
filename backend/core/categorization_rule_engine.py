@@ -388,3 +388,28 @@ class CategorizationRuleEngine:
                 "max": max([r.priority for r in self.rules]) if self.rules else None
             }
         }
+
+    def get_rules_by_category(self, category: str) -> List[Dict[str, Any]]:
+        """
+        Retorna todas as regras de uma categoria específica
+
+        Args:
+            category: Nome da categoria (ex: 'network-probes')
+
+        Returns:
+            Lista de dicionários com dados das regras da categoria
+        """
+        matching_rules = []
+
+        for rule in self.rules:
+            if rule.category == category:
+                matching_rules.append({
+                    'id': rule.id,
+                    'priority': rule.priority,
+                    'category': rule.category,
+                    'display_name': rule.display_name,
+                    'exporter_type': rule.exporter_type,
+                    'conditions': rule.conditions
+                })
+
+        return matching_rules

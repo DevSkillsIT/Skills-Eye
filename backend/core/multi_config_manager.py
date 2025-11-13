@@ -408,15 +408,6 @@ class MultiConfigManager:
         # Extrair fields
         fields_map = result.get('fields_map', {})
         all_fields = list(fields_map.values())
-        
-        # CRÍTICO: Adicionar hostname ao discovered_in de cada campo
-        # Sem isso, colunas "Descoberto Em" e "Origem" ficam N/A
-        for field in all_fields:
-            if field.discovered_in is None:
-                field.discovered_in = []
-            if hostname not in field.discovered_in:
-                field.discovered_in.append(hostname)
-        
         all_fields.sort(key=lambda f: (not f.required, f.name))
 
         # Preparar server_status (remover fields_map)
@@ -643,18 +634,8 @@ class MultiConfigManager:
                 if field_name not in all_fields_map:
                     # Primeira vez vendo este campo: usar como base
                     all_fields_map[field_name] = field
-                    # Inicializar discovered_in com o servidor atual
-                    if field.discovered_in is None:
-                        field.discovered_in = []
-                    if hostname not in field.discovered_in:
-                        field.discovered_in.append(hostname)
-                else:
-                    # Campo já existe: apenas adicionar hostname ao discovered_in
-                    existing_field = all_fields_map[field_name]
-                    if existing_field.discovered_in is None:
-                        existing_field.discovered_in = []
-                    if hostname not in existing_field.discovered_in:
-                        existing_field.discovered_in.append(hostname)
+                # NOTA: Não mais adicionar discovered_in ao campo (Issue #7)
+                # Agora essa informação está em server_status[].fields[]
 
         # Preparar server_status (remover fields_map do retorno)
         server_status = [
@@ -780,25 +761,24 @@ class MultiConfigManager:
 
         overall_duration = int((time.time() - overall_start) * 1000)
 
-        # PASSO 4: Consolidar fields E rastrear de quais servidores vieram
+        # PASSO 4: Consolidar fields E rastrear quais campos cada servidor tem
         all_fields_map: Dict[str, MetadataField] = {}
-        field_servers_map: Dict[str, List[str]] = {}  # Mapeia field_name -> lista de hostnames
-        
+        server_fields_map: Dict[str, List[str]] = {}  # Mapeia hostname -> lista de field_names
+
         for result in results['server_results']:
             hostname = result['hostname']
+            server_fields_map[hostname] = []
+
             for field_name, field in result.get('fields_map', {}).items():
+                # Adicionar field ao mapa consolidado (sem duplicatas)
                 if field_name not in all_fields_map:
                     all_fields_map[field_name] = field
-                    field_servers_map[field_name] = []
-                
-                # Adicionar hostname à lista de servidores onde campo foi descoberto
-                if hostname not in field_servers_map[field_name]:
-                    field_servers_map[field_name].append(hostname)
 
-        # PASSO 5: Atualizar campos com lista de servidores onde foram descobertos
-        for field_name, field in all_fields_map.items():
-            field.discovered_in = field_servers_map.get(field_name, [])
-            logger.debug(f"[MULTI-SERVER] Campo '{field_name}' descoberto em: {field.discovered_in}")
+                # Rastrear quais campos este servidor tem
+                server_fields_map[hostname].append(field_name)
+
+        # PASSO 5: NÃO adicionar discovered_in aos campos individuais
+        # Em vez disso, adicionar lista de fields ao server_status (single source of truth)
 
         # PASSO 6: ENRIQUECER campos com metadata estática
         # IMPORTANTE: Aplicar ANTES de cachear para que o cache já tenha campos completos!
@@ -809,11 +789,20 @@ class MultiConfigManager:
         # PASSO 7: Armazenar campos ENRIQUECIDOS no cache
         self._fields_cache = enriched_fields
 
-        logger.info(f"[P2] ✓ Extração completa em {overall_duration}ms ({len(self._fields_cache)} campos enriquecidos com info de servidor)")
+        logger.info(f"[P2] ✓ Extração completa em {overall_duration}ms ({len(self._fields_cache)} campos enriquecidos)")
+
+        # PASSO 8: Adicionar lista de fields a cada server_status (SINGLE SOURCE OF TRUTH)
+        enhanced_server_status = []
+        for server_info in results['server_status']:
+            hostname = server_info['hostname']
+            enhanced_info = server_info.copy()
+            enhanced_info['fields'] = server_fields_map.get(hostname, [])
+            enhanced_server_status.append(enhanced_info)
+            logger.debug(f"[MULTI-SERVER] Server '{hostname}' tem {len(enhanced_info['fields'])} campos")
 
         return {
             'fields': self._fields_cache,
-            'server_status': results['server_status'],
+            'server_status': enhanced_server_status,  # Agora inclui fields[] em cada servidor
             'total_servers': len(self.hosts),
             'successful_servers': results['successful_count'],
             'from_cache': False,

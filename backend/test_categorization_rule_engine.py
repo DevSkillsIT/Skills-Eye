@@ -70,9 +70,18 @@ def mock_rules_data():
 
 
 @pytest.fixture
-def engine():
+def mock_config_manager():
+    """Fixture que cria um mock do ConsulKVConfigManager"""
+    mock = AsyncMock()
+    mock.get = AsyncMock(return_value=None)
+    mock.put = AsyncMock(return_value=True)
+    return mock
+
+
+@pytest.fixture
+def engine(mock_config_manager):
     """Fixture que cria um engine para cada teste"""
-    return CategorizationRuleEngine()
+    return CategorizationRuleEngine(mock_config_manager)
 
 
 # ============================================================================
