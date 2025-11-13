@@ -21,6 +21,7 @@ from yaml import nodes as yaml_nodes  # type: ignore
 
 from core.multi_config_manager import MultiConfigManager
 from core.server_utils import get_server_detector, ServerInfo
+from core.fields_extraction_service import get_discovered_in_for_field
 
 logger = logging.getLogger(__name__)
 
@@ -1752,6 +1753,12 @@ async def list_fields(
 
     # Buscar informações de extraction_status se existir (para modal de progresso)
     extraction_status = config.get('extraction_status', {})
+    server_status = extraction_status.get('server_status', [])
+
+    # ✅ FIX Issue #7: Calcular discovered_in dinamicamente (SINGLE SOURCE OF TRUTH)
+    # discovered_in agora vem de server_status[].fields[] e não mais do dataclass
+    for field in fields:
+        field['discovered_in'] = get_discovered_in_for_field(field['name'], server_status)
 
     # FIX BUG #2: came_from_memory_cache não existe mais (removido durante refactor)
     # CRÍTICO: Se source não é force_extract recente, marcar como cache

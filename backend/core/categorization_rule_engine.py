@@ -202,7 +202,11 @@ class CategorizationRuleEngine:
             return True
 
         try:
-            rules_data = await self.config_manager.get('monitoring-types/categorization/rules')
+            # ✅ FIX: Adicionar use_cache parameter (Issue PENDENTE #2)
+            rules_data = await self.config_manager.get(
+                'monitoring-types/categorization/rules',
+                use_cache=not force_reload
+            )
 
             if not rules_data:
                 logger.warning(
