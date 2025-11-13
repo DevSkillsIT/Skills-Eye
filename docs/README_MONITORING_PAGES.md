@@ -103,6 +103,68 @@ python migrate_categorization_to_json.py
 ✅ MIGRAÇÃO CONCLUÍDA COM SUCESSO!
 ```
 
+### ⚠️ ATENÇÃO: Script Deve Ser Executado APENAS UMA VEZ
+
+**Quando executar:**
+- ✅ Na primeira instalação do sistema
+- ✅ Se Consul KV for limpo/resetado
+- ❌ NÃO executar toda vez que iniciar o sistema
+
+**Como verificar se já foi executado:**
+```bash
+curl -s "http://172.16.1.26:8500/v1/kv/skills/eye/monitoring-types/categorization/rules?raw" | jq '.total_rules'
+```
+
+**Se retornar `47`:** ✅ Migração já foi feita, não precisa executar novamente
+**Se retornar erro 404:** ❌ Migração não foi feita, executar script agora
+
+### 🔧 Executando o Script (APENAS 1 vez)
+
+```bash
+cd /home/adrianofante/projetos/Skills-Eye/backend
+python migrate_categorization_to_json.py
+```
+
+**Saída esperada:**
+```
+🔄 Iniciando migração de regras de categorização...
+📦 Convertendo regras de Blackbox...
+  ✅ 7 Network Probes
+  ✅ 8 Web Probes
+📦 Convertendo regras de Exporters...
+  ✅ 32 Exporters
+💾 Salvando no Consul KV...
+  ✅ Regras salvas em: skills/eye/monitoring-types/categorization/rules
+✅ MIGRAÇÃO CONCLUÍDA COM SUCESSO!
+```
+
+### 🐛 Troubleshooting da Migração
+
+**Problema: "Connection refused to Consul"**
+```bash
+# Verificar se Consul está rodando
+curl http://172.16.1.26:8500/v1/status/leader
+
+# Se não responder, verificar configuração de rede
+ping 172.16.1.26
+```
+
+**Problema: "Regras já existem - sobrescrever?"**
+```bash
+# Script perguntará se deseja sobrescrever
+# Responda 'y' apenas se tiver certeza
+# Isso irá SUBSTITUIR todas as regras existentes
+```
+
+**Problema: Script executou mas regras não aparecem**
+```bash
+# Verificar manualmente no Consul UI
+http://172.16.1.26:8500/ui/dc1/kv/skills/eye/monitoring-types/categorization/
+
+# Ou via curl
+curl "http://172.16.1.26:8500/v1/kv/skills/eye/monitoring-types/categorization/rules?pretty"
+```
+
 ### 3️⃣ Iniciar Backend e Frontend
 
 ```bash

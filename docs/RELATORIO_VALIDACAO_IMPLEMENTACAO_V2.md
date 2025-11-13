@@ -588,6 +588,102 @@ const showInKey = `show_in_${context.replace(/-/g, '_')}`;
 
 ---
 
+### 21. Documentação e Testes Finais (Pós-Implementação)
+
+**Status:** ✅ COMPLETADO
+
+#### 21.1. Atualização do README (`docs/README_MONITORING_PAGES.md`)
+
+**Modificações:**
+- ✅ Adicionada seção "⚠️ ATENÇÃO: Script Deve Ser Executado APENAS UMA VEZ"
+- ✅ Comando para verificar migração: `curl -s "http://172.16.1.26:8500/v1/kv/...?raw" | jq '.total_rules'`
+- ✅ Seção "🔧 Executando o Script (APENAS 1 vez)" com output esperado
+- ✅ Seção "🐛 Troubleshooting da Migração" com 3 problemas comuns:
+  - Connection refused to Consul
+  - Regras já existem - sobrescrever?
+  - Script executou mas regras não aparecem
+
+**Conforme TODO:** ✅ SIM (Tarefa 1 do TODO_ITENS_FALTANTES_VALIDACAO.md)
+
+---
+
+#### 21.2. Guia de Migração (`docs/GUIA_MIGRACAO_MONITORING_TYPES.md`)
+
+**Status:** ✅ CRIADO (arquivo novo)
+
+**Linhas:** ~490 linhas
+
+**Conteúdo:**
+- ✅ Resumo executivo da mudança (250 linhas hardcoded → 30 linhas com RuleEngine)
+- ✅ Seção de pré-requisitos (3 checklist items)
+- ✅ PASSO 1: Adicionar imports (CategorizationRuleEngine + ConsulKVConfigManager)
+- ✅ PASSO 2: Instanciar engine globalmente + função `_ensure_rules_loaded()`
+- ✅ PASSO 3: Substituir função `_infer_category_and_type` (def → async def)
+- ✅ PASSO 4: Atualizar chamadas com `await`
+- ✅ PASSO 5: Remover código hardcoded (opcional, após validação)
+- ✅ 4 testes de validação da migração
+- ✅ Seção troubleshooting com 4 problemas comuns
+- ✅ Tabela comparativa (Antes vs Depois)
+- ✅ Checklist final com 10 itens
+
+**Objetivo:** Guia passo-a-passo para desenvolvedor modificar `monitoring_types_dynamic.py`
+
+**Conforme TODO:** ✅ SIM (Tarefa 2 do TODO_ITENS_FALTANTES_VALIDACAO.md)
+
+---
+
+#### 21.3. Testes E2E Playwright (`backend/test_dynamic_pages_e2e.py`)
+
+**Status:** ✅ CRIADO (arquivo novo)
+
+**Linhas:** ~160 linhas
+
+**5 Testes implementados:**
+
+1. ✅ `test_network_probes_loads` - Valida carregamento da página Network Probes
+   - Aguarda `.ant-table` aparecer (timeout 5s)
+   - Valida título contém "Network Probes" ou "Monitoramento"
+   - Verifica que tem pelo menos 1 linha na tabela
+
+2. ✅ `test_sync_cache_button` - Valida botão "Sincronizar Cache"
+   - Clica no botão Sincronizar
+   - Aguarda loading desaparecer (timeout 30s)
+   - Valida mensagem de sucesso
+
+3. ✅ `test_filters_work` - Valida filtros dinâmicos
+   - Carrega página Web Probes
+   - Conta linhas iniciais
+   - Aplica filtro de busca (exemplo: "ramada")
+   - Verifica que resultados foram reduzidos
+
+4. ✅ `test_navigate_all_4_pages` - Valida navegação entre páginas
+   - Itera sobre 4 URLs (/monitoring/network-probes, /web-probes, etc)
+   - Para cada página:
+     - Aguarda tabela carregar
+     - Valida conteúdo esperado presente
+
+5. ✅ `test_columns_are_dynamic` - Valida colunas dinâmicas
+   - Carrega Network Probes
+   - Conta headers da tabela
+   - Valida que tem >= 5 colunas
+   - Extrai e exibe texto dos headers
+
+**Pré-requisitos:**
+```bash
+pip install playwright pytest-playwright
+playwright install chromium
+```
+
+**Como executar:**
+```bash
+pytest test_dynamic_pages_e2e.py -v
+pytest test_dynamic_pages_e2e.py -v --headed  # com navegador visível
+```
+
+**Conforme TODO:** ✅ SIM (Tarefa 3 do TODO_ITENS_FALTANTES_VALIDACAO.md)
+
+---
+
 ## ❌ ITENS FALTANTES IDENTIFICADOS
 
 ### 1. Testes de Persistência
@@ -706,11 +802,13 @@ const showInKey = `show_in_${context.replace(/-/g, '_')}`;
 
 ### Documentação
 
-| Item | Status |
-|------|--------|
-| README_MONITORING_PAGES.md | ✅ OK (14KB) |
+| Item | Status | Tamanho |
+|------|--------|---------|
+| README_MONITORING_PAGES.md | ✅ ATUALIZADO | ~463 linhas |
+| GUIA_MIGRACAO_MONITORING_TYPES.md | ✅ CRIADO | ~490 linhas |
+| RELATORIO_VALIDACAO_IMPLEMENTACAO_V2.md | ✅ ATUALIZADO | Este arquivo |
 
-**Total Documentação:** 1/1 documento ✅
+**Total Documentação:** 3/3 documentos ✅
 
 ### Testes Unitários
 
@@ -722,14 +820,22 @@ const showInKey = `show_in_${context.replace(/-/g, '_')}`;
 
 **Total Testes Unitários:** 3/3 arquivos ✅ (39 testes)
 
+### Testes E2E
+
+| Item | Status | Total |
+|------|--------|-------|
+| test_dynamic_pages_e2e.py | ✅ CRIADO | 5 testes Playwright |
+
+**Total Testes E2E:** 1/1 arquivo ✅ (5 testes)
+
 ### Testes Pendentes
 
 | Item | Status | Criticidade |
 |------|--------|-------------|
 | Testes de Persistência | ❌ NÃO VERIFICADO | 🔴 ALTA |
-| Testes E2E | ❌ NÃO CRIADO | 🟡 MÉDIA |
+| ~~Testes E2E~~ | ✅ CRIADO (test_dynamic_pages_e2e.py) | ~~🟡 MÉDIA~~ |
 
-**Total Testes Pendentes:** 2 itens ❌
+**Total Testes Pendentes:** 1 item ❌
 
 ### Tarefas de Deploy
 
@@ -777,9 +883,11 @@ const showInKey = `show_in_${context.replace(/-/g, '_')}`;
 
 ### Prioridade ALTA (Importante)
 
-5. ⭕ Criar testes E2E para as 4 páginas
+5. ✅ Criar testes E2E para as 4 páginas (test_dynamic_pages_e2e.py - 5 testes Playwright)
 6. ✅ Adicionar Jinja2 ao `requirements.txt`
 7. ✅ Validar que todos os imports estão corretos
+8. ✅ Criar guia de migração detalhado (GUIA_MIGRACAO_MONITORING_TYPES.md)
+9. ✅ Atualizar documentação com troubleshooting (README_MONITORING_PAGES.md)
 
 ### Prioridade MÉDIA (Melhorias)
 
@@ -813,7 +921,9 @@ Todos os 11 componentes especificados no PLANO foram criados e estão conformes 
 3. ✅ Rota e menu de regras (`App.tsx` - integração completa)
 
 **Documentação:**
-1. ✅ README e RELATORIO atualizados
+1. ✅ README_MONITORING_PAGES.md atualizado com troubleshooting
+2. ✅ GUIA_MIGRACAO_MONITORING_TYPES.md criado (~490 linhas)
+3. ✅ RELATORIO_VALIDACAO_IMPLEMENTACAO_V2.md atualizado (este arquivo)
 
 ### Qualidade do Código
 
@@ -832,8 +942,8 @@ Todos os 11 componentes especificados no PLANO foram criados e estão conformes 
 1. Validação de testes de persistência
 2. Execução da migração para produção
 
-**1 item OPCIONAL faltando:**
-1. Testes E2E automatizados (Playwright/Cypress)
+**~~1 item OPCIONAL faltando:~~**
+~~1. Testes E2E automatizados (Playwright/Cypress)~~ ✅ CRIADO
 
 ### Recomendação Final
 
@@ -844,14 +954,15 @@ A implementação está **tecnicamente completa** incluindo funcionalidades extr
 **Componentes Core:** 11/11 (100%) ✅
 **Componentes Extras:** 8/8 (100%) ✅
 **Testes Unitários:** 39 testes (3 arquivos) ✅
-**Documentação:** Atualizada ✅
+**Testes E2E:** 5 testes Playwright (1 arquivo) ✅
+**Documentação:** 3 documentos completos ✅
 
 **Pendências Críticas:**
-1. Execução do script de migração (python migrate_categorization_to_json.py)
-2. Validação de testes de persistência
-3. Testes end-to-end manuais ou automatizados
+1. Execução do script de migração (python migrate_categorization_to_json.py) - HUMANO
+2. Validação de testes de persistência - HUMANO
+3. ~~Testes end-to-end manuais ou automatizados~~ ✅ CONCLUÍDO (test_dynamic_pages_e2e.py)
 
-**Tempo estimado para completar gaps críticos:** 2-3 horas
+**Tempo estimado para completar gaps críticos restantes:** 1-2 horas (apenas tarefas humanas)
 
 ---
 
