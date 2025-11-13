@@ -490,7 +490,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
     try {
-      console.log('[MONITORING] Buscando dados:', { category, filters, params, selectedNode });
+      // Debug: console.log('[MONITORING] Buscando dados:', { category, filters, params, selectedNode });
 
       // Chamar endpoint unificado com filtro de nó
       const response = await consulAPI.getMonitoringData(
@@ -631,7 +631,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       const start = (current - 1) * pageSize;
       const paginatedRows = sortedRows.slice(start, start + pageSize);
 
-      console.log(`[MONITORING] Retornados ${paginatedRows.length}/${sortedRows.length} registros`);
+      // Debug: console.log(`[MONITORING] Retornados ${paginatedRows.length}/${sortedRows.length} registros`);
 
       return {
         data: paginatedRows,
@@ -639,7 +639,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         total: sortedRows.length
       };
     } catch (error: any) {
-      console.error('[MONITORING ERROR]', error);
+      // Debug: console.error('[MONITORING ERROR]', error);
       message.error('Erro ao carregar dados: ' + (error.message || error));
       return {
         data: [],
@@ -990,6 +990,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         <MetadataFilterBar
           fields={filterFields}
           filters={filters}
+          options={metadataOptions}
           onChange={(newFilters) => {
             setFilters(newFilters);
             actionRef.current?.reload();
