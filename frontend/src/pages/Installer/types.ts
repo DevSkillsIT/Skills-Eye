@@ -7,6 +7,17 @@ export type ConnectionMethod = 'ssh' | 'fallback';
 export type WindowsResolvedMethod = 'psexec' | 'winrm' | 'ssh';
 export type PrecheckStatus = 'pending' | 'running' | 'success' | 'failed';
 export type TargetType = 'linux' | 'windows';
+export type InstallationStage =
+  | 'idle'
+  | 'validating'
+  | 'connecting'
+  | 'detecting'
+  | 'downloading'
+  | 'installing'
+  | 'configuring'
+  | 'validating_install'
+  | 'completed'
+  | 'failed';
 
 export interface PrecheckItem {
   key: string;
@@ -71,18 +82,20 @@ export interface InstallFormData {
   targetType: TargetType;
   host: string;
   port: number;
+  exporterPort: number;
   username: string;
   password: string;
   domain?: string;
   privateKeyFile?: string;
   connectionMethod: ConnectionMethod;
   selectedCollectors: string[];
-  selectedVersion: string;
-  useBasicAuth: boolean;
-  basicAuthUser: string;
-  basicAuthPassword: string;
-  autoRegister: boolean;
-  selectedNodeAddress: string;
+  selectedVersion?: string;
+  enableBasicAuth: boolean;
+  basicAuthUser?: string;
+  basicAuthPassword?: string;
+  autoRegisterConsul: boolean;
+  consulServiceName?: string;
+  consulTags?: string[];
 }
 
 export interface InstallationTask {
