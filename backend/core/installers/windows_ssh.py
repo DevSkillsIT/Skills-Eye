@@ -452,7 +452,7 @@ Write-Output 'FIM'
                         await self.log(f"Resultado desinstalação existente: {line.split(':', 1)[1]}", "debug")
                         break
             await self.log(f"Output: {output[:500]}", "debug")
-            await self.log(f"Error: {error[:500]}", "debug")
+            await self.log(f"Erro: {error[:500]}", "debug")
             return False
 
     async def validate_installation(

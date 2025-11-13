@@ -511,7 +511,7 @@ rm -rf "$TMP_DIR"
             await self.log("Instalação falhou", "error")
             await self.log(f"Output: {output[:500]}", "debug")
             if error:
-                await self.log(f"Error: {error[:500]}", "debug")
+                await self.log(f"Erro: {error[:500]}", "debug")
             return False
 
     async def validate_installation(self, basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:

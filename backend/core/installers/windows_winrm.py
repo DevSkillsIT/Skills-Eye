@@ -8,6 +8,7 @@ import requests
 from typing import Tuple, Optional, Dict
 from textwrap import dedent
 from .base import BaseInstaller
+from .network_utils import validate_port_with_message, test_port
 
 try:
     import winrm
@@ -35,55 +36,6 @@ WINDOWS_EXPORTER_COLLECTOR_DETAILS = {
     'tcp': 'Conexões TCP',
     'thermalzone': 'Temperatura'
 }
-
-
-def test_port(host: str, port: int, timeout: int = 10) -> bool:
-    """
-    Test if a port is open on a host
-    
-    Returns:
-        True: Port is open and accepting connections
-        False: Port is closed/filtered but host responded quickly (connection refused)
-        
-    Raises:
-        socket.gaierror: DNS resolution failed
-        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
-        ConnectionRefusedError: Connection actively refused by host
-        Exception: Other network errors (unreachable, no route, etc)
-    """
-    sock = None
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex((host, port))
-        
-        if result == 0:
-            return True
-        elif result in (10061, 111):  # Connection refused - host is UP but port closed
-            return False
-        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
-            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
-        else:
-            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
-            
-    except socket.gaierror as e:
-        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
-    except socket.timeout:
-        raise
-    except OSError as e:
-        error_msg = str(e).lower()
-        if "timed out" in error_msg or "timeout" in error_msg:
-            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
-        else:
-            raise Exception(f"Network error testing {host}:{port}: {e}")
-    except Exception as e:
-        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
-    finally:
-        if sock:
-            try:
-                sock.close()
-            except:
-                pass
 
 
 class WindowsWinRMInstaller(BaseInstaller):
@@ -114,38 +66,39 @@ class WindowsWinRMInstaller(BaseInstaller):
             self.full_username = username
 
     async def validate_connection(self) -> Tuple[bool, str]:
-        """Validate connection parameters with network checks"""
+        """Validate connection parameters with network checks using centralized network_utils"""
         if not HAS_WINRM:
-            return False, "pywinrm não está instalado. Execute: pip install pywinrm"
+            return False, "DEPENDENCY_MISSING|pywinrm não está instalado. Execute: pip install pywinrm|dependency"
 
         await self.log(f"🔧 Validando conexão WinRM para {self.host}:{self.port}...", "info")
 
-        # Test network connectivity and DNS
-        await self.log(f"🌐 Testando conectividade com {self.host}...", "info")
-        
-        try:
-            # Test WinRM port with detailed error handling
-            port_open = await asyncio.to_thread(test_port, self.host, self.port, 10)
-            if not port_open:
-                await self.log(f"⚠️ Porta WinRM {self.port} não está acessível", "warning")
-                return False, f"Porta WinRM {self.port} não está acessível em {self.host}"
-            
-            await self.log(f"✅ Porta WinRM {self.port} está acessível", "success")
-            
-        except socket.gaierror as e:
-            await self.log(f"❌ Falha na resolução DNS: {e}", "error")
-            return False, f"DNS_ERROR|Não foi possível resolver o hostname {self.host}|network"
-            
-        except socket.timeout as e:
-            await self.log(f"❌ Timeout: {e}", "error")
-            return False, f"TIMEOUT|Host {self.host} não respondeu (offline ou rede inacessível)|network"
-            
-        except Exception as e:
-            await self.log(f"❌ Erro de rede: {e}", "error")
-            return False, f"NETWORK_ERROR|Erro de conectividade: {e}|network"
+        # Test network connectivity using centralized network_utils (standardized 10s timeout)
+        await self.log(f"🌐 Testando conectividade WinRM (porta {self.port}) com {self.host}...", "info")
 
-        await self.log("✅ WinRM disponível e host acessível", "success")
-        return True, "OK"
+        success, message, category = await asyncio.to_thread(
+            validate_port_with_message,
+            self.host,
+            self.port,
+            10  # Standardized timeout
+        )
+
+        if success:
+            await self.log(f"✅ Porta WinRM {self.port} está acessível", "success")
+            await self.log("✅ WinRM disponível e host acessível", "success")
+            return True, "OK"
+        else:
+            # Map error categories to structured error codes
+            error_codes = {
+                'dns': 'DNS_ERROR',
+                'timeout': 'TIMEOUT',
+                'refused': 'PORT_CLOSED',
+                'network': 'NETWORK_ERROR',
+                'closed': 'PORT_CLOSED'
+            }
+            code = error_codes.get(category, 'CONNECTION_FAILED')
+
+            await self.log(f"❌ {message}", "error")
+            raise Exception(f"{code}|{message}|{category.upper()}")
 
     async def connect(self) -> bool:
         """Connect via WinRM"""
@@ -495,7 +448,7 @@ Write-Host "Instalação concluída!"
         else:
             await self.log("Instalação falhou", "error")
             await self.log(f"Output: {output[:500]}", "debug")
-            await self.log(f"Error: {error[:500]}", "debug")
+            await self.log(f"Erro: {error[:500]}", "debug")
             return False
 
     async def validate_installation(

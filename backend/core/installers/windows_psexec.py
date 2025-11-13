@@ -12,6 +12,7 @@ from typing import Tuple, Optional, Dict
 from pathlib import Path
 from textwrap import dedent
 from .base import BaseInstaller
+from .network_utils import validate_port_with_message, test_port
 
 try:
     from pypsexec.client import Client
@@ -33,65 +34,6 @@ WINDOWS_EXPORTER_COLLECTORS = {
     'full': ['cpu', 'logical_disk', 'memory', 'net', 'os', 'physical_disk', 'service', 'system', 'tcp', 'thermalzone'],
     'minimal': ['cpu', 'memory', 'logical_disk', 'os']
 }
-
-
-def test_port(host: str, port: int, timeout: int = 10) -> bool:
-    """
-    Test if a port is open on a host
-    
-    Returns:
-        True: Port is open and accepting connections
-        False: Port is closed/filtered but host responded quickly (connection refused)
-        
-    Raises:
-        socket.gaierror: DNS resolution failed
-        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
-        ConnectionRefusedError: Connection actively refused by host
-        Exception: Other network errors (unreachable, no route, etc)
-    """
-    sock = None
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex((host, port))
-        
-        # Analyze result codes:
-        # 0 = success, port open
-        # 10061 (Windows) or 111 (Linux) = connection refused (host UP, port closed)
-        # 10060 (Windows) or 110 (Linux) = timeout (host DOWN or unreachable)
-        
-        if result == 0:
-            return True
-        elif result in (10061, 111):  # Connection refused - host is UP but port closed
-            return False
-        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
-            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
-        else:
-            # Other error codes - treat as network issue
-            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
-            
-    except socket.gaierror as e:
-        # DNS resolution failed - cannot resolve hostname
-        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
-    except socket.timeout:
-        # Connection timed out - propagate the exception
-        raise
-    except OSError as e:
-        # Handle OS-level errors (unreachable, no route, etc)
-        error_msg = str(e).lower()
-        if "timed out" in error_msg or "timeout" in error_msg:
-            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
-        else:
-            raise Exception(f"Network error testing {host}:{port}: {e}")
-    except Exception as e:
-        # Other unexpected errors
-        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
-    finally:
-        if sock:
-            try:
-                sock.close()
-            except:
-                pass
 
 
 class WindowsPSExecInstaller(BaseInstaller):
@@ -116,39 +58,40 @@ class WindowsPSExecInstaller(BaseInstaller):
         # domain is passed separately to the client
 
     async def validate_connection(self) -> Tuple[bool, str]:
-        """Validate connection parameters with network checks"""
+        """Validate connection parameters with network checks using centralized network_utils"""
         await self.log(f"🔧 Validando pypsexec para {self.host}...", "info")
 
         # Check if pypsexec is available
         if not PYPSEXEC_AVAILABLE:
             return False, "DEPENDENCY_MISSING|pypsexec não está instalado. Execute: pip install pypsexec|dependency"
 
-        # Test network connectivity and DNS
-        await self.log(f"🌐 Testando conectividade com {self.host}...", "info")
+        # Test network connectivity using centralized network_utils (standardized 10s timeout)
+        await self.log(f"🌐 Testando conectividade SMB (porta 445) com {self.host}...", "info")
 
-        try:
-            # Test SMB port (445) with detailed error handling
-            port_open = await asyncio.to_thread(test_port, self.host, 445, 10)
-            if not port_open:
-                await self.log("⚠️ Porta SMB 445 não está acessível (bloqueada por firewall)", "warning")
-                return False, "PORT_CLOSED|Porta SMB 445 está bloqueada ou inacessível|network"
+        success, message, category = await asyncio.to_thread(
+            validate_port_with_message,
+            self.host,
+            445,  # SMB port
+            10  # Standardized timeout
+        )
 
+        if success:
             await self.log("✅ Porta SMB 445 está acessível", "success")
+            await self.log("✅ pypsexec disponível e host acessível", "success")
+            return True, "OK"
+        else:
+            # Map error categories to structured error codes
+            error_codes = {
+                'dns': 'DNS_ERROR',
+                'timeout': 'TIMEOUT',
+                'refused': 'PORT_CLOSED',
+                'network': 'NETWORK_ERROR',
+                'closed': 'PORT_CLOSED'
+            }
+            code = error_codes.get(category, 'CONNECTION_FAILED')
 
-        except socket.gaierror as e:
-            await self.log(f"❌ Falha na resolução DNS: {e}", "error")
-            return False, f"DNS_ERROR|Não foi possível resolver o hostname {self.host}|network"
-
-        except socket.timeout as e:
-            await self.log(f"❌ Timeout: {e}", "error")
-            return False, f"TIMEOUT|Host {self.host} não respondeu (offline ou rede inacessível)|network"
-
-        except Exception as e:
-            await self.log(f"❌ Erro de rede: {e}", "error")
-            return False, f"NETWORK_ERROR|Erro de conectividade: {e}|network"
-
-        await self.log("✅ pypsexec disponível e host acessível", "success")
-        return True, "OK"
+            await self.log(f"❌ {message}", "error")
+            raise Exception(f"{code}|{message}|{category.upper()}")
 
     async def connect(self) -> bool:
         """Establish connection via pypsexec"""
