@@ -8,6 +8,8 @@ import paramiko
 import requests
 from typing import Tuple, Optional, Dict
 from .base import BaseInstaller
+from .network_utils import test_port, validate_port_with_message
+from .retry_utils import retry_ssh_command
 
 
 # Collector configurations
@@ -41,65 +43,6 @@ NODE_EXPORTER_COLLECTOR_DETAILS = {
 }
 
 
-def test_port(host: str, port: int, timeout: int = 10) -> bool:
-    """
-    Test if a port is open on a host
-    
-    Returns:
-        True: Port is open and accepting connections
-        False: Port is closed/filtered but host responded quickly (connection refused)
-        
-    Raises:
-        socket.gaierror: DNS resolution failed
-        socket.timeout: Connection timeout (host unreachable, offline, or network very slow)
-        ConnectionRefusedError: Connection actively refused by host
-        Exception: Other network errors (unreachable, no route, etc)
-    """
-    sock = None
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex((host, port))
-        
-        # Analyze result codes:
-        # 0 = success, port open
-        # 10061 (Windows) or 111 (Linux) = connection refused (host UP, port closed)
-        # 10060 (Windows) or 110 (Linux) = timeout (host DOWN or unreachable)
-        
-        if result == 0:
-            return True
-        elif result in (10061, 111):  # Connection refused - host is UP but port closed
-            return False
-        elif result in (10060, 110, 10065, 113):  # Timeout or unreachable - host is DOWN
-            raise socket.timeout(f"Connection to {host}:{port} timed out (error code {result}). Host may be offline or unreachable.")
-        else:
-            # Other error codes - treat as network issue
-            raise Exception(f"Network error connecting to {host}:{port} (error code {result})")
-            
-    except socket.gaierror as e:
-        # DNS resolution failed - cannot resolve hostname
-        raise socket.gaierror(f"DNS resolution failed for {host}: {e}")
-    except socket.timeout:
-        # Connection timed out - propagate the exception
-        raise
-    except OSError as e:
-        # Handle OS-level errors (unreachable, no route, etc)
-        error_msg = str(e).lower()
-        if "timed out" in error_msg or "timeout" in error_msg:
-            raise socket.timeout(f"Connection to {host}:{port} timed out: {e}")
-        else:
-            raise Exception(f"Network error testing {host}:{port}: {e}")
-    except Exception as e:
-        # Other unexpected errors
-        raise Exception(f"Unexpected error testing {host}:{port}: {e}")
-    finally:
-        if sock:
-            try:
-                sock.close()
-            except:
-                pass
-
-
 class LinuxSSHInstaller(BaseInstaller):
     """Linux Node Exporter installer via SSH"""
 
@@ -122,51 +65,49 @@ class LinuxSSHInstaller(BaseInstaller):
         self.ssh_client: Optional[paramiko.SSHClient] = None
 
     async def validate_connection(self) -> Tuple[bool, str]:
-        """Validate connection parameters before connecting"""
+        """
+        Validate connection parameters before connecting
+        Uses centralized network_utils for consistent error handling
+        """
         await self.log(f"Validando parâmetros de conexão para {self.host}:{self.ssh_port}...", "info")
-
-        # Test SSH port with 10 second timeout
         await self.log(f"Testando conectividade com {self.host}:{self.ssh_port}...", "info")
-        
+
         try:
-            port_open = await asyncio.to_thread(test_port, self.host, self.ssh_port, 10)
-            
-            if not port_open:
-                # Port closed/filtered - host responded but port is closed
-                await self.log(f"❌ Porta {self.ssh_port} fechada em {self.host}", "error")
-                raise Exception(f"PORT_CLOSED|Porta {self.ssh_port} fechada/filtrada. Host responde mas porta não está aberta.|SERVICO")
-            
-            await self.log(f"✅ Porta SSH {self.ssh_port} acessível em {self.host}", "success")
-            return True, "OK"
-            
-        except socket.gaierror as e:
-            # DNS resolution failed
-            await self.log(f"❌ Erro DNS ao resolver {self.host}: {e}", "error")
-            raise Exception(f"DNS_ERROR|Não foi possível resolver o hostname '{self.host}'. Verifique o DNS ou use o endereço IP diretamente.|DNS")
-        
-        except socket.timeout as e:
-            # Connection timed out - host unreachable, offline, or very slow
-            await self.log(f"❌ Timeout ao conectar em {self.host}:{self.ssh_port}", "error")
-            raise Exception(f"TIMEOUT|Host {self.host} não respondeu em 10 segundos. Pode estar offline, inacessível ou IP incorreto.|CONECTIVIDADE")
-        
+            # Use centralized validation from network_utils
+            success, message, category = await asyncio.to_thread(
+                validate_port_with_message,
+                self.host,
+                self.ssh_port,
+                10  # 10 second timeout (standardized)
+            )
+
+            if success:
+                await self.log(f"✅ {message}", "success")
+                return True, "OK"
+            else:
+                # Port validation failed
+                await self.log(f"❌ {message}", "error")
+
+                # Map category to structured error code
+                error_codes = {
+                    'dns': 'DNS_ERROR',
+                    'timeout': 'TIMEOUT',
+                    'refused': 'CONNECTION_REFUSED',
+                    'network': 'NETWORK_ERROR',
+                }
+                code = error_codes.get(category, 'CONNECTION_FAILED')
+                raise Exception(f"{code}|{message}|{category.upper()}")
+
         except Exception as e:
             error_msg = str(e)
-            # Check if it's already a structured error
+
+            # If already structured error, re-raise
             if "|" in error_msg:
                 raise
-            
-            # Generic network error
-            await self.log(f"❌ Erro ao testar conexão: {e}", "error")
-            
-            # Try to identify the error type
-            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                raise Exception(f"TIMEOUT|Timeout ao conectar em {self.host}:{self.ssh_port}. Host pode estar offline ou inacessível.|CONECTIVIDADE")
-            elif "unreachable" in error_msg.lower() or "no route" in error_msg.lower():
-                raise Exception(f"NETWORK_UNREACHABLE|Host {self.host} está inacessível. Sem rota de rede. Verifique VPN, roteamento ou firewall.|REDE")
-            elif "refused" in error_msg.lower():
-                raise Exception(f"CONNECTION_REFUSED|Conexão recusada em {self.host}:{self.ssh_port}. SSH não está rodando ou porta incorreta.|SERVICO")
-            else:
-                raise Exception(f"NETWORK_ERROR|Erro de rede ao conectar em {self.host}:{self.ssh_port}: {error_msg}|REDE")
+
+            # Wrap unexpected errors
+            await self.log(f"❌ Erro inesperado: {e}", "error")
+            raise Exception(f"NETWORK_ERROR|Erro ao validar conexão: {error_msg}|REDE")
 
     async def connect(self) -> bool:
         """Connect via SSH with detailed error handling"""
@@ -184,7 +125,7 @@ class LinuxSSHInstaller(BaseInstaller):
                 'hostname': self.host,
                 'username': self.username,
                 'port': self.ssh_port,
-                'timeout': 30  # 30 segundos para timeout
+                'timeout': 30  # Standardized: 30 seconds for SSH connection
             }
 
             if self.key_file:
@@ -281,6 +222,40 @@ class LinuxSSHInstaller(BaseInstaller):
             return await asyncio.to_thread(_exec)
         except Exception as e:
             return 1, "", str(e)
+
+    async def execute_command_with_retry(
+        self,
+        command: str,
+        use_sudo: Optional[bool] = None,
+        max_attempts: int = 3
+    ) -> Tuple[int, str, str]:
+        """
+        Execute remote command with automatic retry on transient failures
+
+        Example of retry integration (Fase C improvement)
+        Uses retry_ssh_command from retry_utils module
+
+        Args:
+            command: Command to execute
+            use_sudo: Use sudo (default: self.use_sudo)
+            max_attempts: Maximum retry attempts (default: 3)
+
+        Returns:
+            Tuple of (exit_code, stdout, stderr)
+        """
+        if use_sudo is None:
+            use_sudo = self.use_sudo
+
+        if use_sudo and self.username != 'root':
+            command = f"sudo -S {command}"
+
+        # Use retry_ssh_command from retry_utils
+        return await retry_ssh_command(
+            execute_func=self.execute_command,
+            command=command,
+            max_attempts=max_attempts,
+            log_callback=self.log
+        )
 
     async def detect_os(self) -> Optional[str]:
         """Detect operating system"""
@@ -536,7 +511,7 @@ rm -rf "$TMP_DIR"
             await self.log("Instalação falhou", "error")
             await self.log(f"Output: {output[:500]}", "debug")
             if error:
-                await self.log(f"Error: {error[:500]}", "debug")
+                await self.log(f"Erro: {error[:500]}", "debug")
             return False
 
     async def validate_installation(self, basic_auth_user: Optional[str] = None, basic_auth_password: Optional[str] = None) -> bool:

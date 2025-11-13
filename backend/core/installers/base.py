@@ -62,8 +62,18 @@ class BaseInstaller(ABC):
         pass
 
     @abstractmethod
-    async def validate_installation(self) -> bool:
-        """Validate that installation was successful"""
+    async def validate_installation(
+        self,
+        basic_auth_user: Optional[str] = None,
+        basic_auth_password: Optional[str] = None
+    ) -> bool:
+        """
+        Validate that installation was successful
+
+        Args:
+            basic_auth_user: Optional Basic Auth username for validation
+            basic_auth_password: Optional Basic Auth password for validation
+        """
         pass
 
     async def get_system_info(self) -> Dict[str, str]:

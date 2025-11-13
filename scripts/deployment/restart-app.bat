@@ -79,8 +79,8 @@ echo ========================================
 echo  APLICACAO REINICIADA!
 echo ========================================
 echo.
-echo Backend: http://localhost:5000
-echo Frontend: http://localhost:8081
+echo Backend: http://localhost:5001
+echo Frontend: http://localhost:8082
 echo.
 echo Pressione qualquer tecla para fechar...
 pause > nul
