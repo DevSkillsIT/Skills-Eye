@@ -210,9 +210,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     // OTIMIZAÇÃO: Só atualiza se columnConfig estiver vazio (primeira carga)
     // Evita loop infinito e múltiplos re-renders
     if (tableFields.length > 0 && columnConfig.length === 0) {
+      console.log('[DynamicMonitoringPage] 🔧 Setando columnConfig inicial com', defaultColumnConfig.length, 'colunas');
       setColumnConfig(defaultColumnConfig);
     }
-  }, [tableFields.length]); // Depende apenas do comprimento, não do objeto todo
+  }, [tableFields.length, defaultColumnConfig.length]); // 🔧 FIX: Adicionar defaultColumnConfig.length como dependência
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
