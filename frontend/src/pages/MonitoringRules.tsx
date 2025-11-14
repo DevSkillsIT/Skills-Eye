@@ -43,6 +43,8 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   InfoCircleOutlined,
+  ClearOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import { consulAPI } from '../services/api';
 
@@ -61,6 +63,7 @@ interface CategorizationRule {
     metrics_path?: string;
     module_pattern?: string;
   };
+  observations?: string;  // Campo de observações
 }
 
 interface RulesData {
@@ -113,6 +116,8 @@ const MonitoringRules: React.FC = () => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [rulesData, setRulesData] = useState<RulesData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
 
   // =========================================================================
   // CARREGAMENTO DE DADOS
@@ -176,13 +181,35 @@ const MonitoringRules: React.FC = () => {
       job_name_pattern: record.conditions.job_name_pattern,
       metrics_path: record.conditions.metrics_path,
       module_pattern: record.conditions.module_pattern,
+      observations: record.observations,
+    });
+    setModalVisible(true);
+  };
+
+  const handleDuplicate = (record: CategorizationRule) => {
+    setEditingRule(null);
+    form.setFieldsValue({
+      id: `${record.id}_copy`,
+      priority: record.priority,
+      category: record.category,
+      display_name: `${record.display_name} (Cópia)`,
+      exporter_type: record.exporter_type,
+      job_name_pattern: record.conditions.job_name_pattern,
+      metrics_path: record.conditions.metrics_path,
+      module_pattern: record.conditions.module_pattern,
+      observations: record.observations,
     });
     setModalVisible(true);
   };
 
   const handleDelete = async (ruleId: string) => {
     try {
-      const response = await consulAPI.deleteCategorizationRule(ruleId);
+      const axiosResponse = await consulAPI.deleteCategorizationRule(ruleId);
+
+      // Normalizar resposta: Axios retorna response.data
+      const response = (axiosResponse && (axiosResponse as any).data)
+        ? (axiosResponse as any).data
+        : axiosResponse;
 
       if (response.success) {
         message.success('Regra excluída com sucesso');
@@ -210,14 +237,20 @@ const MonitoringRules: React.FC = () => {
           metrics_path: values.metrics_path,
           module_pattern: values.module_pattern,
         },
+        observations: values.observations,
       };
 
-      let response;
+      let axiosResponse;
       if (editingRule) {
-        response = await consulAPI.updateCategorizationRule(rule.id, rule);
+        axiosResponse = await consulAPI.updateCategorizationRule(rule.id, rule);
       } else {
-        response = await consulAPI.createCategorizationRule(rule);
+        axiosResponse = await consulAPI.createCategorizationRule(rule);
       }
+
+      // Normalizar resposta: Axios retorna response.data
+      const response = (axiosResponse && (axiosResponse as any).data)
+        ? (axiosResponse as any).data
+        : axiosResponse;
 
       if (response.success) {
         message.success(editingRule ? 'Regra atualizada com sucesso' : 'Regra criada com sucesso');
@@ -271,6 +304,7 @@ const MonitoringRules: React.FC = () => {
       title: 'Categoria',
       dataIndex: 'category',
       width: 200,
+      sorter: (a, b) => (a.category || '').localeCompare(b.category || ''),
       filters: rulesData?.categories.map(c => ({
         text: c.display_name,
         value: c.id,
@@ -287,12 +321,24 @@ const MonitoringRules: React.FC = () => {
       dataIndex: 'display_name',
       width: 250,
       ellipsis: true,
+      sorter: (a, b) => (a.display_name || '').localeCompare(b.display_name || ''),
+      filters: Array.from(new Set(rulesData?.rules.map(r => r.display_name))).map(name => ({
+        text: name,
+        value: name,
+      })),
+      onFilter: (value, record) => record.display_name === value,
     },
     {
       title: 'Exporter Type',
       dataIndex: 'exporter_type',
       width: 180,
       ellipsis: true,
+      sorter: (a, b) => (a.exporter_type || '').localeCompare(b.exporter_type || ''),
+      filters: Array.from(new Set(rulesData?.rules.map(r => r.exporter_type).filter(Boolean))).map(type => ({
+        text: type as string,
+        value: type as string,
+      })),
+      onFilter: (value, record) => record.exporter_type === value,
       render: (text) => text ? <Tag color="blue">{text}</Tag> : '-',
     },
     {
@@ -300,12 +346,22 @@ const MonitoringRules: React.FC = () => {
       dataIndex: ['conditions', 'job_name_pattern'],
       width: 180,
       ellipsis: true,
+      filters: Array.from(new Set(rulesData?.rules.map(r => r.conditions.job_name_pattern).filter(Boolean))).map(pattern => ({
+        text: pattern as string,
+        value: pattern as string,
+      })),
+      onFilter: (value, record) => record.conditions.job_name_pattern === value,
       render: (text) => text ? <code style={{ fontSize: '11px' }}>{text}</code> : '-',
     },
     {
       title: 'Metrics Path',
       dataIndex: ['conditions', 'metrics_path'],
       width: 120,
+      filters: [
+        { text: '/probe', value: '/probe' },
+        { text: '/metrics', value: '/metrics' },
+      ],
+      onFilter: (value, record) => record.conditions.metrics_path === value,
       render: (text) => <Tag color={text === '/probe' ? 'orange' : 'green'}>{text || '-'}</Tag>,
     },
     {
@@ -313,11 +369,16 @@ const MonitoringRules: React.FC = () => {
       dataIndex: ['conditions', 'module_pattern'],
       width: 150,
       ellipsis: true,
+      filters: Array.from(new Set(rulesData?.rules.map(r => r.conditions.module_pattern).filter(Boolean))).map(pattern => ({
+        text: pattern as string,
+        value: pattern as string,
+      })),
+      onFilter: (value, record) => record.conditions.module_pattern === value,
       render: (text) => text ? <code style={{ fontSize: '11px' }}>{text}</code> : '-',
     },
     {
       title: 'Ações',
-      width: 120,
+      width: 150,
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -327,6 +388,14 @@ const MonitoringRules: React.FC = () => {
               size="small"
               icon={<EditOutlined />}
               onClick={() => handleEdit(record)}
+            />
+          </Tooltip>
+          <Tooltip title="Duplicar">
+            <Button
+              type="link"
+              size="small"
+              icon={<CopyOutlined />}
+              onClick={() => handleDuplicate(record)}
             />
           </Tooltip>
           <Popconfirm
@@ -359,30 +428,6 @@ const MonitoringRules: React.FC = () => {
     <PageContainer
       title="Regras de Categorização"
       subTitle="Gerenciar regras de categorização de tipos de monitoramento"
-      extra={[
-        <Button
-          key="add"
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleAdd}
-        >
-          Adicionar Regra
-        </Button>,
-        <Button
-          key="preview"
-          icon={<InfoCircleOutlined />}
-          onClick={handlePreview}
-        >
-          Visualizar Resumo
-        </Button>,
-        <Button
-          key="reload"
-          icon={<ReloadOutlined />}
-          onClick={() => actionRef.current?.reload()}
-        >
-          Recarregar
-        </Button>,
-      ]}
     >
       {/* Estatísticas */}
       {rulesData && (
@@ -407,9 +452,10 @@ const MonitoringRules: React.FC = () => {
         rowKey="id"
         search={false}
         pagination={{
-          defaultPageSize: 20,
+          defaultPageSize: 50,
           showSizeChanger: true,
-          showTotal: (total) => `Total: ${total} regras`,
+          pageSizeOptions: ['20', '50', '100', '200'],
+          showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} regras`,
         }}
         options={{
           reload: true,
@@ -417,6 +463,63 @@ const MonitoringRules: React.FC = () => {
           setting: true,
         }}
         scroll={{ x: 1500 }}
+        onChange={(pagination, filters, sorter: any) => {
+          if (sorter && sorter.field) {
+            setSortField(sorter.field);
+            setSortOrder(sorter.order || null);
+          } else {
+            setSortField(null);
+            setSortOrder(null);
+          }
+        }}
+        toolbar={{
+          actions: [
+            <Button
+              key="add"
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleAdd}
+            >
+              Adicionar Regra
+            </Button>,
+            <Button
+              key="preview"
+              icon={<InfoCircleOutlined />}
+              onClick={handlePreview}
+            >
+              Visualizar Resumo
+            </Button>,
+            <Button
+              key="reload"
+              icon={<ReloadOutlined />}
+              onClick={() => actionRef.current?.reload()}
+            >
+              Recarregar
+            </Button>,
+            <Button
+              key="clearFilters"
+              icon={<ClearOutlined />}
+              onClick={() => {
+                actionRef.current?.clearFilters?.();
+                actionRef.current?.reload();
+              }}
+            >
+              Limpar Filtros
+            </Button>,
+            <Button
+              key="clearAll"
+              icon={<ClearOutlined />}
+              onClick={() => {
+                actionRef.current?.reset?.();
+                setSortField(null);
+                setSortOrder(null);
+                actionRef.current?.reload();
+              }}
+            >
+              Limpar Filtros e Ordem
+            </Button>,
+          ],
+        }}
       />
 
       {/* Modal de Edição/Criação */}
@@ -460,7 +563,7 @@ const MonitoringRules: React.FC = () => {
 
           <ProFormSelect
             name="category"
-            label="Categoria"
+            label="Nome de Exibição (Categoria)"
             rules={[{ required: true, message: 'Categoria é obrigatória' }]}
             options={rulesData?.categories.map(c => ({
               label: c.display_name,
@@ -471,7 +574,7 @@ const MonitoringRules: React.FC = () => {
 
           <ProFormText
             name="display_name"
-            label="Nome de Exibição"
+            label="Display Name"
             placeholder="ex: ICMP (Ping), Node Exporter (Linux)"
             rules={[{ required: true, message: 'Nome de exibição é obrigatório' }]}
             tooltip="Nome amigável que aparecerá na interface"
@@ -479,7 +582,7 @@ const MonitoringRules: React.FC = () => {
 
           <ProFormText
             name="exporter_type"
-            label="Tipo de Exporter (Opcional)"
+            label="Tipo de Exporter"
             placeholder="ex: blackbox, node_exporter, mysqld_exporter"
             tooltip="Nome técnico do exporter (ex: node_exporter, blackbox)"
           />
@@ -510,6 +613,16 @@ const MonitoringRules: React.FC = () => {
             label="Regex de Module (Opcional)"
             placeholder="ex: ^icmp$, ^http_2xx$"
             tooltip="Expressão regular para matching em __param_module (apenas para Blackbox)"
+          />
+
+          <ProFormTextArea
+            name="observations"
+            label="Observações"
+            placeholder="Observações sobre esta regra de categorização"
+            tooltip="Campo opcional para anotações e observações sobre a regra"
+            fieldProps={{
+              rows: 3,
+            }}
           />
         </Form>
       </Modal>

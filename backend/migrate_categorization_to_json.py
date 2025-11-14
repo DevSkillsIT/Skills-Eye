@@ -186,6 +186,21 @@ async def migrate(silent: bool = False):
     log(f"  ✅ {len(BLACKBOX_NETWORK_MODULES)} regras de Network Probes")
     log(f"  ✅ {len(BLACKBOX_WEB_MODULES)} regras de Web Probes")
 
+    # Regra especial: Blackbox ICMP Remoto (prioridade 95 - entre blackbox e exporters)
+    rules.append({
+        "id": "blackbox_remote_icmp",
+        "priority": 95,
+        "category": "network-probes",
+        "display_name": "ICMP - Blackbox Remoto",
+        "exporter_type": "blackbox",
+        "conditions": {
+            "job_name_pattern": "^(blackbox|icmp).*",
+            "metrics_path": "/probe",
+            "module_pattern": "^icmp$"
+        }
+    })
+    log(f"  ✅ 1 regra especial: blackbox_remote_icmp (prioridade 95)")
+
     # ========================================================================
     # PASSO 2: Regras de Exporters (prioridade média: 80)
     # ========================================================================
