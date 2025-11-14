@@ -799,14 +799,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedFields, ...metadataFields];
   }, [tableFields]);
 
-  // Effect: Reload quando categoria ou filtros mudarem
-  // ✅ CRÍTICO: Incluir 'category' para recarregar ao trocar de página
-  useEffect(() => {
-    actionRef.current?.reload();
-  }, [category, selectedNode, filters]);
-
-  // ✅ CRÍTICO: Resetar estados ao mudar de categoria
-  // Previne que dados de uma categoria apareçam em outra
+  // ✅ OTIMIZAÇÃO: Resetar estados ao mudar categoria (1 único reload)
+  // Evita race condition de 2 useEffect chamando reload() simultaneamente
   useEffect(() => {
     // Limpar filtros e estados quando categoria muda
     setFilters({});
@@ -828,9 +822,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       uniqueTags: new Set(),
     });
     
-    // Forçar reload da tabela
+    // Reload após resetar estados (chamada única)
     actionRef.current?.reload();
   }, [category]);
+
+  // ✅ OTIMIZAÇÃO: Reload apenas quando filtros/nó mudam (não em category)
+  // Usa ref para evitar reload na primeira renderização
+  const isFirstRender = React.useRef(true);
+  useEffect(() => {
+    // Skip primeira renderização (category useEffect já faz reload)
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    
+    // Reload apenas quando selectedNode ou filters mudarem
+    actionRef.current?.reload();
+  }, [selectedNode, filters]);
 
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',

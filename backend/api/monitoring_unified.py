@@ -24,6 +24,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
 import httpx
+import time
 
 from core.consul_kv_config_manager import ConsulKVConfigManager
 from core.consul_manager import ConsulManager
@@ -36,6 +37,37 @@ router = APIRouter(prefix="/monitoring", tags=["Monitoring Unified"])
 kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 consul_manager = ConsulManager()
 categorization_engine = CategorizationRuleEngine(kv_manager)
+
+# ✅ OTIMIZAÇÃO: Cache de nós do Consul (TTL: 5 minutos)
+# Nodes mudam raramente (apenas quando add/remove servidores)
+# Benefício: -50ms por request, -95% API calls ao Consul
+_nodes_cache = {
+    "data": None,
+    "timestamp": 0,
+    "ttl": 300  # 5 minutos
+}
+
+async def get_nodes_cached(consul_mgr: ConsulManager) -> List[Dict[str, Any]]:
+    """
+    Retorna lista de nós do Consul com cache de 5 minutos.
+    
+    Cache hit: ~0ms
+    Cache miss: ~50ms (API call ao Consul)
+    """
+    now = time.time()
+    
+    # Cache hit
+    if _nodes_cache["data"] and (now - _nodes_cache["timestamp"]) < _nodes_cache["ttl"]:
+        logger.debug(f"[CACHE HIT] Nodes do Consul (age: {int(now - _nodes_cache['timestamp'])}s)")
+        return _nodes_cache["data"]
+    
+    # Cache miss - buscar do Consul
+    logger.debug("[CACHE MISS] Buscando nodes do Consul...")
+    nodes = await consul_mgr.get_nodes()
+    _nodes_cache["data"] = nodes
+    _nodes_cache["timestamp"] = now
+    
+    return nodes
 
 
 # ============================================================================
@@ -104,13 +136,11 @@ async def get_monitoring_data(
         # PASSO 1: Buscar SITES do KV (metadata/sites)
         # ==================================================================
         from core.kv_manager import KVManager
-        from core.consul_manager import ConsulManager
         
         kv = KVManager()
-        consul_manager = ConsulManager()
 
-        # Buscar nós do Consul para mapear Node Name → IP
-        consul_nodes = await consul_manager.get_nodes()
+        # ✅ OTIMIZAÇÃO: Buscar nós com cache (TTL: 5min) - usa instância global
+        consul_nodes = await get_nodes_cached(consul_manager)
         nodes_map = {}  # Node Name → IP Address
         for node in consul_nodes:
             node_name = node.get('Node', '')
