@@ -248,6 +248,12 @@ interface MetadataField {
   show_in_services?: boolean;
   show_in_exporters?: boolean;
   show_in_blackbox?: boolean;
+  show_in_network_probes?: boolean;
+  show_in_web_probes?: boolean;
+  show_in_system_exporters?: boolean;
+  show_in_database_exporters?: boolean;
+  show_in_infrastructure_exporters?: boolean;
+  show_in_hardware_exporters?: boolean;
   options?: string[];
   order: number;
   category: string | string[];  // ← Suporta uma ou múltiplas categorias
@@ -445,6 +451,12 @@ const MetadataFieldsPage: React.FC = () => {
           show_in_services: field.show_in_services ?? true,
           show_in_exporters: field.show_in_exporters ?? true,
           show_in_blackbox: field.show_in_blackbox ?? true,
+          show_in_network_probes: field.show_in_network_probes ?? true,
+          show_in_web_probes: field.show_in_web_probes ?? true,
+          show_in_system_exporters: field.show_in_system_exporters ?? true,
+          show_in_database_exporters: field.show_in_database_exporters ?? true,
+          show_in_infrastructure_exporters: field.show_in_infrastructure_exporters ?? true,
+          show_in_hardware_exporters: field.show_in_hardware_exporters ?? true,
         }));
 
         console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos carregados`);
@@ -561,6 +573,12 @@ const MetadataFieldsPage: React.FC = () => {
           show_in_services: field.show_in_services ?? true,
           show_in_exporters: field.show_in_exporters ?? true,
           show_in_blackbox: field.show_in_blackbox ?? true,
+          show_in_network_probes: field.show_in_network_probes ?? true,
+          show_in_web_probes: field.show_in_web_probes ?? true,
+          show_in_system_exporters: field.show_in_system_exporters ?? true,
+          show_in_database_exporters: field.show_in_database_exporters ?? true,
+          show_in_infrastructure_exporters: field.show_in_infrastructure_exporters ?? true,
+          show_in_hardware_exporters: field.show_in_hardware_exporters ?? true,
         }));
 
         console.log(`[METADATA-FIELDS] ✅ ${fields.length} campos carregados`);
@@ -662,6 +680,12 @@ const MetadataFieldsPage: React.FC = () => {
             show_in_services: field.show_in_services ?? true,
             show_in_exporters: field.show_in_exporters ?? true,
             show_in_blackbox: field.show_in_blackbox ?? true,
+            show_in_network_probes: field.show_in_network_probes ?? true,
+            show_in_web_probes: field.show_in_web_probes ?? true,
+            show_in_system_exporters: field.show_in_system_exporters ?? true,
+            show_in_database_exporters: field.show_in_database_exporters ?? true,
+            show_in_infrastructure_exporters: field.show_in_infrastructure_exporters ?? true,
+            show_in_hardware_exporters: field.show_in_hardware_exporters ?? true,
             // Campos NOVOS extraídos do Prometheus = status "missing"
             sync_status: isNewField ? 'missing' : undefined,
             sync_message: isNewField ? 'Campo encontrado no Prometheus mas não aplicado no KV' : undefined,
@@ -976,6 +1000,12 @@ const MetadataFieldsPage: React.FC = () => {
               show_in_services: field.show_in_services ?? true,
               show_in_exporters: field.show_in_exporters ?? true,
               show_in_blackbox: field.show_in_blackbox ?? true,
+              show_in_network_probes: field.show_in_network_probes ?? true,
+              show_in_web_probes: field.show_in_web_probes ?? true,
+              show_in_system_exporters: field.show_in_system_exporters ?? true,
+              show_in_database_exporters: field.show_in_database_exporters ?? true,
+              show_in_infrastructure_exporters: field.show_in_infrastructure_exporters ?? true,
+              show_in_hardware_exporters: field.show_in_hardware_exporters ?? true,
               // Campos NOVOS extraídos do Prometheus mas não no KV = status "missing"
               sync_status: isNewField ? 'missing' : undefined,
               sync_message: isNewField ? 'Campo encontrado no Prometheus mas não aplicado no KV' : undefined,
@@ -1358,6 +1388,12 @@ const MetadataFieldsPage: React.FC = () => {
         show_in_services: values.show_in_services ?? true,
         show_in_exporters: values.show_in_exporters ?? true,
         show_in_blackbox: values.show_in_blackbox ?? true,
+        show_in_network_probes: values.show_in_network_probes ?? true,
+        show_in_web_probes: values.show_in_web_probes ?? true,
+        show_in_system_exporters: values.show_in_system_exporters ?? true,
+        show_in_database_exporters: values.show_in_database_exporters ?? true,
+        show_in_infrastructure_exporters: values.show_in_infrastructure_exporters ?? true,
+        show_in_hardware_exporters: values.show_in_hardware_exporters ?? true,
       };
 
       await axios.patch(`${API_URL}/metadata-fields/${editingField.name}`, configToSave);
@@ -1522,7 +1558,7 @@ const MetadataFieldsPage: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 500)); // Delay visual
 
       setStepStatus(prev => ({ ...prev, 0: 'finish' }));
-      const prepMsg = [];
+      const prepMsg: string[] = [];
       if (missingFields.length > 0) prepMsg.push(`${missingFields.length} para KV`);
       if (outdatedFields.length > 0) prepMsg.push(`${outdatedFields.length} para Prometheus`);
       if (orphanFields.length > 0) prepMsg.push(`${orphanFields.length} órfãos para remover`);
@@ -1557,6 +1593,12 @@ const MetadataFieldsPage: React.FC = () => {
             show_in_services: f.show_in_services,
             show_in_exporters: f.show_in_exporters,
             show_in_blackbox: f.show_in_blackbox,
+            show_in_network_probes: f.show_in_network_probes,
+            show_in_web_probes: f.show_in_web_probes,
+            show_in_system_exporters: f.show_in_system_exporters,
+            show_in_database_exporters: f.show_in_database_exporters,
+            show_in_infrastructure_exporters: f.show_in_infrastructure_exporters,
+            show_in_hardware_exporters: f.show_in_hardware_exporters,
             available_for_registration: f.available_for_registration,
             order: f.order,
             category: f.category,
@@ -1598,7 +1640,7 @@ const MetadataFieldsPage: React.FC = () => {
           dry_run: false
         });
 
-        const { success: backendSuccess, results } = batchSyncResponse.data;
+        const { results } = batchSyncResponse.data;
         const successCount = results.filter(r => r.success).length;
         const failCount = results.filter(r => !r.success).length;
 
@@ -3125,22 +3167,77 @@ DEFAULT_SITE=${config.default_site || 'null (nenhum site padrão)'}`}
                     showIcon
                     style={{ marginBottom: 16 }}
                   />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-                    <ProFormSwitch
-                      name="show_in_services"
-                      label={<Space><Tag color="blue">Services</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de serviços"
-                    />
-                    <ProFormSwitch
-                      name="show_in_exporters"
-                      label={<Space><Tag color="green">Exporters</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de exporters"
-                    />
-                    <ProFormSwitch
-                      name="show_in_blackbox"
-                      label={<Space><Tag color="orange">Blackbox</Tag></Space>}
-                      tooltip="Campo aparecerá nos formulários de targets blackbox"
-                    />
+                  
+                  {/* PÁGINAS BASE (Services, Exporters, Blackbox) */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 8, color: '#595959' }}>
+                      📄 Páginas Base
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                      <ProFormSwitch
+                        name="show_in_services"
+                        label={<Space><Tag color="blue">Services</Tag></Space>}
+                        tooltip="Campo aparecerá nos formulários de serviços"
+                      />
+                      <ProFormSwitch
+                        name="show_in_exporters"
+                        label={<Space><Tag color="green">Exporters</Tag></Space>}
+                        tooltip="Campo aparecerá nos formulários de exporters"
+                      />
+                      <ProFormSwitch
+                        name="show_in_blackbox"
+                        label={<Space><Tag color="orange">Blackbox</Tag></Space>}
+                        tooltip="Campo aparecerá nos formulários de targets blackbox"
+                      />
+                    </div>
+                  </div>
+
+                  {/* PÁGINAS DINÂMICAS - Categorias de Blackbox */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, marginBottom: 8, color: '#595959' }}>
+                      🎯 Categorias de Blackbox (Probes)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <ProFormSwitch
+                        name="show_in_network_probes"
+                        label={<Space><Tag color="purple">Network Probes</Tag></Space>}
+                        tooltip="Campo aparecerá em monitoramento de rede (ICMP, TCP, etc)"
+                      />
+                      <ProFormSwitch
+                        name="show_in_web_probes"
+                        label={<Space><Tag color="cyan">Web Probes</Tag></Space>}
+                        tooltip="Campo aparecerá em monitoramento HTTP/HTTPS"
+                      />
+                    </div>
+                  </div>
+
+                  {/* PÁGINAS DINÂMICAS - Categorias de Exporters */}
+                  <div>
+                    <div style={{ fontWeight: 500, marginBottom: 8, color: '#595959' }}>
+                      ⚙️ Categorias de Exporters
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                      <ProFormSwitch
+                        name="show_in_system_exporters"
+                        label={<Space><Tag color="geekblue">System Exporters</Tag></Space>}
+                        tooltip="Campo aparecerá em exporters de sistema (Node, Windows, etc)"
+                      />
+                      <ProFormSwitch
+                        name="show_in_database_exporters"
+                        label={<Space><Tag color="magenta">Database Exporters</Tag></Space>}
+                        tooltip="Campo aparecerá em exporters de banco de dados (MySQL, PostgreSQL, etc)"
+                      />
+                      <ProFormSwitch
+                        name="show_in_infrastructure_exporters"
+                        label={<Space><Tag color="volcano">Infrastructure Exporters</Tag></Space>}
+                        tooltip="Campo aparecerá em exporters de infraestrutura"
+                      />
+                      <ProFormSwitch
+                        name="show_in_hardware_exporters"
+                        label={<Space><Tag color="gold">Hardware Exporters</Tag></Space>}
+                        tooltip="Campo aparecerá em exporters de hardware (IPMI, SNMP, etc)"
+                      />
+                    </div>
                   </div>
                 </>
               ),

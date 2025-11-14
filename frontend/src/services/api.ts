@@ -1239,6 +1239,13 @@ export interface MetadataField {
   show_in_services?: boolean;
   show_in_exporters?: boolean;
   show_in_blackbox?: boolean;
+  // ⭐ PÁGINAS DINÂMICAS - v2.0 (2025-11-13)
+  show_in_network_probes?: boolean;
+  show_in_web_probes?: boolean;
+  show_in_system_exporters?: boolean;
+  show_in_database_exporters?: boolean;
+  show_in_infrastructure_exporters?: boolean;
+  show_in_hardware_exporters?: boolean;
   editable: boolean;
   source_label: string;
   description?: string;
@@ -1467,6 +1474,8 @@ export interface MetadataFieldDynamic {
   show_in_web_probes?: boolean;
   show_in_system_exporters?: boolean;
   show_in_database_exporters?: boolean;
+  show_in_infrastructure_exporters?: boolean;
+  show_in_hardware_exporters?: boolean;
   // Outros campos
   editable: boolean;
   available_for_registration: boolean;

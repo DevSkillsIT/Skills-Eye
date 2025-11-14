@@ -208,15 +208,24 @@ export function useTableFields(context?: string): {
   // Filtrar por contexto e show_in_table
   const tableFields = allFields
     .filter((f: MetadataFieldDynamic) => {
-      // Filtrar por contexto
+      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+      // Categories: network-probes, web-probes, system-exporters, etc
+      // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
+      
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      if (context === 'network-probes') return f.show_in_network_probes !== false;
-      if (context === 'web-probes') return f.show_in_web_probes !== false;
-      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
-      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
-      return true;
+      
+      // Mapear categorias dinâmicas para campos base
+      if (context === 'network-probes' || context === 'web-probes') {
+        return f.show_in_blackbox !== false;  // ← probes = blackbox
+      }
+      if (context === 'system-exporters' || context === 'database-exporters' || 
+          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+        return f.show_in_exporters !== false;  // ← exporters categories
+      }
+      
+      return true;  // Sem filtro específico
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
     .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
@@ -237,13 +246,20 @@ export function useFormFields(context?: string): {
 
   const formFields = allFields
     .filter((f: MetadataFieldDynamic) => {
+      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      if (context === 'network-probes') return f.show_in_network_probes !== false;
-      if (context === 'web-probes') return f.show_in_web_probes !== false;
-      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
-      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
+      
+      // Mapear categorias dinâmicas
+      if (context === 'network-probes' || context === 'web-probes') {
+        return f.show_in_blackbox !== false;
+      }
+      if (context === 'system-exporters' || context === 'database-exporters' || 
+          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+        return f.show_in_exporters !== false;
+      }
+      
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_form === true)
@@ -265,13 +281,20 @@ export function useFilterFields(context?: string): {
 
   const filterFields = allFields
     .filter((f: MetadataFieldDynamic) => {
+      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      if (context === 'network-probes') return f.show_in_network_probes !== false;
-      if (context === 'web-probes') return f.show_in_web_probes !== false;
-      if (context === 'system-exporters') return f.show_in_system_exporters !== false;
-      if (context === 'database-exporters') return f.show_in_database_exporters !== false;
+      
+      // Mapear categorias dinâmicas
+      if (context === 'network-probes' || context === 'web-probes') {
+        return f.show_in_blackbox !== false;
+      }
+      if (context === 'system-exporters' || context === 'database-exporters' || 
+          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+        return f.show_in_exporters !== false;
+      }
+      
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_filter === true)

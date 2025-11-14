@@ -74,6 +74,8 @@ class MetadataFieldModel(BaseModel):
     show_in_web_probes: bool = Field(True, description="Mostrar na página Web Probes")
     show_in_system_exporters: bool = Field(True, description="Mostrar na página System Exporters")
     show_in_database_exporters: bool = Field(True, description="Mostrar na página Database Exporters")
+    show_in_infrastructure_exporters: bool = Field(True, description="Mostrar na página Infrastructure Exporters")
+    show_in_hardware_exporters: bool = Field(True, description="Mostrar na página Hardware Exporters")
 
 
 class CategoryModel(BaseModel):
@@ -240,6 +242,7 @@ def merge_fields_preserving_customizations(
                 # ⭐ NOVAS PROPRIEDADES - v2.0 (2025-11-13)
                 'show_in_network_probes', 'show_in_web_probes',
                 'show_in_system_exporters', 'show_in_database_exporters',
+                'show_in_infrastructure_exporters', 'show_in_hardware_exporters',
                 # Outros campos customizáveis
                 'editable', 'enabled', 'available_for_registration',
                 'validation_regex', 'validation', 'default_value', 'placeholder',
@@ -249,6 +252,21 @@ def merge_fields_preserving_customizations(
             for custom_field in customizable_fields:
                 if custom_field in kv_field:
                     merged_field[custom_field] = kv_field[custom_field]
+            
+            # ✅ GARANTIR que novos campos show_in_* existam (backward compatibility)
+            # Se KV antigo não tem esses campos, adicionar com defaults herdados
+            if 'show_in_network_probes' not in merged_field:
+                merged_field['show_in_network_probes'] = merged_field.get('show_in_blackbox', True)
+            if 'show_in_web_probes' not in merged_field:
+                merged_field['show_in_web_probes'] = merged_field.get('show_in_blackbox', True)
+            if 'show_in_system_exporters' not in merged_field:
+                merged_field['show_in_system_exporters'] = merged_field.get('show_in_exporters', True)
+            if 'show_in_database_exporters' not in merged_field:
+                merged_field['show_in_database_exporters'] = merged_field.get('show_in_exporters', True)
+            if 'show_in_infrastructure_exporters' not in merged_field:
+                merged_field['show_in_infrastructure_exporters'] = merged_field.get('show_in_exporters', True)
+            if 'show_in_hardware_exporters' not in merged_field:
+                merged_field['show_in_hardware_exporters'] = merged_field.get('show_in_exporters', True)
             
             logger.debug(f"[MERGE] Campo '{field_name}': customizações preservadas do KV")
         else:
@@ -3033,6 +3051,120 @@ async def sync_sites_from_prometheus():
         )
 
 
+@router.post("/migrate-add-new-show-in-fields")
+async def migrate_add_new_show_in_fields():
+    """
+    MIGRAÇÃO ONE-TIME: Adiciona novos campos show_in_* aos dados existentes no KV
+    
+    PROBLEMA:
+    - Backend dataclass tem: show_in_network_probes, show_in_web_probes, etc
+    - KV tem dados antigos SEM esses campos
+    - Frontend precisa desses campos para controlar visibilidade
+    
+    SOLUÇÃO:
+    - Ler metadata/fields do KV
+    - Adicionar novos campos com defaults (herdam de show_in_blackbox/exporters)
+    - Salvar de volta
+    
+    NOVOS CAMPOS ADICIONADOS:
+    - show_in_network_probes (herda de show_in_blackbox)
+    - show_in_web_probes (herda de show_in_blackbox)
+    - show_in_system_exporters (herda de show_in_exporters)
+    - show_in_database_exporters (herda de show_in_exporters)
+    - show_in_infrastructure_exporters (herda de show_in_exporters)
+    - show_in_hardware_exporters (herda de show_in_exporters)
+    
+    QUANDO USAR:
+    - Após atualizar para v2.0 com novas páginas dinâmicas
+    - Se campos não aparecem no modal de edição
+    - Uma única vez após deploy
+    """
+    try:
+        from core.kv_manager import KVManager
+        
+        kv = KVManager()
+        logger.info("[MIGRATION] Iniciando migração: adicionar campos show_in_* dinâmicos")
+        
+        # PASSO 1: Ler config atual do KV
+        config = await kv.get_json('skills/eye/metadata/fields')
+        
+        if not config:
+            raise HTTPException(
+                status_code=404,
+                detail="Nenhuma configuração encontrada no KV. Execute force-extract primeiro."
+            )
+        
+        fields = config.get('fields', [])
+        logger.info(f"[MIGRATION] {len(fields)} campos encontrados no KV")
+        
+        # PASSO 2: Verificar se migração já foi feita
+        sample_field = fields[0] if fields else {}
+        if 'show_in_network_probes' in sample_field:
+            logger.info("[MIGRATION] ✓ Migração já foi executada anteriormente")
+            return {
+                "success": True,
+                "message": "Migração já foi executada. Todos os campos já possuem os novos campos show_in_*.",
+                "updated_count": 0,
+                "total_fields": len(fields)
+            }
+        
+        # PASSO 3: Adicionar novos campos com mapeamento lógico
+        updated_count = 0
+        for field in fields:
+            # Valores base (para herdar defaults)
+            show_in_blackbox = field.get('show_in_blackbox', True)
+            show_in_exporters = field.get('show_in_exporters', True)
+            
+            # Probes (network, web) herdam de blackbox
+            field['show_in_network_probes'] = show_in_blackbox
+            field['show_in_web_probes'] = show_in_blackbox
+            
+            # Exporters categories herdam de exporters
+            field['show_in_system_exporters'] = show_in_exporters
+            field['show_in_database_exporters'] = show_in_exporters
+            field['show_in_infrastructure_exporters'] = show_in_exporters
+            field['show_in_hardware_exporters'] = show_in_exporters
+            
+            updated_count += 1
+        
+        logger.info(f"[MIGRATION] {updated_count} campos atualizados com novos campos show_in_*")
+        
+        # PASSO 4: Salvar de volta no KV
+        await kv.put_json(
+            key='skills/eye/metadata/fields',
+            value=config
+        )
+        
+        # PASSO 5: Invalidar cache para forçar reload
+        _kv_manager.invalidate('metadata/fields')
+        
+        logger.info("[MIGRATION] ✅ Migração concluída e cache invalidado")
+        
+        return {
+            "success": True,
+            "message": f"Migração concluída! {updated_count} campos atualizados com 6 novos campos show_in_* cada.",
+            "updated_count": updated_count,
+            "total_fields": len(fields),
+            "new_fields_added": [
+                "show_in_network_probes",
+                "show_in_web_probes",
+                "show_in_system_exporters",
+                "show_in_database_exporters",
+                "show_in_infrastructure_exporters",
+                "show_in_hardware_exporters"
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MIGRATION] Erro: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro na migração: {str(e)}"
+        )
+
+
 @router.post("/config/sites/cleanup")
 async def cleanup_orphan_sites():
     """
@@ -3122,3 +3254,146 @@ async def cleanup_orphan_sites():
             status_code=500,
             detail=f"Erro ao limpar sites órfãos: {str(e)}"
         )
+
+
+@router.post("/migrate-add-dynamic-fields")
+async def migrate_add_dynamic_page_fields():
+    """
+    Migração ONE-TIME: Adiciona campos show_in_* dinâmicos aos campos existentes no KV
+    
+    CONTEXTO:
+    - Sistema v2.0 (2025-11-13) adicionou novos campos: show_in_network_probes, etc
+    - Dataclass MetadataField já tem esses campos com defaults
+    - Mas dados ANTIGOS no KV não têm esses valores
+    - Frontend precisa desses campos para edição de visibilidade por página
+    
+    O QUE FAZ:
+    1. Lê metadata/fields do KV
+    2. Para cada campo, adiciona novos campos show_in_* se não existirem
+    3. Usa herança lógica: network-probes herda de blackbox, etc
+    4. Salva de volta no KV
+    5. Invalida cache
+    
+    QUANDO USAR:
+    - Após upgrade para v2.0
+    - Quando campos show_in_network_probes aparecem como null na API
+    - Uma única vez por instalação
+    
+    SEGURANÇA:
+    - NÃO sobrescreve valores existentes (usa setdefault)
+    - Preserva configurações personalizadas do usuário
+    - Pode ser executado múltiplas vezes (idempotente)
+    
+    RETORNA:
+        {
+            "success": true,
+            "total_fields": 22,
+            "fields_updated": 22,
+            "new_fields_added": [
+                "show_in_network_probes",
+                "show_in_web_probes",
+                "show_in_system_exporters",
+                "show_in_database_exporters",
+                "show_in_infrastructure_exporters",
+                "show_in_hardware_exporters"
+            ]
+        }
+    """
+    try:
+        logger.info("[MIGRATE] Iniciando migração de campos dinâmicos...")
+        
+        # PASSO 1: Carregar config do KV
+        config = await load_fields_config()
+        
+        if not config or 'fields' not in config:
+            raise HTTPException(
+                status_code=503,
+                detail="Configuração de campos não disponível. Execute force-extract primeiro."
+            )
+        
+        fields = config['fields']
+        total_fields = len(fields)
+        
+        logger.info(f"[MIGRATE] {total_fields} campos encontrados no KV")
+        
+        # PASSO 2: Listar novos campos a adicionar
+        new_field_names = [
+            'show_in_network_probes',
+            'show_in_web_probes',
+            'show_in_system_exporters',
+            'show_in_database_exporters',
+            'show_in_infrastructure_exporters',
+            'show_in_hardware_exporters'
+        ]
+        
+        # PASSO 3: Adicionar campos com herança lógica
+        fields_updated = 0
+        
+        for field in fields:
+            # Valores base para herança
+            show_in_blackbox = field.get('show_in_blackbox', True)
+            show_in_exporters = field.get('show_in_exporters', True)
+            
+            updated = False
+            
+            # ✅ SETDEFAULT: NÃO sobrescreve se já existir!
+            # Probes (network, web) herdam de blackbox
+            if 'show_in_network_probes' not in field:
+                field['show_in_network_probes'] = show_in_blackbox
+                updated = True
+            
+            if 'show_in_web_probes' not in field:
+                field['show_in_web_probes'] = show_in_blackbox
+                updated = True
+            
+            # Exporters categories herdam de exporters
+            if 'show_in_system_exporters' not in field:
+                field['show_in_system_exporters'] = show_in_exporters
+                updated = True
+            
+            if 'show_in_database_exporters' not in field:
+                field['show_in_database_exporters'] = show_in_exporters
+                updated = True
+            
+            if 'show_in_infrastructure_exporters' not in field:
+                field['show_in_infrastructure_exporters'] = show_in_exporters
+                updated = True
+            
+            if 'show_in_hardware_exporters' not in field:
+                field['show_in_hardware_exporters'] = show_in_exporters
+                updated = True
+            
+            if updated:
+                fields_updated += 1
+        
+        logger.info(f"[MIGRATE] {fields_updated}/{total_fields} campos atualizados")
+        
+        # PASSO 4: Salvar de volta no KV
+        if fields_updated > 0:
+            await save_fields_config(config)
+            logger.info("[MIGRATE] ✅ Configuração salva no KV")
+            
+            # PASSO 5: Invalidar cache
+            _kv_manager.invalidate('metadata/fields')
+            logger.info("[MIGRATE] ✅ Cache invalidado")
+        else:
+            logger.info("[MIGRATE] Nenhuma atualização necessária - todos os campos já têm os novos atributos")
+        
+        return {
+            "success": True,
+            "message": f"{fields_updated} campo(s) migrado(s) com sucesso" if fields_updated > 0 else "Nenhuma migração necessária",
+            "total_fields": total_fields,
+            "fields_updated": fields_updated,
+            "new_fields_added": new_field_names,
+            "already_migrated": fields_updated == 0
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MIGRATE] Erro na migração: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao executar migração: {str(e)}"
+        )
+

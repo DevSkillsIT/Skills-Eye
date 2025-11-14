@@ -39,6 +39,16 @@ class MetadataField:
     show_in_exporters: bool = True  # Se aparece na página Exporters
     show_in_blackbox: bool = True  # Se aparece na página Blackbox
     show_in_filter: bool = True  # Se aparece nos filtros
+    
+    # ⭐ PÁGINAS DINÂMICAS - v2.0 (2025-11-13)
+    # Herdam valores de show_in_blackbox e show_in_exporters por padrão
+    show_in_network_probes: bool = True  # Network Probes (categoria de Blackbox)
+    show_in_web_probes: bool = True  # Web Probes (categoria de Blackbox)
+    show_in_system_exporters: bool = True  # System Exporters (categoria de Exporters)
+    show_in_database_exporters: bool = True  # Database Exporters (categoria de Exporters)
+    show_in_infrastructure_exporters: bool = True  # Infrastructure Exporters
+    show_in_hardware_exporters: bool = True  # Hardware Exporters
+    
     order: int = 999  # Ordem de exibição
     category: Union[str, List[str]] = "extra"  # Categoria(s) - aceita string única ou lista para múltiplas
     editable: bool = True  # Se pode ser editado
