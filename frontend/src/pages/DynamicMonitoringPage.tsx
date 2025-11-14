@@ -59,13 +59,13 @@ import {
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
-  SyncOutlined,
+  // SyncOutlined, // Não usado
   TagsOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import {
-  ModalForm,
+  // ModalForm, // Não usado
   PageContainer,
   ProDescriptions,
   ProTable,
@@ -81,8 +81,8 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
 
-const { Search } = Input;
-const { Text } = Typography;
+// const { Search } = Input; // Não usado
+// const { Text } = Typography; // Não usado
 
 // ============================================================================
 // TIPOS E INTERFACES
@@ -140,6 +140,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [syncLoading, setSyncLoading] = useState(false);
 
   // ✅ NOVO: NodeSelector
@@ -223,7 +224,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // ✅ NOVO: Handler de mudanças na tabela (ordenação)
-  const handleTableChange = useCallback((pagination: any, filters: any, sorter: any) => {
+  const handleTableChange = useCallback((_pagination: any, _filters: any, sorter: any) => {
     if (sorter && sorter.field) {
       setSortField(sorter.field);
       setSortOrder(sorter.order || null);
@@ -529,15 +530,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
     try {
+      // ⏱️ PERFORMANCE LOG: Início
+      const perfStart = performance.now();
+      console.log('%c[PERF] 🚀 requestHandler INÍCIO', 'color: #00ff00; font-weight: bold');
+
       // Debug: console.log('[MONITORING] Buscando dados:', { category, filters, params, selectedNode });
 
       // Chamar endpoint unificado com filtro de nó
+      const apiStart = performance.now();
       const axiosResponse = await consulAPI.getMonitoringData(
         category,
         filters.company,
         filters.site,
         filters.env
       );
+      const apiEnd = performance.now();
+      console.log(`%c[PERF] ⏱️  API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
 
       // Normalizar resposta: axios retorna response.data
       const response = (axiosResponse && (axiosResponse as any).data) 
@@ -551,6 +559,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       let rows: MonitoringDataItem[] = response.data || [];
+      console.log(`%c[PERF] 📊 Total registros recebidos: ${rows.length}`, 'color: #2196f3; font-weight: bold');
 
       // ✅ FILTRO POR NÓ: Compara com node_ip (IP) ao invés de Node (nome)
       // NodeSelector retorna IP do nó, backend agora retorna node_ip
@@ -559,6 +568,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ NOVO: Extrair metadataOptions dinamicamente
+      const metadataStart = performance.now();
       const optionsSets: Record<string, Set<string>> = {};
       filterFields.forEach((field) => {
         optionsSets[field.name] = new Set<string>();
@@ -589,11 +599,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       });
 
       setMetadataOptions(options);
+      const metadataEnd = performance.now();
+      const metadataFieldsCount = Object.keys(options).length;
+      console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
 
       // ✅ NOVO: Aplicar filtros avançados
+      const filtersStart = performance.now();
       const filteredRows = applyAdvancedFilters(rows);
+      const filtersEnd = performance.now();
+      console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
 
       // ✅ NOVO: Calcular summary
+      const summaryStart = performance.now();
       const nextSummary = filteredRows.reduce(
         (acc, item) => {
           acc.total += 1;
@@ -629,6 +646,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         },
       );
       setSummary(nextSummary);
+      const summaryEnd = performance.now();
+      console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
 
       // ✅ NOVO: Filtrar por keyword
       const keyword = (params?.keyword ?? searchValue).trim().toLowerCase();
@@ -651,6 +670,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ NOVO: Aplicar ordenação antes de paginar
+      const sortStart = performance.now();
       let sortedRows = searchedRows;
       if (sortField && sortOrder) {
         sortedRows = [...searchedRows].sort((a, b) => {
@@ -669,14 +689,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           return sortOrder === 'ascend' ? comparison : -comparison;
         });
       }
+      const sortEnd = performance.now();
+      console.log(`%c[PERF] ⏱️  Ordenação em ${(sortEnd - sortStart).toFixed(0)}ms`, 'color: #4caf50; font-weight: bold');
 
       setTableSnapshot(sortedRows);
 
       // Paginação
+      const paginationStart = performance.now();
       const current = params?.current ?? 1;
       const pageSize = params?.pageSize ?? 50;
       const start = (current - 1) * pageSize;
       const paginatedRows = sortedRows.slice(start, start + pageSize);
+      const paginationEnd = performance.now();
+      console.log(`%c[PERF] ⏱️  Paginação em ${(paginationEnd - paginationStart).toFixed(0)}ms`, 'color: #3f51b5; font-weight: bold');
+
+      // ⏱️ PERFORMANCE LOG: Fim
+      const perfEnd = performance.now();
+      console.log(`%c[PERF] ✅ requestHandler COMPLETO em ${(perfEnd - perfStart).toFixed(0)}ms`, 'color: #00ff00; font-weight: bold; font-size: 14px');
 
       // Debug: console.log(`[MONITORING] Retornados ${paginatedRows.length}/${sortedRows.length} registros`);
 
@@ -697,6 +726,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue]);
 
   // Handler de sincronização de cache
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleSync = useCallback(async () => {
     setSyncLoading(true);
     try {
@@ -972,84 +1002,100 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 }}
                 onPressEnter={() => handleSearchSubmit(searchInput)}
               />
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={() => handleSearchSubmit(searchInput)}
-              />
+              <Tooltip title="Digite ID, nome ou instância para buscar">
+                <Button
+                  type="primary"
+                  icon={<SearchOutlined />}
+                  onClick={() => handleSearchSubmit(searchInput)}
+                />
+              </Tooltip>
             </Space.Compact>
 
-            <Button
-              icon={<FilterOutlined />}
-              type={advancedActive ? 'primary' : 'default'}
-              onClick={() => setAdvancedOpen(true)}
-            >
-              Busca Avançada
-              {advancedConditions.length > 0 && ` (${advancedConditions.length})`}
-            </Button>
+            <Tooltip title="12 operadores: igual, diferente, contém, regex, inicia com, termina com, maior/menor que">
+              <Button
+                icon={<FilterOutlined />}
+                type={advancedActive ? 'primary' : 'default'}
+                onClick={() => setAdvancedOpen(true)}
+              >
+                Busca Avançada
+                {advancedConditions.length > 0 && ` (${advancedConditions.length})`}
+              </Button>
+            </Tooltip>
 
             {advancedActive && (
-              <Button
-                icon={<ClearOutlined />}
-                onClick={handleAdvancedClear}
-              >
-                Limpar Filtros Avançados
-              </Button>
+              <Tooltip title="Remove todos os filtros avançados aplicados">
+                <Button
+                  icon={<ClearOutlined />}
+                  onClick={handleAdvancedClear}
+                >
+                  Limpar Filtros Avançados
+                </Button>
+              </Tooltip>
             )}
 
-            <Button
-              icon={<ClearOutlined />}
-              onClick={() => {
-                // Limpar TODOS os filtros: ProTable + estados customizados
-                actionRef.current?.clearFilters?.();
-                setFilters({});
-                setSearchValue('');
-                setSearchInput('');
-                // Manter selectedNode e advancedConditions
-                actionRef.current?.reload();
-              }}
-              title="Limpar todos os filtros (mantém busca avançada)"
-            >
-              Limpar Filtros
-            </Button>
+            <Tooltip title="Limpa apenas filtros da tabela (mantém ordenação)">
+              <Button
+                icon={<ClearOutlined />}
+                onClick={() => {
+                  // Limpar TODOS os filtros: ProTable + estados customizados
+                  // actionRef.current?.clearFilters?.(); // Property não existe em ActionType
+                  setFilters({});
+                  setSearchValue('');
+                  setSearchInput('');
+                  // Manter selectedNode e advancedConditions
+                  actionRef.current?.reload();
+                }}
+                title="Limpar todos os filtros (mantém busca avançada)"
+              >
+                Limpar Filtros
+              </Button>
+            </Tooltip>
 
-            <Button
-              icon={<ClearOutlined />}
-              onClick={() => {
-                // Limpar TUDO: filtros + ordenação + estados
-                actionRef.current?.reset?.();
-                setFilters({});
-                setSearchValue('');
-                setSearchInput('');
-                setSortField(null);
-                setSortOrder(null);
-                // Manter selectedNode e advancedConditions
-                actionRef.current?.reload();
-              }}
-              title="Limpar filtros e ordenação (mantém busca avançada)"
-            >
-              Limpar Filtros e Ordem
-            </Button>
+            <Tooltip title="Limpa TUDO: filtros, busca e ordenação">
+              <Button
+                icon={<ClearOutlined />}
+                onClick={() => {
+                  // Limpar TUDO: filtros + ordenação + estados
+                  actionRef.current?.reset?.();
+                  setFilters({});
+                  setSearchValue('');
+                  setSearchInput('');
+                  setSortField(null);
+                  setSortOrder(null);
+                  // Manter selectedNode e advancedConditions
+                  actionRef.current?.reload();
+                }}
+                title="Limpar filtros e ordenação (mantém busca avançada)"
+              >
+                Limpar Filtros e Ordem
+              </Button>
+            </Tooltip>
 
-            <ColumnSelector
-              columns={columnConfig}
-              onChange={setColumnConfig}
-              storageKey={`${category}-columns`}
-            />
+            <Tooltip title="Escolha quais colunas exibir na tabela">
+              <ColumnSelector
+                columns={columnConfig}
+                onChange={setColumnConfig}
+                storageKey={`${category}-columns`}
+              />
+            </Tooltip>
 
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={handleExport}
-            >
-              Exportar CSV
-            </Button>
+            <Tooltip title="Exporta os registros visíveis para arquivo CSV">
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={handleExport}
+              >
+                Exportar CSV
+              </Button>
+            </Tooltip>
 
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={() => actionRef.current?.reload()}
-            >
-              Atualizar
-            </Button>
+            <Tooltip title="Recarrega os dados do servidor">
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => actionRef.current?.reload()}
+              >
+                Atualizar
+              </Button>
+            </Tooltip>
 
             {/* ✅ NOVO: Batch delete */}
             <Popconfirm
@@ -1060,7 +1106,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               okText="Sim"
               cancelText="Não"
             >
-              <Tooltip title="Remover serviços selecionados">
+              <Tooltip title="Remove vários serviços de uma vez (selecionados na tabela)">
                 <Button
                   danger
                   icon={<DeleteOutlined />}
@@ -1071,17 +1117,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               </Tooltip>
             </Popconfirm>
 
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setFormMode('create');
-                setCurrentRecord(null);
-                setFormOpen(true);
-              }}
-            >
-              Novo registro
-            </Button>
+            <Tooltip title="Cria um novo registro de monitoramento">
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  setFormMode('create');
+                  setCurrentRecord(null);
+                  setFormOpen(true);
+                }}
+              >
+                Novo registro
+              </Button>
+            </Tooltip>
           </Space>
         </Card>
 
@@ -1120,9 +1168,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           }}
           sticky
           options={{
-            reload: false,
-            setting: false,
-            density: false,
+            reload: true,
+            setting: true,
+            density: true,
             fullScreen: false,
           }}
           toolbar={{

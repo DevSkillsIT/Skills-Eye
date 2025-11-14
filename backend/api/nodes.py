@@ -50,8 +50,8 @@ async def get_nodes():
         async def get_service_count(member: dict) -> dict:
             """Conta serviços de um nó específico com timeout de 5s"""
             member["services_count"] = 0
-            # Adicionar site_name baseado no IP
-            member["site_name"] = sites_map.get(member["addr"], member.get("name", "unknown"))
+            # Adicionar site_name baseado no IP - CORREÇÃO: Usar IP quando site não encontrado
+            member["site_name"] = sites_map.get(member["addr"], member["addr"])
             try:
                 temp_consul = ConsulManager(host=member["addr"])
                 # Timeout individual de 5s por nó (aumentado de 3s)

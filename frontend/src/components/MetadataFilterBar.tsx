@@ -43,6 +43,21 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
   onReset,
   extra,
 }) => {
+  // 🐛 DEBUG: Log para investigar renderização
+  const filterFieldsCount = fields.length;
+  const optionsKeys = Object.keys(options || {});
+  console.log('[MetadataFilterBar] DEBUG:', {
+    filterFieldsCount,
+    optionsKeys,
+    fieldsWithOptions: optionsKeys.length,
+    fields: fields.map(f => ({
+      name: f.name,
+      display: f.display_name,
+      hasOptions: (options?.[f.name] || []).length > 0,
+      optionsCount: (options?.[f.name] || []).length
+    }))
+  });
+
   const handleChange = (fieldName: string, nextValue?: string) => {
     onChange({
       ...value,
