@@ -209,11 +209,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
     // Sem verificar columnConfig.length para permitir atualização quando tableFields carrega
     if (defaultColumnConfig.length > 0) {
-      console.log('[DynamicMonitoringPage] Atualizando colunas:', {
-        defaultCount: defaultColumnConfig.length,
-        currentCount: columnConfig.length,
-        tableFieldsCount: tableFields.length
-      });
       setColumnConfig(defaultColumnConfig);
     }
   }, [defaultColumnConfig]);
@@ -269,7 +264,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     }
   }, []);
 
-  // ✅ NOVO: Aplicar filtros avançados
+  // ✅ NOVO: Aplicar filtros avançados (EXPANDIDO - suporta todos os operadores)
   const applyAdvancedFilters = useCallback(
     (data: MonitoringDataItem[]) => {
       if (!advancedConditions.length) {
@@ -286,23 +281,53 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       return data.filter((row) => {
         const evaluations = sanitized.map((condition) => {
-          const source = getFieldValue(row, condition.field).toLowerCase();
-          const target = String(condition.value ?? '').toLowerCase();
+          const source = getFieldValue(row, condition.field);
+          const target = condition.value;
 
-          if (!target) return true;
+          // Operadores que precisam de valores em minúsculas
+          const sourceLower = String(source).toLowerCase();
+          const targetLower = String(target ?? '').toLowerCase();
+
+          if (!target && target !== 0 && target !== false) return true;
 
           switch (condition.operator) {
             case 'eq':
-              return source === target;
+              return sourceLower === targetLower;
             case 'ne':
-              return source !== target;
+              return sourceLower !== targetLower;
             case 'starts_with':
-              return source.startsWith(target);
+              return sourceLower.startsWith(targetLower);
             case 'ends_with':
-              return source.endsWith(target);
+              return sourceLower.endsWith(targetLower);
             case 'contains':
+              return sourceLower.includes(targetLower);
+            case 'regex':
+              try {
+                const regex = new RegExp(String(target), 'i');
+                return regex.test(source);
+              } catch {
+                return false;
+              }
+            case 'in':
+              if (Array.isArray(target)) {
+                return target.some(val => String(val).toLowerCase() === sourceLower);
+              }
+              return false;
+            case 'not_in':
+              if (Array.isArray(target)) {
+                return !target.some(val => String(val).toLowerCase() === sourceLower);
+              }
+              return true;
+            case 'gt':
+              return Number(source) > Number(target);
+            case 'lt':
+              return Number(source) < Number(target);
+            case 'gte':
+              return Number(source) >= Number(target);
+            case 'lte':
+              return Number(source) <= Number(target);
             default:
-              return source.includes(target);
+              return sourceLower.includes(targetLower);
           }
         });
 
@@ -319,13 +344,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     const visibleConfigs = columnConfig.filter(c => c.visible);
 
     return visibleConfigs.map((colConfig) => {
-      const width = columnWidths[colConfig.key] || 150;
+      // Definir larguras específicas para colunas especiais
+      let defaultWidth = 150;
+      if (colConfig.key === 'actions') defaultWidth = 120;
+      else if (colConfig.key === 'ID') defaultWidth = 200;
+      else if (colConfig.key === 'Service') defaultWidth = 180;
+
+      const width = columnWidths[colConfig.key] || defaultWidth;
       const baseColumn: ProColumns<MonitoringDataItem> = {
         title: colConfig.title,
         dataIndex: colConfig.key === 'actions' ? undefined : colConfig.key,
         key: colConfig.key,
         width,
-        fixed: colConfig.locked ? 'left' : (colConfig.key === 'actions' ? 'right' : undefined),
+        fixed: colConfig.key === 'actions' ? 'right' : undefined,
         ellipsis: true,
         onHeaderCell: () => ({
           width,
@@ -643,7 +674,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       // Paginação
       const current = params?.current ?? 1;
-      const pageSize = params?.pageSize ?? 20;
+      const pageSize = params?.pageSize ?? 50;
       const start = (current - 1) * pageSize;
       const paginatedRows = sortedRows.slice(start, start + pageSize);
 
@@ -855,65 +886,66 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     <PageContainer
       title={CATEGORY_DISPLAY_NAMES[category] || category}
       subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
+      loading={tableFieldsLoading || filterFieldsLoading}
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* ✅ NOVO: Dashboard com métricas */}
-        <Card styles={{ body: { padding: '10px 16px' } }} style={{ maxWidth: '100%', width: 'fit-content' }}>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+        {/* Dashboard com métricas - altura mínima para evitar layout shift */}
+        <Card styles={{ body: { padding: '12px 20px', minHeight: '80px' } }}>
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
             {/* NodeSelector */}
-            <div style={{ width: 340 }}>
-              <Typography.Text strong style={{ fontSize: '12px', display: 'block', marginBottom: 6 }}>
+            <div style={{ width: 380 }}>
+              <Typography.Text strong style={{ fontSize: '13px', display: 'block', marginBottom: 8 }}>
                 Nó do Consul
               </Typography.Text>
               <NodeSelector
                 value={selectedNode}
                 onChange={(nodeAddr) => setSelectedNode(nodeAddr)}
-                style={{ width: 340 }}
+                style={{ width: 380 }}
                 showAllNodesOption={true}
               />
             </div>
 
             {/* Dashboard métricas */}
-            <div style={{ display: 'flex', gap: 16 }}>
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Total</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#3f8600' }}>
-                  <CloudOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+            <div style={{ display: 'flex', gap: 20, flex: 1, justifyContent: 'space-around' }}>
+              <div style={{ textAlign: 'center', minWidth: 100 }}>
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Total</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#52c41a', lineHeight: 1 }}>
+                  <CloudOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {summary.total}
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: 80 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Nós</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#1890ff' }}>
-                  <ApartmentOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+              <div style={{ textAlign: 'center', minWidth: 90 }}>
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Nós</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#1890ff', lineHeight: 1 }}>
+                  <ApartmentOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {Object.keys(summary.byNode).length}
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Empresas</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#722ed1' }}>
-                  <BankOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+              <div style={{ textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Empresas</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#722ed1', lineHeight: 1 }}>
+                  <BankOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {Object.keys(summary.byCompany).length}
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: 100 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Sites</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#fa8c16' }}>
-                  <EnvironmentOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+              <div style={{ textAlign: 'center', minWidth: 90 }}>
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Sites</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#fa8c16', lineHeight: 1 }}>
+                  <EnvironmentOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {Object.keys(summary.bySite).length}
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: 90 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Categorias</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#13c2c2' }}>
-                  <TeamOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+              <div style={{ textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Categorias</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#13c2c2', lineHeight: 1 }}>
+                  <TeamOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {Object.keys(summary.byCategory).length}
                 </div>
               </div>
               <div style={{ textAlign: 'center', minWidth: 80 }}>
-                <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>Tags</div>
-                <div style={{ fontSize: '20px', fontWeight: 600, color: '#eb2f96' }}>
-                  <TagsOutlined style={{ fontSize: '14px', marginRight: 4 }} />
+                <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Tags</div>
+                <div style={{ fontSize: '28px', fontWeight: 700, color: '#eb2f96', lineHeight: 1 }}>
+                  <TagsOutlined style={{ fontSize: '20px', marginRight: 6 }} />
                   {summary.uniqueTags.size}
                 </div>
               </div>
@@ -921,9 +953,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           </div>
         </Card>
 
-        {/* ✅ NOVO: Barra de ações completa */}
-        <Card size="small">
-          <Space wrap>
+        {/* ✅ NOVO: Barra de ações completa - altura mínima para evitar layout shift */}
+        <Card size="small" styles={{ body: { minHeight: '60px' } }}>
+          <Space wrap size="small">
             {/* ✅ NOVO: Busca por keyword */}
             <Search
               allowClear
@@ -962,9 +994,15 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             <Button
               icon={<ClearOutlined />}
               onClick={() => {
+                // Limpar TODOS os filtros: ProTable + estados customizados
                 actionRef.current?.clearFilters?.();
+                setFilters({});
+                setSearchValue('');
+                setSearchInput('');
+                // Manter selectedNode e advancedConditions
+                actionRef.current?.reload();
               }}
-              title="Limpar filtros de colunas"
+              title="Limpar todos os filtros (mantém busca avançada)"
             >
               Limpar Filtros
             </Button>
@@ -972,11 +1010,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             <Button
               icon={<ClearOutlined />}
               onClick={() => {
+                // Limpar TUDO: filtros + ordenação + estados
                 actionRef.current?.reset?.();
+                setFilters({});
+                setSearchValue('');
+                setSearchInput('');
                 setSortField(null);
                 setSortOrder(null);
+                // Manter selectedNode e advancedConditions
+                actionRef.current?.reload();
               }}
-              title="Limpar filtros e ordenação"
+              title="Limpar filtros e ordenação (mantém busca avançada)"
             >
               Limpar Filtros e Ordem
             </Button>
@@ -992,14 +1036,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               onClick={handleExport}
             >
               Exportar CSV
-            </Button>
-
-            <Button
-              icon={<SyncOutlined spin={syncLoading} />}
-              onClick={handleSync}
-              loading={syncLoading}
-            >
-              Sincronizar Cache
             </Button>
 
             <Button
@@ -1043,8 +1079,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           </Space>
         </Card>
 
-        {/* Barra de filtros metadata - Só renderiza quando dados estiverem prontos */}
-        {filterFields.length > 0 && Object.keys(metadataOptions).length > 0 && (
+        {/* Barra de filtros metadata - Sempre renderizar para evitar layout shift */}
+        {filterFields.length > 0 && (
           <MetadataFilterBar
             fields={filterFields}
             filters={filters}
@@ -1066,9 +1102,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           onChange={handleTableChange}
           search={false}
           pagination={{
-            defaultPageSize: 20,
+            defaultPageSize: 50,
             showSizeChanger: true,
-            pageSizeOptions: ['10', '20', '30', '50', '100'],
+            pageSizeOptions: ['20', '50', '100', '200'],
+            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
+            style: { marginBottom: 8 },
           }}
           scroll={{
             x: 2000, // Força scroll horizontal para fixed columns
@@ -1078,14 +1116,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           options={{
             reload: false,
             setting: false,
-            density: true,
-            fullScreen: true,
+            density: false,
+            fullScreen: false,
+          }}
+          toolbar={{
+            settings: [],
           }}
           components={{
             header: {
               cell: ResizableTitle,
             },
           }}
+          headerTitle={false}
+          cardProps={{
+            bodyStyle: { padding: '0' },
+          }}
+          tableStyle={{ padding: '0 16px' }}
           loading={tableFieldsLoading || filterFieldsLoading}
           // ✅ NOVO: Linha expansível
           expandable={{

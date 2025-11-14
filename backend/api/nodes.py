@@ -30,10 +30,28 @@ async def get_nodes():
         consul = ConsulManager()
         members = await consul.get_members()
 
+        # Buscar mapeamento de sites do KV
+        from core.kv_manager import KVManager
+        kv = KVManager()
+        sites_data = await kv.get_json('skills/eye/metadata/sites')
+
+        # Criar mapa IP → site_name
+        sites_map = {}
+        if sites_data:
+            sites_list = sites_data if isinstance(sites_data, list) else sites_data.get('data', [])
+            for site in sites_list:
+                if isinstance(site, dict):
+                    ip = site.get('prometheus_instance') or site.get('prometheus_host')
+                    name = site.get('name') or site.get('code', 'unknown')
+                    if ip:
+                        sites_map[ip] = name
+
         # OTIMIZAÇÃO: Enriquecer em paralelo usando asyncio.gather para evitar timeouts
         async def get_service_count(member: dict) -> dict:
             """Conta serviços de um nó específico com timeout de 5s"""
             member["services_count"] = 0
+            # Adicionar site_name baseado no IP
+            member["site_name"] = sites_map.get(member["addr"], member.get("name", "unknown"))
             try:
                 temp_consul = ConsulManager(host=member["addr"])
                 # Timeout individual de 5s por nó (aumentado de 3s)

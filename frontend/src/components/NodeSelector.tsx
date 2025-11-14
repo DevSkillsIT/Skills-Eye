@@ -23,6 +23,7 @@ export interface ConsulNode {
     dc?: string;
   };
   services_count?: number;
+  site_name?: string; // Nome do site/servidor
 }
 
 interface NodeSelectorProps {
@@ -150,15 +151,16 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
       {/* Lista de nós */}
       {nodes.map((node, index) => {
         const isMaster = index === 0; // Primeiro nó é o Master
-        const displayName = node.name || node.addr;
+        const siteName = node.site_name || node.name || 'unknown';
+        const displayName = `${siteName} (${node.addr})`;
 
         return (
           <Select.Option key={node.addr} value={node.addr}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CloudServerOutlined />
-                <strong>{displayName}</strong>
-                <span style={{ color: '#8c8c8c', fontSize: '12px' }}>({node.addr})</span>
+                <strong>{siteName}</strong>
+                <span style={{ color: '#8c8c8c', fontSize: '12px' }}>• {node.addr}</span>
               </div>
               <Badge
                 status={isMaster ? 'success' : 'processing'}
