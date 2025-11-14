@@ -205,15 +205,14 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedColumns, ...metadataColumns];
   }, [tableFields]);
 
-  // Atualizar columnConfig quando tableFields carregar pela primeira vez
+  // Atualizar columnConfig quando tableFields carregar
   useEffect(() => {
-    // OTIMIZAÇÃO: Só atualiza se columnConfig estiver vazio (primeira carga)
-    // Evita loop infinito e múltiplos re-renders
-    if (tableFields.length > 0 && columnConfig.length === 0) {
-      console.log('[DynamicMonitoringPage] 🔧 Setando columnConfig inicial com', defaultColumnConfig.length, 'colunas');
+    // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
+    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
+    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
       setColumnConfig(defaultColumnConfig);
     }
-  }, [tableFields.length, defaultColumnConfig.length]); // 🔧 FIX: Adicionar defaultColumnConfig.length como dependência
+  }, [defaultColumnConfig, columnConfig.length]);
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
