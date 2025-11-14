@@ -305,14 +305,14 @@ const MonitoringRules: React.FC = () => {
       dataIndex: 'category',
       width: 200,
       sorter: (a, b) => (a.category || '').localeCompare(b.category || ''),
-      filters: rulesData?.categories.map(c => ({
+      filters: rulesData?.categories?.map(c => ({
         text: c.display_name,
         value: c.id,
-      })),
+      })) || [],
       onFilter: (value, record) => record.category === value,
       render: (category: string) => (
         <Tag color={CATEGORY_COLORS[category] || 'default'}>
-          {rulesData?.categories.find(c => c.id === category)?.display_name || category}
+          {rulesData?.categories?.find(c => c.id === category)?.display_name || category}
         </Tag>
       ),
     },
@@ -322,7 +322,7 @@ const MonitoringRules: React.FC = () => {
       width: 250,
       ellipsis: true,
       sorter: (a, b) => (a.display_name || '').localeCompare(b.display_name || ''),
-      filters: Array.from(new Set(rulesData?.rules.map(r => r.display_name))).map(name => ({
+      filters: Array.from(new Set(rulesData?.rules?.map(r => r.display_name) || [])).map(name => ({
         text: name,
         value: name,
       })),
@@ -334,7 +334,7 @@ const MonitoringRules: React.FC = () => {
       width: 180,
       ellipsis: true,
       sorter: (a, b) => (a.exporter_type || '').localeCompare(b.exporter_type || ''),
-      filters: Array.from(new Set(rulesData?.rules.map(r => r.exporter_type).filter(Boolean))).map(type => ({
+      filters: Array.from(new Set((rulesData?.rules?.map(r => r.exporter_type) || []).filter(Boolean))).map(type => ({
         text: type as string,
         value: type as string,
       })),
@@ -346,7 +346,7 @@ const MonitoringRules: React.FC = () => {
       dataIndex: ['conditions', 'job_name_pattern'],
       width: 180,
       ellipsis: true,
-      filters: Array.from(new Set(rulesData?.rules.map(r => r.conditions.job_name_pattern).filter(Boolean))).map(pattern => ({
+      filters: Array.from(new Set((rulesData?.rules?.map(r => r.conditions.job_name_pattern) || []).filter(Boolean))).map(pattern => ({
         text: pattern as string,
         value: pattern as string,
       })),
@@ -369,7 +369,7 @@ const MonitoringRules: React.FC = () => {
       dataIndex: ['conditions', 'module_pattern'],
       width: 150,
       ellipsis: true,
-      filters: Array.from(new Set(rulesData?.rules.map(r => r.conditions.module_pattern).filter(Boolean))).map(pattern => ({
+      filters: Array.from(new Set((rulesData?.rules?.map(r => r.conditions.module_pattern) || []).filter(Boolean))).map(pattern => ({
         text: pattern as string,
         value: pattern as string,
       })),

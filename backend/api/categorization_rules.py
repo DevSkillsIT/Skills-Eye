@@ -68,6 +68,7 @@ class CategorizationRuleModel(BaseModel):
     display_name: str = Field(..., description="Nome amigável para exibição")
     exporter_type: Optional[str] = Field(None, description="Tipo de exporter (opcional)")
     conditions: RuleConditions = Field(..., description="Condições de matching")
+    observations: Optional[str] = Field(None, description="Observações sobre a regra")
 
 
 class RuleCreateRequest(BaseModel):
@@ -78,6 +79,7 @@ class RuleCreateRequest(BaseModel):
     display_name: str
     exporter_type: Optional[str] = None
     conditions: RuleConditions
+    observations: Optional[str] = None
 
 
 class RuleUpdateRequest(BaseModel):
@@ -87,6 +89,7 @@ class RuleUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     exporter_type: Optional[str] = None
     conditions: Optional[RuleConditions] = None
+    observations: Optional[str] = None
 
 
 # ============================================================================
@@ -188,7 +191,8 @@ async def create_categorization_rule(request: RuleCreateRequest):
             "category": request.category,
             "display_name": request.display_name,
             "exporter_type": request.exporter_type,
-            "conditions": request.conditions.dict(exclude_none=True)
+            "conditions": request.conditions.dict(exclude_none=True),
+            "observations": request.observations
         }
 
         # PASSO 4: Adicionar à lista e reordenar por prioridade
@@ -281,6 +285,8 @@ async def update_categorization_rule(rule_id: str, request: RuleUpdateRequest):
             current_rule['display_name'] = request.display_name
         if request.exporter_type is not None:
             current_rule['exporter_type'] = request.exporter_type
+        if request.observations is not None:
+            current_rule['observations'] = request.observations
         if request.conditions is not None:
             # Merge conditions (manter campos não fornecidos)
             for key, value in request.conditions.dict(exclude_none=True).items():
