@@ -126,21 +126,40 @@ async def _prewarm_metadata_fields_cache():
         #   (campos novos devem ser adicionados via "Sincronizar Campos" no frontend)
 
         if existing_config and 'fields' in existing_config and len(existing_config['fields']) > 0:
-            # KV JÁ TEM CAMPOS: NÃO ADICIONAR NOVOS AUTOMATICAMENTE
+            # KV JÁ TEM CAMPOS: ATUALIZAR APENAS extraction_status
             logger.info(
                 f"[PRE-WARM] ✓ KV já possui {len(existing_config['fields'])} campos. "
-                f"Não adicionando campos novos automaticamente."
+                f"Atualizando extraction_status..."
             )
             logger.info(
                 f"[PRE-WARM] ℹ️ {len(fields)} campos extraídos do Prometheus. "
                 f"Novos campos devem ser adicionados via 'Sincronizar Campos' no frontend."
             )
-            print(f"[PRE-WARM] ✓ KV já populado ({len(existing_config['fields'])} campos). Prewarm concluído sem modificar KV.")
-
+            
+            # CRITICAL FIX: Atualizar extraction_status mesmo sem adicionar campos novos
+            # Isso é ESSENCIAL para que discovered_in funcione corretamente
+            existing_config['extraction_status'] = {
+                'total_servers': total_servers,
+                'successful_servers': successful_servers,
+                'server_status': extraction_result.get('server_status', []),
+                'extraction_complete': True,
+                'extracted_at': datetime.now().isoformat(),
+            }
+            existing_config['last_updated'] = datetime.now().isoformat()
+            existing_config['source'] = 'prewarm_update_extraction_status'
+            
+            # Salvar de volta no KV preservando todos os campos existentes
+            await kv_manager.put_json(
+                key='skills/eye/metadata/fields',
+                value=existing_config,
+                metadata={'auto_updated': True, 'source': 'prewarm_extraction_status_update'}
+            )
+            
+            print(f"[PRE-WARM] ✓ extraction_status atualizado com dados de {successful_servers}/{total_servers} servidores")
             # Marcar como concluído
             _prewarm_status['completed'] = True
             _prewarm_status['running'] = False
-            return  # ← IMPORTANTE: Não modificar KV
+            return
 
         # KV VAZIO: POPULAR PELA PRIMEIRA VEZ
         logger.info("[PRE-WARM] 🆕 KV vazio detectado - primeira população")

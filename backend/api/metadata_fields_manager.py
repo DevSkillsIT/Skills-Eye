@@ -98,6 +98,8 @@ class FieldsConfigResponse(BaseModel):
     server_status: List[Dict[str, Any]] = []
     total_servers: int = 0
     successful_servers: int = 0
+    # CRITICAL FIX: Adicionar extraction_status completo para discovered_in
+    extraction_status: Optional[Dict[str, Any]] = None
 
 
 class AddFieldRequest(BaseModel):
@@ -1781,7 +1783,7 @@ async def list_fields(
     # FIX BUG #2: came_from_memory_cache não existe mais (removido durante refactor)
     # CRÍTICO: Se source não é force_extract recente, marcar como cache
     # Isso garante que o modal mostre "Dados carregados do cache instantaneamente"
-    is_from_cache = config.get('source') in ['prewarm_startup', 'fallback_on_demand']
+    is_from_cache = config.get('source') in ['prewarm_startup', 'prewarm_update_extraction_status', 'fallback_on_demand']
 
     return FieldsConfigResponse(
         success=True,
@@ -1794,7 +1796,9 @@ async def list_fields(
         from_cache=is_from_cache,  # ← CORRIGIDO: detecta cache em memória ou prewarm
         server_status=extraction_status.get('server_status', []),
         total_servers=extraction_status.get('total_servers', 0),
-        successful_servers=extraction_status.get('successful_servers', 0)
+        successful_servers=extraction_status.get('successful_servers', 0),
+        # CRITICAL FIX: Retornar extraction_status completo para discovered_in
+        extraction_status=extraction_status if extraction_status else None
     )
 
 
