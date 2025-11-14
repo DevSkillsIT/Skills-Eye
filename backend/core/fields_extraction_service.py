@@ -826,14 +826,17 @@ def get_discovered_in_for_field(field_name: str, server_status: List[Dict[str, A
     Args:
         field_name: Nome do campo (ex: "company")
         server_status: Lista de status de servidores com fields[]
+            fields[] pode conter:
+            - strings (apenas nomes) - LEGADO (backward compatibility)
+            - dicts (objetos completos com source_label, regex, replacement) - NOVO
 
     Returns:
         Lista de hostnames onde o campo foi descoberto
 
     Exemplo:
         >>> server_status = [
-        ...     {"hostname": "172.16.1.26", "fields": ["company", "env"]},
-        ...     {"hostname": "172.16.200.14", "fields": ["company", "site"]}
+        ...     {"hostname": "172.16.1.26", "fields": ["company", "env"]},  # LEGADO
+        ...     {"hostname": "172.16.200.14", "fields": [{"name": "company", "source_label": "..."}, {"name": "site", "source_label": "..."}]}  # NOVO
         ... ]
         >>> get_discovered_in_for_field("company", server_status)
         ['172.16.1.26', '172.16.200.14']
@@ -845,8 +848,21 @@ def get_discovered_in_for_field(field_name: str, server_status: List[Dict[str, A
         hostname = server_info.get('hostname')
         fields = server_info.get('fields', [])
 
-        if hostname and field_name in fields:
-            discovered_servers.append(hostname)
+        if not hostname:
+            continue
+
+        # ✅ SUPORTE A AMBOS FORMATOS: strings (legado) e dicts (novo)
+        for field in fields:
+            if isinstance(field, str):
+                # LEGADO: field é apenas o nome (string)
+                if field == field_name:
+                    discovered_servers.append(hostname)
+                    break
+            elif isinstance(field, dict):
+                # NOVO: field é objeto completo com 'name', 'source_label', etc
+                if field.get('name') == field_name:
+                    discovered_servers.append(hostname)
+                    break
 
     return discovered_servers
 

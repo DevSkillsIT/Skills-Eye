@@ -763,7 +763,7 @@ class MultiConfigManager:
 
         # PASSO 4: Consolidar fields E rastrear quais campos cada servidor tem
         all_fields_map: Dict[str, MetadataField] = {}
-        server_fields_map: Dict[str, List[str]] = {}  # Mapeia hostname -> lista de field_names
+        server_fields_map: Dict[str, List[Dict[str, Any]]] = {}  # ✅ FIX: Mapeia hostname -> lista de OBJETOS de campos
 
         for result in results['server_results']:
             hostname = result['hostname']
@@ -774,8 +774,14 @@ class MultiConfigManager:
                 if field_name not in all_fields_map:
                     all_fields_map[field_name] = field
 
-                # Rastrear quais campos este servidor tem
-                server_fields_map[hostname].append(field_name)
+                # ✅ FIX: Rastrear OBJETOS COMPLETOS dos campos (com source_label, regex, replacement)
+                # Isso é CRÍTICO para que discovered_in E source_label funcionem
+                server_fields_map[hostname].append({
+                    'name': field.name,
+                    'source_label': field.source_label,
+                    'regex': field.regex,
+                    'replacement': field.replacement
+                })
 
         # PASSO 5: NÃO adicionar discovered_in aos campos individuais
         # Em vez disso, adicionar lista de fields ao server_status (single source of truth)
