@@ -799,10 +799,38 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedFields, ...metadataFields];
   }, [tableFields]);
 
-  // Effect: Reload quando filtros externos mudarem
+  // Effect: Reload quando categoria ou filtros mudarem
+  // ✅ CRÍTICO: Incluir 'category' para recarregar ao trocar de página
   useEffect(() => {
     actionRef.current?.reload();
-  }, [selectedNode, filters]);
+  }, [category, selectedNode, filters]);
+
+  // ✅ CRÍTICO: Resetar estados ao mudar de categoria
+  // Previne que dados de uma categoria apareçam em outra
+  useEffect(() => {
+    // Limpar filtros e estados quando categoria muda
+    setFilters({});
+    setSearchValue('');
+    setSearchInput('');
+    setSelectedNode('all');
+    setAdvancedConditions([]);
+    setSelectedRowKeys([]);
+    setSelectedRows([]);
+    setSortField(null);
+    setSortOrder(null);
+    setTableSnapshot([]);
+    setSummary({
+      total: 0,
+      byCategory: {},
+      byCompany: {},
+      bySite: {},
+      byNode: {},
+      uniqueTags: new Set(),
+    });
+    
+    // Forçar reload da tabela
+    actionRef.current?.reload();
+  }, [category]);
 
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
