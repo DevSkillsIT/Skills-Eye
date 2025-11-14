@@ -207,11 +207,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // Atualizar columnConfig quando tableFields carregar
   useEffect(() => {
     // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
-    // Sem verificar columnConfig.length para permitir atualização quando tableFields carrega
-    if (defaultColumnConfig.length > 0) {
+    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
+    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
       setColumnConfig(defaultColumnConfig);
     }
-  }, [defaultColumnConfig]);
+  }, [defaultColumnConfig, columnConfig.length]);
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
