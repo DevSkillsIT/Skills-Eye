@@ -38,7 +38,10 @@ async def get_nodes():
         # Criar mapa IP → site_name
         sites_map = {}
         if sites_data:
-            sites_list = sites_data if isinstance(sites_data, list) else sites_data.get('data', [])
+            # Estrutura KV: data.data.sites (dois níveis de 'data')
+            inner_data = sites_data.get('data', {})
+            sites_list = inner_data.get('sites', []) if isinstance(inner_data, dict) else []
+            
             for site in sites_list:
                 if isinstance(site, dict):
                     ip = site.get('prometheus_instance') or site.get('prometheus_host')
@@ -50,8 +53,9 @@ async def get_nodes():
         async def get_service_count(member: dict) -> dict:
             """Conta serviços de um nó específico com timeout de 5s"""
             member["services_count"] = 0
-            # Adicionar site_name baseado no IP - CORREÇÃO: Usar IP quando site não encontrado
-            member["site_name"] = sites_map.get(member["addr"], member["addr"])
+            # Adicionar site_name baseado no IP do sites.json
+            # Se não encontrar no mapeamento, usa "Não mapeado" ao invés de mostrar IP
+            member["site_name"] = sites_map.get(member["addr"], "Não mapeado")
             try:
                 temp_consul = ConsulManager(host=member["addr"])
                 # Timeout individual de 5s por nó (aumentado de 3s)
