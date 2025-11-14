@@ -69,10 +69,12 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
     <Space wrap align="center">
       {/* GERAÇÃO DINÂMICA: Um Select para cada campo com show_in_filter=true */}
       {fields.map((field) => {
+        // ✅ SPRINT 1 (2025-11-14): Validação defensiva com optional chaining
         const fieldOptions = options?.[field.name] ?? [];
         const minWidth = field.display_name.length > 15 ? 200 : 150;
 
-        // ⚠️ Não renderizar select sem opções (evita race condition)
+        // ✅ SPRINT 1: Não renderizar select sem opções (evita race condition)
+        // Protege contra TypeError quando options ainda não foi carregado
         if (!fieldOptions || fieldOptions.length === 0) {
           return null;
         }

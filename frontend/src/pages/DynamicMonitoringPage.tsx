@@ -181,6 +181,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
   // ✅ NOVO: Metadata options para filtros de coluna
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
+  // ✅ SPRINT 1 (2025-11-14): Estado de loading para evitar race condition
+  const [metadataOptionsLoaded, setMetadataOptionsLoaded] = useState(false);
 
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
@@ -599,6 +601,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       });
 
       setMetadataOptions(options);
+      setMetadataOptionsLoaded(true);  // ✅ SPRINT 1: Marcar como carregado
       const metadataEnd = performance.now();
       const metadataFieldsCount = Object.keys(options).length;
       console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
@@ -1143,8 +1146,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           </Space>
         </Card>
 
-        {/* Barra de filtros metadata - Sempre renderizar para evitar layout shift */}
-        {filterFields.length > 0 && (
+        {/* Barra de filtros metadata - SPRINT 1: Renderização condicional para evitar race condition */}
+        {filterFields.length > 0 && metadataOptionsLoaded && Object.keys(metadataOptions).length > 0 && (
           <MetadataFilterBar
             fields={filterFields}
             value={filters}
