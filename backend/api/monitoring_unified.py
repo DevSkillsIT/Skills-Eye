@@ -104,19 +104,52 @@ async def get_monitoring_data(
         # PASSO 1: Buscar SITES do KV (metadata/sites)
         # ==================================================================
         from core.kv_manager import KVManager
+        from core.consul_manager import ConsulManager
+        
         kv = KVManager()
+        consul_manager = ConsulManager()
+
+        # Buscar nós do Consul para mapear Node Name → IP
+        consul_nodes = await consul_manager.get_nodes()
+        nodes_map = {}  # Node Name → IP Address
+        for node in consul_nodes:
+            node_name = node.get('Node', '')
+            node_address = node.get('Address', '')
+            if node_name and node_address:
+                nodes_map[node_name] = node_address
+        
+        logger.debug(f"[MONITORING DATA] Mapeados {len(nodes_map)} nós do Consul: {list(nodes_map.keys())}")
 
         sites_data = await kv.get_json('skills/eye/metadata/sites')
         sites = []
         sites_map = {}  # IP → site data
 
-        if sites_data and 'data' in sites_data:
-            sites = sites_data['data'].get('sites', [])
+        if sites_data:
+            # Estrutura pode ser {data: {data: [sites]}} ou {data: {sites: [...]}} ou {sites: [...]}
+            if isinstance(sites_data, dict):
+                # Tentar extrair sites de qualquer nível de aninhamento
+                if 'data' in sites_data:
+                    inner = sites_data['data']
+                    if isinstance(inner, dict):
+                        if 'sites' in inner:
+                            sites = inner['sites']
+                        elif 'data' in inner:  # Bug: {data: {data: [...]}}
+                            sites = inner['data'] if isinstance(inner['data'], list) else []
+                        else:
+                            # Assumir que inner é a lista de sites
+                            sites = list(inner.values()) if inner else []
+                    elif isinstance(inner, list):
+                        sites = inner
+                elif 'sites' in sites_data:
+                    sites = sites_data['sites']
+            
             # Criar mapa IP → site para lookup rápido
-            for site in sites:
-                prometheus_ip = site.get('prometheus_instance') or site.get('prometheus_host')
-                if prometheus_ip:
-                    sites_map[prometheus_ip] = site
+            if sites and isinstance(sites, list):
+                for site_item in sites:
+                    if isinstance(site_item, dict):
+                        prometheus_ip = site_item.get('prometheus_instance') or site_item.get('prometheus_host')
+                        if prometheus_ip:
+                            sites_map[prometheus_ip] = site_item
 
         logger.debug(f"[MONITORING DATA] Carregados {len(sites)} sites do KV")
 
@@ -165,56 +198,69 @@ async def get_monitoring_data(
         # ==================================================================
         filtered_services = []
 
-        for svc in all_services:
-            # Categorizar serviço usando engine
-            svc_job_name = svc.get('Service', '')
-            svc_module = svc.get('Meta', {}).get('module', '')
-            svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
+        for idx, svc in enumerate(all_services):
+            try:
+                # Categorizar serviço usando engine
+                svc_job_name = svc.get('Service', '')
+                svc_module = svc.get('Meta', {}).get('module', '')
+                svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
 
-            # FIX BUG #1: categorize() espera dict, não kwargs
-            svc_category, svc_type_info = categorization_engine.categorize({
-                'job_name': svc_job_name,
-                'module': svc_module,
-                'metrics_path': svc_metrics_path
-            })
+                # FIX BUG #1: categorize() espera dict, não kwargs
+                svc_category, svc_type_info = categorization_engine.categorize({
+                    'job_name': svc_job_name,
+                    'module': svc_module,
+                    'metrics_path': svc_metrics_path
+                })
 
-            # Verificar se serviço pertence à categoria solicitada
-            if svc_category != category:
-                continue
-
-            # ========================================================
-            # PASSO 6: Adicionar informações do site
-            # ========================================================
-            # Tentar mapear IP do nó para site code
-            node_address = svc.get('Address', '')
-            site_info = sites_map.get(node_address)
-
-            if site_info:
-                svc['site_code'] = site_info.get('code')
-                svc['site_name'] = site_info.get('name')
-            else:
-                # Fallback: usar metadata.site se disponível
-                svc['site_code'] = svc.get('Meta', {}).get('site')
-                svc['site_name'] = None
-
-            # ========================================================
-            # PASSO 7: Aplicar filtros adicionais
-            # ========================================================
-            svc_meta = svc.get('Meta', {})
-
-            if company and svc_meta.get('company') != company:
-                continue
-
-            if site:
-                # Filtrar por site_code OU metadata.site
-                if svc.get('site_code') != site and svc_meta.get('site') != site:
+                # Verificar se serviço pertence à categoria solicitada
+                if svc_category != category:
                     continue
 
-            if env and svc_meta.get('env') != env:
-                continue
+                # ==================================================================
+                # PASSO 6: Adicionar informações do site
+                # ==================================================================
+                # Mapear Node Name → IP Address → Site
+                node_name = svc.get('Node', '')
+                node_ip = nodes_map.get(node_name, '')
+                site_info = sites_map.get(node_ip)
 
-            # Serviço passou em todos os filtros
-            filtered_services.append(svc)
+                if site_info:
+                    svc['site_code'] = site_info.get('code')
+                    svc['site_name'] = site_info.get('name')
+                else:
+                    # Fallback: usar metadata.site se disponível
+                    svc['site_code'] = svc.get('Meta', {}).get('site')
+                    svc['site_name'] = None
+
+                # ========================================================
+                # PASSO 7: Aplicar filtros adicionais
+                # ========================================================
+                svc_meta = svc.get('Meta', {})
+
+                if company and svc_meta.get('company') != company:
+                    logger.debug(f"[FILTER] Bloqueado por company: {svc_meta.get('company')} != {company}")
+                    continue
+
+                if site:
+                    # Filtrar por site_code OU metadata.site
+                    if svc.get('site_code') != site and svc_meta.get('site') != site:
+                        logger.debug(f"[FILTER] Bloqueado por site: {svc.get('site_code')}/{svc_meta.get('site')} != {site}")
+                        continue
+
+                if env and svc_meta.get('env') != env:
+                    logger.debug(f"[FILTER] Bloqueado por env: {svc_meta.get('env')} != {env}")
+                    continue
+
+                # Serviço passou em todos os filtros
+                filtered_services.append(svc)
+                
+                # DEBUG: Logar primeiros serviços aprovados
+                if len(filtered_services) <= 3:
+                    logger.debug(f"[APPROVED] Serviço {filtered_services[-1].get('ID', 'unknown')} adicionado (total={len(filtered_services)})")
+                    
+            except Exception as e:
+                logger.error(f"[CATEGORIZE ERROR] Erro ao processar serviço #{idx}: {e}", exc_info=True)
+                continue
 
         logger.info(
             f"[MONITORING DATA] Filtrados {len(filtered_services)} de {len(all_services)} "
