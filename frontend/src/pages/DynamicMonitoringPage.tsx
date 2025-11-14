@@ -891,22 +891,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Dashboard com métricas - altura mínima para evitar layout shift */}
         <Card styles={{ body: { padding: '12px 20px', minHeight: '80px' } }}>
-          <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* NodeSelector */}
-            <div style={{ width: 380 }}>
+            <div style={{ minWidth: 300, maxWidth: 380 }}>
               <Typography.Text strong style={{ fontSize: '13px', display: 'block', marginBottom: 8 }}>
                 Nó do Consul
               </Typography.Text>
               <NodeSelector
                 value={selectedNode}
                 onChange={(nodeAddr) => setSelectedNode(nodeAddr)}
-                style={{ width: 380 }}
+                style={{ width: '100%' }}
                 showAllNodesOption={true}
               />
             </div>
 
-            {/* Dashboard métricas */}
-            <div style={{ display: 'flex', gap: 20, flex: 1, justifyContent: 'space-around' }}>
+            {/* Dashboard métricas - flexível com wrapping */}
+            <div style={{ display: 'flex', gap: 16, flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
               <div style={{ textAlign: 'center', minWidth: 100 }}>
                 <div style={{ fontSize: '13px', color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>Total</div>
                 <div style={{ fontSize: '28px', fontWeight: 700, color: '#52c41a', lineHeight: 1 }}>
@@ -956,22 +956,28 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         {/* ✅ NOVO: Barra de ações completa - altura mínima para evitar layout shift */}
         <Card size="small" styles={{ body: { minHeight: '60px' } }}>
           <Space wrap size="small">
-            {/* ✅ NOVO: Busca por keyword */}
-            <Search
-              allowClear
-              placeholder="Buscar por ID, nome, instância..."
-              enterButton
-              style={{ width: 300 }}
-              value={searchInput}
-              onChange={(event) => {
-                const next = event.target.value;
-                setSearchInput(next);
-                if (!next) {
-                  handleSearchSubmit('');
-                }
-              }}
-              onSearch={handleSearchSubmit}
-            />
+            {/* ✅ NOVO: Busca por keyword - usando Input + Button ao invés de Search (enterButton deprecated) */}
+            <Space.Compact>
+              <Input
+                allowClear
+                placeholder="Buscar por ID, nome, instância..."
+                style={{ width: 260 }}
+                value={searchInput}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setSearchInput(next);
+                  if (!next) {
+                    handleSearchSubmit('');
+                  }
+                }}
+                onPressEnter={() => handleSearchSubmit(searchInput)}
+              />
+              <Button
+                type="primary"
+                icon={<SearchOutlined />}
+                onClick={() => handleSearchSubmit(searchInput)}
+              />
+            </Space.Compact>
 
             <Button
               icon={<FilterOutlined />}
@@ -1083,7 +1089,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         {filterFields.length > 0 && (
           <MetadataFilterBar
             fields={filterFields}
-            filters={filters}
+            value={filters}
             options={metadataOptions}
             onChange={(newFilters) => {
               setFilters(newFilters);
@@ -1133,36 +1139,39 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           }}
           tableStyle={{ padding: '0 16px' }}
           loading={tableFieldsLoading || filterFieldsLoading}
-          // ✅ NOVO: Linha expansível
+          // ✅ NOVO: Linha expansível - limitada a 60% da largura para não expandir demais
           expandable={{
             expandedRowRender: (record) => (
-              <Descriptions size="small" column={2} bordered style={{ margin: 0 }}>
-                {Object.entries(record.Meta || {}).map(([key, value]) => (
-                  <Descriptions.Item label={key} key={`${record.ID}-${key}`}>
-                    {String(value ?? '')}
-                  </Descriptions.Item>
-                ))}
-                {record.Tags?.length ? (
-                  <Descriptions.Item label="Tags">
-                    <Space size={[4, 4]} wrap>
-                      {record.Tags.map((tag, idx) => (
-                        <Tag key={`${record.ID}-expanded-${tag}-${idx}`}>{tag}</Tag>
-                      ))}
-                    </Space>
-                  </Descriptions.Item>
-                ) : null}
-              </Descriptions>
+              <div style={{ maxWidth: '60%', minWidth: 500 }}>
+                <Descriptions size="small" column={2} bordered style={{ margin: 0 }}>
+                  {Object.entries(record.Meta || {}).map(([key, value]) => (
+                    <Descriptions.Item label={key} key={`${record.ID}-${key}`}>
+                      {String(value ?? '')}
+                    </Descriptions.Item>
+                  ))}
+                  {record.Tags?.length ? (
+                    <Descriptions.Item label="Tags">
+                      <Space size={[4, 4]} wrap>
+                        {record.Tags.map((tag, idx) => (
+                          <Tag key={`${record.ID}-expanded-${tag}-${idx}`}>{tag}</Tag>
+                        ))}
+                      </Space>
+                    </Descriptions.Item>
+                  ) : null}
+                </Descriptions>
+              </div>
             ),
             rowExpandable: (record) =>
               Boolean(record.Meta && Object.keys(record.Meta || {}).length > 0),
           }}
-          // ✅ NOVO: rowSelection para batch delete
+          // ✅ NOVO: rowSelection para batch delete - fixado à esquerda
           rowSelection={{
             selectedRowKeys,
             onChange: (keys, rows) => {
               setSelectedRowKeys(keys);
               setSelectedRows(rows as MonitoringDataItem[]);
             },
+            fixed: true,
           }}
           tableAlertRender={({ selectedRowKeys: keys }) =>
             keys.length ? <span>{`${keys.length} registros selecionados`}</span> : null
@@ -1175,7 +1184,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         width={720}
         title="Pesquisa avançada"
         open={advancedOpen}
-        destroyOnClose
+        destroyOnHidden
         onClose={() => setAdvancedOpen(false)}
       >
         <AdvancedSearchPanel
@@ -1192,7 +1201,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         width={520}
         title="Detalhes do registro"
         open={!!detailRecord}
-        destroyOnClose
+        destroyOnHidden
         onClose={() => setDetailRecord(null)}
       >
         {detailRecord && (
@@ -1242,7 +1251,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           setFormOpen(false);
         }}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         <p>Modal de criação/edição - A implementar</p>
         {currentRecord && (

@@ -75,3 +75,27 @@ button:focus-visible {
 .ant-layout-sider {
   background-color: #ffffff !important;
 }
+
+/* ==========================================
+   MELHORIAS DE HOVER E ORDENAÇÃO
+   ========================================== */
+
+/* Hover em linhas da tabela - azul claro ao invés de cinza */
+.ant-table-tbody > tr.ant-table-row:hover > td {
+  background-color: #e6f4ff !important;
+}
+
+/* Highlight da coluna ordenada - azul mais claro */
+.ant-table-tbody > tr > td.ant-table-column-sort {
+  background-color: #f0f9ff !important;
+}
+
+/* Highlight da coluna ordenada com hover - azul médio */
+.ant-table-tbody > tr.ant-table-row:hover > td.ant-table-column-sort {
+  background-color: #d9ecff !important;
+}
+
+/* Header da coluna ordenada - destaque azul */
+.ant-table-thead > tr > th.ant-table-column-has-sorters.ant-table-column-sort {
+  background-color: #bae0ff !important;
+}
