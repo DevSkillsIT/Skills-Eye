@@ -121,17 +121,23 @@ const MonitoringRules: React.FC = () => {
   const loadRules = async () => {
     setLoading(true);
     try {
+      // consulAPI returns an axios Response; normalize payload to response.data
       const response = await consulAPI.getCategorizationRules();
+      const payload = (response && (response as any).data) ? (response as any).data : response;
 
-      if (response.success && response.data) {
-        setRulesData(response.data);
+      if (payload && payload.success && payload.data) {
+        setRulesData(payload.data);
         return {
-          data: response.data.rules || [],
+          data: payload.data.rules || [],
           success: true,
-          total: response.data.total_rules || 0,
+          total: payload.data.total_rules || 0,
         };
       }
 
+      // Manchete de diagnóstico: logar payload para ajudar debugging se formato inesperado
+      // (não lança em produção, apenas auxilia desenvolvimento)
+      // eslint-disable-next-line no-console
+      console.warn('getCategorizationRules: payload inesperado', payload);
       throw new Error('Erro ao carregar regras');
     } catch (error: any) {
       message.error('Erro ao carregar regras: ' + (error.message || error));

@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
+// CRÍTICO: Usar proxy do Vite em desenvolvimento para evitar CORS
+// Em produção, VITE_API_URL deve ser definido com a URL real do backend
+const API_URL = import.meta.env?.VITE_API_URL ?? '/api/v1';
 
 // ============================================================================
 // Type Definitions - ALL EXPORTED

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test API Calls</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #fff; }
+        button { padding: 10px 20px; margin: 10px; background: #007acc; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #005a9e; }
+        pre { background: #2d2d30; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Skills Eye API Test</h1>
+    <p>Testing from: <span id="origin"></span></p>
+    
+    <h2>1. Test Categorization Rules</h2>
+    <button onclick="testCategorizationRules()">Test /categorization-rules</button>
+    <pre id="result1"></pre>
+    
+    <h2>2. Test Monitoring Data</h2>
+    <button onclick="testMonitoringData()">Test /monitoring/data</button>
+    <pre id="result2"></pre>
+    
+    <h2>3. Test Metadata Fields</h2>
+    <button onclick="testMetadataFields()">Test /metadata-fields/</button>
+    <pre id="result3"></pre>
+
+    <script>
+        document.getElementById('origin').textContent = window.location.origin;
+        const API_URL = 'http://localhost:5000/api/v1';
+
+        async function testCategorizationRules() {
+            const el = document.getElementById('result1');
+            try {
+                el.className = '';
+                el.textContent = 'Loading...';
+                
+                const response = await fetch(`${API_URL}/categorization-rules`);
+                const data = await response.json();
+                
+                el.className = data.success ? 'success' : 'error';
+                el.textContent = JSON.stringify({
+                    status: response.status,
+                    success: data.success,
+                    total_rules: data.data?.total_rules,
+                    rules_count: data.data?.rules?.length,
+                    categories_count: data.data?.categories?.length
+                }, null, 2);
+            } catch (error) {
+                el.className = 'error';
+                el.textContent = `ERROR: ${error.message}\n${error.stack}`;
+            }
+        }
+
+        async function testMonitoringData() {
+            const el = document.getElementById('result2');
+            try {
+                el.className = '';
+                el.textContent = 'Loading...';
+                
+                const response = await fetch(`${API_URL}/monitoring/data?category=network-probes`);
+                const data = await response.json();
+                
+                el.className = data.success ? 'success' : 'error';
+                el.textContent = JSON.stringify({
+                    status: response.status,
+                    success: data.success,
+                    category: data.category,
+                    total: data.total,
+                    fields_count: data.available_fields?.length
+                }, null, 2);
+            } catch (error) {
+                el.className = 'error';
+                el.textContent = `ERROR: ${error.message}\n${error.stack}`;
+            }
+        }
+
+        async function testMetadataFields() {
+            const el = document.getElementById('result3');
+            try {
+                el.className = '';
+                el.textContent = 'Loading...';
+                
+                const response = await fetch(`${API_URL}/metadata-fields/`);
+                const data = await response.json();
+                
+                el.className = data.success ? 'success' : 'error';
+                el.textContent = JSON.stringify({
+                    status: response.status,
+                    success: data.success,
+                    total: data.total,
+                    fields_count: data.fields?.length
+                }, null, 2);
+            } catch (error) {
+                el.className = 'error';
+                el.textContent = `ERROR: ${error.message}\n${error.stack}`;
+            }
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testCategorizationRules();
+                testMonitoringData();
+                testMetadataFields();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

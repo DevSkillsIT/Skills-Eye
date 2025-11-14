@@ -316,10 +316,23 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configurar CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# Configurar CORS - Permitir qualquer origem em desenvolvimento
+# CORS flexível para permitir acesso de qualquer servidor/IP durante desenvolvimento
+cors_allow_all = os.getenv("CORS_ALLOW_ALL", "true").lower() == "true"
+
+if cors_allow_all:
+    # Desenvolvimento: Aceitar requisições de qualquer origem
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"http://.*",  # Aceita qualquer http://IP:PORTA
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    print(">> CORS configurado para aceitar QUALQUER origem (modo desenvolvimento)")
+else:
+    # Produção: Lista restrita de origens permitidas
+    allowed_origins = [
         "http://localhost:3000",
         "http://localhost:3001",
         "http://localhost:8081",
@@ -328,11 +341,26 @@ app.add_middleware(
         "http://localhost:8084",
         f"http://{Config.MAIN_SERVER}:3001",
         f"http://{Config.MAIN_SERVER}:8081",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    ]
+    
+    # Adicionar origens extras do .env se definidas
+    env_origins = os.getenv("CORS_ORIGINS", "")
+    if env_origins:
+        import json
+        try:
+            extra_origins = json.loads(env_origins)
+            allowed_origins.extend(extra_origins)
+        except:
+            pass
+    
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    print(f">> CORS configurado com {len(allowed_origins)} origens permitidas (modo produção)")
 
 # Importar WebSocket manager
 from core.websocket_manager import ws_manager

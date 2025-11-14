@@ -224,6 +224,10 @@ async def get_monitoring_data(
                 node_ip = nodes_map.get(node_name, '')
                 site_info = sites_map.get(node_ip)
 
+                # ✅ CRÍTICO: Adicionar node_ip para permitir filtro no frontend
+                # Frontend usa NodeSelector que retorna IP, não nome do nó
+                svc['node_ip'] = node_ip
+
                 if site_info:
                     svc['site_code'] = site_info.get('code')
                     svc['site_name'] = site_info.get('name')

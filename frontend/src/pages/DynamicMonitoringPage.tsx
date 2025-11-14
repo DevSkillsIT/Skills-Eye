@@ -109,6 +109,7 @@ interface MonitoringDataItem {
   Tags: string[];
   Meta: Record<string, any>;
   Node?: string;
+  node_ip?: string;  // ✅ NOVO: IP do nó para filtro (vem do backend)
   [key: string]: any;  // Campos dinâmicos
 }
 
@@ -493,22 +494,30 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       // Debug: console.log('[MONITORING] Buscando dados:', { category, filters, params, selectedNode });
 
       // Chamar endpoint unificado com filtro de nó
-      const response = await consulAPI.getMonitoringData(
+      const axiosResponse = await consulAPI.getMonitoringData(
         category,
         filters.company,
         filters.site,
         filters.env
       );
 
+      // Normalizar resposta: axios retorna response.data
+      const response = (axiosResponse && (axiosResponse as any).data) 
+        ? (axiosResponse as any).data 
+        : axiosResponse;
+
       if (!response.success) {
+        // eslint-disable-next-line no-console
+        console.warn('[MONITORING] Payload inesperado:', response);
         throw new Error(response.detail || 'Erro ao buscar dados');
       }
 
       let rows: MonitoringDataItem[] = response.data || [];
 
-      // ✅ NOVO: Filtrar por nó se selecionado
+      // ✅ FILTRO POR NÓ: Compara com node_ip (IP) ao invés de Node (nome)
+      // NodeSelector retorna IP do nó, backend agora retorna node_ip
       if (selectedNode && selectedNode !== 'all') {
-        rows = rows.filter(item => item.Node === selectedNode);
+        rows = rows.filter(item => item.node_ip === selectedNode);
       }
 
       // ✅ NOVO: Extrair metadataOptions dinamicamente
@@ -653,7 +662,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const handleSync = useCallback(async () => {
     setSyncLoading(true);
     try {
-      const response = await consulAPI.syncMonitoringCache();
+      const axiosResponse = await consulAPI.syncMonitoringCache();
+      
+      // Normalizar resposta: axios retorna response.data
+      const response = (axiosResponse && (axiosResponse as any).data) 
+        ? (axiosResponse as any).data 
+        : axiosResponse;
 
       if (response.success) {
         message.success(`Cache sincronizado! ${response.total_types} tipos de ${response.total_servers} servidores`);
