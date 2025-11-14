@@ -3097,6 +3097,22 @@ async def migrate_add_new_show_in_fields():
         fields = config.get('fields', [])
         logger.info(f"[MIGRATION] {len(fields)} campos encontrados no KV")
         
+        # ✅ VALIDAÇÃO CRÍTICA: Verificar se extraction_status está completo
+        # Se server_status[].fields[] estiver vazio, precisa fazer re-extração
+        extraction_status = config.get('extraction_status', {})
+        server_status = extraction_status.get('server_status', [])
+        
+        if server_status:
+            # Verificar se pelo menos um servidor tem o array fields[]
+            has_fields_array = any('fields' in srv and len(srv.get('fields', [])) > 0 for srv in server_status)
+            
+            if not has_fields_array:
+                logger.warning("[MIGRATION] ⚠️ extraction_status incompleto (sem fields[]) - forçando re-extração")
+                raise HTTPException(
+                    status_code=400,
+                    detail="KV está incompleto (sem server_status[].fields[]). Execute POST /force-extract primeiro para repopular o KV corretamente."
+                )
+        
         # PASSO 2: Verificar se migração já foi feita
         sample_field = fields[0] if fields else {}
         if 'show_in_network_probes' in sample_field:
@@ -3129,11 +3145,10 @@ async def migrate_add_new_show_in_fields():
         
         logger.info(f"[MIGRATION] {updated_count} campos atualizados com novos campos show_in_*")
         
-        # PASSO 4: Salvar de volta no KV
-        await kv.put_json(
-            key='skills/eye/metadata/fields',
-            value=config
-        )
+        # PASSO 4: Salvar de volta no KV PRESERVANDO extraction_status
+        # ✅ CRÍTICO: Usar save_fields_config() para garantir que extraction_status seja preservado
+        # Se usar kv.put_json() direto, pode quebrar discovered_in e source_label
+        await save_fields_config(config)
         
         # PASSO 5: Invalidar cache para forçar reload
         _kv_manager.invalidate('metadata/fields')
