@@ -205,35 +205,48 @@ export function useTableFields(context?: string): {
 } {
   const { fields: allFields, loading, error } = useMetadataFieldsContext();
 
+  // DEBUG: Log antes da filtragem
+  console.log('[useTableFields] Processando campos:', {
+    context,
+    allFieldsCount: allFields.length,
+    loading,
+    error
+  });
+
   // Filtrar por contexto e show_in_table
   const tableFields = allFields
     .filter((f: MetadataFieldDynamic) => {
       // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
       // Categories: network-probes, web-probes, system-exporters, etc
       // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
-      
+
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      
+
       // Mapear categorias dinâmicas para campos base
       if (context === 'network-probes' || context === 'web-probes') {
         return f.show_in_blackbox !== false;  // ← probes = blackbox
       }
-      if (context === 'system-exporters' || context === 'database-exporters' || 
+      if (context === 'system-exporters' || context === 'database-exporters' ||
           context === 'infrastructure-exporters' || context === 'hardware-exporters') {
         return f.show_in_exporters !== false;  // ← exporters categories
       }
-      
+
       return true;  // Sem filtro específico
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
     .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
 
-  return { tableFields, loading, error };
-}
+  // DEBUG: Log após filtragem
+  console.log('[useTableFields] Resultado:', {
+    context,
+    tableFieldsCount: tableFields.length,
+    first3: tableFields.slice(0, 3).map(f => ({ name: f.name, order: f.order }))
+  });
 
-/**
+  return { tableFields, loading, error };
+}/**
  * Hook para buscar campos para formulário
  * OTIMIZADO: Usa context compartilhado - UMA única requisição
  */

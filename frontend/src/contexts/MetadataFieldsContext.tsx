@@ -8,7 +8,8 @@
  * - isInitialLoad: indica se é a primeira carga (fria)
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import axios from 'axios';
 import type { MetadataFieldDynamic } from '../services/api';
 
@@ -58,9 +59,23 @@ export function MetadataFieldsProvider({ children }: { children: ReactNode }) {
       });
 
       const endTime = performance.now();
-      const duration = ((endTime - startTime) / 1000).toFixed(2);
+      const durationMs = endTime - startTime;
+      const durationSec = (durationMs / 1000).toFixed(2);
 
       if (response.data.success) {
+        // DEBUG: Logs detalhados
+        console.log('[MetadataFieldsContext] 📊 Dados recebidos:', {
+          fieldsCount: response.data.fields.length,
+          hasExtractionStatus: !!response.data.extraction_status,
+          source: response.data.source,
+          first3Fields: response.data.fields.slice(0, 3).map((f: any) => ({
+            name: f.name,
+            show_in_blackbox: f.show_in_blackbox,
+            show_in_table: f.show_in_table,
+            enabled: f.enabled
+          }))
+        });
+
         setFields(response.data.fields);
         setLastUpdate(new Date());
 
@@ -68,15 +83,15 @@ export function MetadataFieldsProvider({ children }: { children: ReactNode }) {
         // Backend retorna `source` indicando de onde vieram os dados
         const source = response.data.source || 'unknown';
 
-        if (source === 'cache' || duration < 5) {
+        if (source === 'cache' || durationMs < 5000) {
           // Se veio rápido (<5s), provavelmente veio do cache KV
           setCacheStatus('from-cache');
-          console.log(`[MetadataFieldsContext] ✅ Campos carregados do CACHE em ${duration}s`);
+          console.log(`[MetadataFieldsContext] ✅ Campos carregados do CACHE em ${(durationMs/1000).toFixed(2)}s`);
         } else {
           // Se demorou mais, provavelmente extraiu via SSH
           setCacheStatus('from-ssh');
           console.log(
-            `[MetadataFieldsContext] ✅ Campos extraídos via SSH em ${duration}s`
+            `[MetadataFieldsContext] ✅ Campos extraídos via SSH em ${(durationMs/1000).toFixed(2)}s`
           );
         }
 
