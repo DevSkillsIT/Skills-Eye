@@ -205,14 +205,14 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedColumns, ...metadataColumns];
   }, [tableFields]);
 
-  // Atualizar columnConfig quando tableFields carregar
+  // Atualizar columnConfig quando tableFields carregar pela primeira vez
   useEffect(() => {
-    // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
-    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
-    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
+    // OTIMIZAÇÃO: Só atualiza se columnConfig estiver vazio (primeira carga)
+    // Evita loop infinito e múltiplos re-renders
+    if (tableFields.length > 0 && columnConfig.length === 0) {
       setColumnConfig(defaultColumnConfig);
     }
-  }, [defaultColumnConfig, columnConfig.length]);
+  }, [tableFields.length]); // Depende apenas do comprimento, não do objeto todo
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
@@ -649,8 +649,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       const summaryEnd = performance.now();
       console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
 
-      // ✅ NOVO: Filtrar por keyword
-      const keyword = (params?.keyword ?? searchValue).trim().toLowerCase();
+      // ✅ NOVO: Filtrar por keyword (removemos params prop do ProTable)
+      const keyword = searchValue.trim().toLowerCase();
       let searchedRows = filteredRows;
       if (keyword) {
         searchedRows = filteredRows.filter((item) => {
@@ -715,6 +715,16 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         total: sortedRows.length
       };
     } catch (error: any) {
+      // CRÍTICO: Ignorar erros de abort (React 18 Strict Mode double mount)
+      if (error.code === 'ECONNABORTED' || error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
+        console.log('[requestHandler] Request aborted by React Strict Mode cleanup');
+        return {
+          data: [],
+          success: false,
+          total: 0
+        };
+      }
+
       // Debug: console.error('[MONITORING ERROR]', error);
       message.error('Erro ao carregar dados: ' + (error.message || error));
       return {
@@ -1037,15 +1047,14 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // Limpar TODOS os filtros: ProTable + estados customizados
-                  // actionRef.current?.clearFilters?.(); // Property não existe em ActionType
+                  // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   // Manter selectedNode e advancedConditions
+                  // Reload para aplicar mudanças
                   actionRef.current?.reload();
                 }}
-                title="Limpar todos os filtros (mantém busca avançada)"
               >
                 Limpar Filtros
               </Button>
@@ -1055,17 +1064,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // Limpar TUDO: filtros + ordenação + estados
-                  actionRef.current?.reset?.();
+                  // Limpar estados customizados ANTES de resetar tabela
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   setSortField(null);
                   setSortOrder(null);
                   // Manter selectedNode e advancedConditions
-                  actionRef.current?.reload();
+
+                  // CRÍTICO: reloadAndRest() reseta filtros E ordenação corretamente
+                  // Ao contrário de reset() + reload() que não limpa ordenação visual
+                  actionRef.current?.reloadAndRest?.();
                 }}
-                title="Limpar filtros e ordenação (mantém busca avançada)"
               >
                 Limpar Filtros e Ordem
               </Button>
@@ -1152,7 +1162,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           rowKey="ID"
           columns={proTableColumns}
           request={requestHandler}
-          params={{ keyword: searchValue }}
           onChange={handleTableChange}
           search={false}
           pagination={{
