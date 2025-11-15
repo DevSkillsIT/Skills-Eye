@@ -72,6 +72,7 @@ import { useTableFields, useFormFields, useFilterFields } from '../hooks/useMeta
 import FormFieldRenderer from '../components/FormFieldRenderer';
 import SiteBadge from '../components/SiteBadge';
 import { extractSiteFromMetadata } from '../utils/namingUtils';
+import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 
 const { Option } = Select;
 const { Search } = Input;
@@ -258,6 +259,17 @@ const Services: React.FC = () => {
   // SISTEMA DINÂMICO: metadataOptions para preencher filtros das colunas
   const [metadataLoading, setMetadataLoading] = useState(false);
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
+
+  // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance do backend
+  const [responseMetadata, setResponseMetadata] = useState<{
+    source_name?: string;
+    is_master?: boolean;
+    cache_status?: string;
+    age_seconds?: number;
+    staleness_ms?: number;
+    total_time_ms?: number;
+  } | null>(null);
+
   const [selectedNode, setSelectedNode] = useState<string>('all');
   const [detailRecord, setDetailRecord] = useState<ServiceTableItem | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -516,7 +528,21 @@ const Services: React.FC = () => {
         const nodeAddr = queryParams.node_addr === 'ALL' ? undefined : queryParams.node_addr;
 
         const response = await consulAPI.getServicesInstancesOptimized(false, nodeAddr);
-        const { data: backendRows, summary: backendSummary } = response.data;
+        const { data: backendRows, summary: backendSummary, _metadata } = response.data;
+
+        // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance
+        if (_metadata) {
+          setResponseMetadata(_metadata);
+          console.log(
+            `%c[PERF] 📡 Source: ${_metadata.source_name} | ` +
+            `Master: ${_metadata.is_master} | ` +
+            `Cache: ${_metadata.cache_status} | ` +
+            `Age: ${_metadata.age_seconds}s | ` +
+            `Staleness: ${_metadata.staleness_ms}ms | ` +
+            `Total: ${_metadata.total_time_ms}ms`,
+            'color: #4caf50; font-weight: bold; background: #1b5e20; padding: 4px;'
+          );
+        }
 
         // Converter para formato esperado pela tabela
         let rows: ServiceTableItem[] = backendRows.map((item: any) => ({
@@ -1220,6 +1246,18 @@ const Services: React.FC = () => {
             </div>
           </div>
         </Card>
+
+        {/* ✅ SPRINT 2: Performance Indicators - Mostra status do cache, fallback, staleness */}
+        {responseMetadata && (
+          <Card size="small" styles={{ body: { padding: '8px 16px' } }}>
+            <Space align="center" size="small">
+              <Typography.Text type="secondary" style={{ fontSize: '12px', marginRight: 8 }}>
+                Performance:
+              </Typography.Text>
+              <BadgeStatus metadata={responseMetadata} />
+            </Space>
+          </Card>
+        )}
 
         {/* Actions */}
         <Card size="small">

@@ -50,8 +50,19 @@ async def list_services(
 
         if node_addr == "ALL":
             # Listar de todos os nós do cluster
+            # ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
             logger.info("Listando serviços de todos os nós do cluster")
-            all_services = await consul.get_all_services_from_all_nodes()
+            all_services = await consul.get_all_services_catalog(use_fallback=True)
+
+            # Extrair metadata de fallback
+            metadata_info = all_services.pop("_metadata", None)
+            if metadata_info:
+                logger.info(
+                    f"[Services] Dados obtidos via {metadata_info.get('source_name', 'unknown')} "
+                    f"em {metadata_info.get('total_time_ms', 0)}ms"
+                )
+                if not metadata_info.get('is_master', True):
+                    logger.warning(f"⚠️ [Services] Master offline! Usando fallback")
 
             # Aplicar filtros se especificados
             if any([module, company, project, env]):
@@ -245,7 +256,19 @@ async def search_services(
             }
         else:
             # Buscar em todos os nós
-            all_services = await consul.get_all_services_from_all_nodes()
+            # ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
+            all_services = await consul.get_all_services_catalog(use_fallback=True)
+
+            # Extrair metadata de fallback
+            metadata_info = all_services.pop("_metadata", None)
+            if metadata_info:
+                logger.info(
+                    f"[Services Search] Dados via {metadata_info.get('source_name', 'unknown')} "
+                    f"em {metadata_info.get('total_time_ms', 0)}ms"
+                )
+                if not metadata_info.get('is_master', True):
+                    logger.warning(f"⚠️ [Services Search] Master offline! Usando fallback")
+
             filtered = {}
 
             for node_name, services in all_services.items():

@@ -2,7 +2,7 @@
 API FastAPI para Consul Manager
 Mantém todas as funcionalidades do script original
 """
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
@@ -10,6 +10,9 @@ import json
 from typing import Dict, List, Optional
 import os
 from dotenv import load_dotenv
+
+# SPRINT 2 (2025-11-15): Prometheus metrics scraping
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 # Importações locais
 from core.config import Config
@@ -26,6 +29,7 @@ from api.dashboard import router as dashboard_router
 from api.optimized_endpoints import router as optimized_router
 from api.prometheus_config import router as prometheus_config_router
 from api.metadata_fields_manager import router as metadata_fields_router
+from api.cache import router as cache_router  # SPRINT 2: Cache management
 # from api.metadata_dynamic import router as metadata_dynamic_router  # REMOVIDO: Usar prometheus_config em vez disso
 from api.monitoring_types_dynamic import router as monitoring_types_dynamic_router  # Tipos extraídos DINAMICAMENTE de Prometheus.yml
 from api.monitoring_unified import router as monitoring_unified_router  # ⭐ NOVO: API unificada para páginas dinâmicas (v2.0 2025-11-13)
@@ -446,10 +450,49 @@ app.include_router(categorization_rules_router, prefix="/api/v1", tags=["Categor
 app.include_router(reference_values_router, prefix="/api/v1/reference-values", tags=["Reference Values"])  # NOVO: Auto-cadastro
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais
+app.include_router(cache_router, prefix="/api/v1", tags=["Cache"])  # SPRINT 2: Cache management
+
+# SPRINT 2 (2025-11-15): Prometheus metrics parsed para dashboard frontend
+from api.prometheus_metrics import router as prometheus_metrics_router
+app.include_router(prometheus_metrics_router, prefix="/api/v1", tags=["Prometheus"])
 
 if HAS_INSTALLER:
     app.include_router(installer_router, prefix="/api/v1/installer", tags=["Installer"])
     app.include_router(health_router, prefix="/api/v1/health", tags=["Health Check"])
+
+
+# ============================================================================
+# ENDPOINT PROMETHEUS METRICS - SPRINT 2 (2025-11-15)
+# ============================================================================
+
+@app.get("/metrics", tags=["Metrics"], include_in_schema=False)
+async def metrics_endpoint():
+    """
+    Endpoint para Prometheus scraping.
+
+    Retorna métricas no formato Prometheus:
+    - Consul API performance (latência, erros, fallbacks)
+    - Cache hits/misses (Agent Caching + LocalCache)
+    - Serviços descobertos
+    - Blackbox targets
+    - API endpoint performance
+
+    IMPORTANTE: Este endpoint NÃO requer autenticação para permitir
+    scraping do Prometheus sem configurar Basic Auth.
+
+    FORMATO: Prometheus exposition format
+    EXEMPLO:
+    ```
+    # HELP consul_request_duration_seconds Tempo de resposta das requisições
+    # TYPE consul_request_duration_seconds histogram
+    consul_request_duration_seconds_sum{method="GET",endpoint="/catalog/services",node="master"} 1.234
+    ```
+    """
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

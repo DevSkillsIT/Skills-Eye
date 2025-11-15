@@ -134,7 +134,12 @@
       "Bash(find:*)",
       "Bash(python3:*)",
       "Bash(source venv/bin/activate)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(timeout /t 2 /nobreak)",
+      "Bash(if exist node_modules.vite rmdir /S /Q node_modules.vite)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(timeout:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

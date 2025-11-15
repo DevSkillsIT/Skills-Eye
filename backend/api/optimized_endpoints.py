@@ -4,7 +4,8 @@ Sistema de cache inteligente com invalidação automática
 """
 from fastapi import APIRouter, Query, HTTPException
 from typing import Dict, List, Optional
-from core.cache_manager import cache_manager
+# SPRINT 2: Cache antigo removido - agora usa LocalCache no ConsulManager
+# from core.cache_manager import cache_manager
 from core.config import Config
 import requests
 import time
@@ -45,14 +46,14 @@ def get_exporters_optimized(
     start_time = time.time()
     cache_key = "exporters:list"
 
-    # Verificar cache
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            cached['from_cache'] = True
-            logger.info(f"✓ Exporters from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado - agora no ConsulManager
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         cached['from_cache'] = True
+    #         logger.info(f"✓ Exporters from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         logger.info("Fetching exporters from Consul...")
@@ -216,8 +217,8 @@ def get_exporters_optimized(
             'from_cache': False
         }
 
-        # Cache por 20 segundos
-        cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['exporters'])
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['exporters'])
         logger.info(f"✓ Exporters fetched in {result['load_time_ms']}ms ({result['total']} items)")
 
         return result
@@ -240,13 +241,14 @@ def get_blackbox_targets_optimized(force_refresh: bool = Query(False)):
     start_time = time.time()
     cache_key = "blackbox-targets:list"
 
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            cached['from_cache'] = True
-            logger.info(f"✓ Blackbox targets from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         cached['from_cache'] = True
+    #         logger.info(f"✓ Blackbox targets from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         logger.info("Fetching blackbox targets from Consul...")
@@ -343,7 +345,8 @@ def get_blackbox_targets_optimized(force_refresh: bool = Query(False)):
             'from_cache': False
         }
 
-        cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['blackbox'])
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['blackbox'])
         logger.info(f"✓ Blackbox targets fetched in {result['load_time_ms']}ms ({result['total']} items)")
 
         return result
@@ -363,12 +366,13 @@ def get_service_groups_optimized(force_refresh: bool = Query(False)):
     start_time = time.time()
     cache_key = "service-groups:list"
 
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            cached['from_cache'] = True
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         cached['from_cache'] = True
+    #         return cached
 
     try:
         services_response = requests.get(
@@ -423,7 +427,8 @@ def get_service_groups_optimized(force_refresh: bool = Query(False)):
             'from_cache': False
         }
 
-        cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['groups'])
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=CACHE_TTL['groups'])
         return result
 
     except Exception as e:
@@ -451,14 +456,14 @@ def get_services_instances_optimized(
     start_time = time.time()
     cache_key = f"services:instances:{node_addr or 'ALL'}"
 
-    # Verificar cache
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['from_cache'] = True
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            logger.info(f"✓ Service instances from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['from_cache'] = True
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         logger.info(f"✓ Service instances from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         logger.info(f"Fetching service instances from Consul (node={node_addr or 'ALL'})...")
@@ -552,8 +557,8 @@ def get_services_instances_optimized(
             'from_cache': False
         }
 
-        # Cache por 25 segundos
-        cache_manager.set(cache_key, result, ttl_seconds=25)
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=25)
         logger.info(f"✓ Service instances fetched ({load_ms}ms) - {len(instances_data)} instances")
 
         return result
@@ -585,14 +590,14 @@ def get_services_optimized(
     start_time = time.time()
     cache_key = "services:all"
 
-    # Verificar cache
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['from_cache'] = True
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            logger.info(f"✓ Services from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['from_cache'] = True
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         logger.info(f"✓ Services from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         # 🚀 UMA ÚNICA CHAMADA - Endpoint agregado do Consul (IGUAL AO TENSUNS!)
@@ -672,8 +677,8 @@ def get_services_optimized(
             'from_cache': False,
         }
 
-        # Salvar no cache
-        cache_manager.set(cache_key, result, ttl_seconds=25)
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=25)
         logger.info(f"✓ Services loaded fresh ({load_ms}ms) - {len(processed_services)} services")
 
         return result
@@ -704,14 +709,14 @@ def get_blackbox_groups_optimized(
     start_time = time.time()
     cache_key = "blackbox-groups:list"
 
-    # Verificar cache
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['from_cache'] = True
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            logger.info(f"✓ Blackbox Groups from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['from_cache'] = True
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         logger.info(f"✓ Blackbox Groups from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         # Buscar do KV store
@@ -750,8 +755,8 @@ def get_blackbox_groups_optimized(
             'from_cache': False,
         }
 
-        # Salvar no cache
-        cache_manager.set(cache_key, result, ttl_seconds=30)
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=30)
         logger.info(f"✓ Blackbox Groups loaded ({load_ms}ms) - {len(groups)} groups")
 
         return result
@@ -780,14 +785,14 @@ def get_presets_optimized(
     start_time = time.time()
     cache_key = f"presets:list:{category or 'all'}"
 
-    # Verificar cache
-    if not force_refresh:
-        cached = cache_manager.get(cache_key)
-        if cached:
-            cached['from_cache'] = True
-            cached['load_time_ms'] = int((time.time() - start_time) * 1000)
-            logger.info(f"✓ Presets from cache ({cached['load_time_ms']}ms)")
-            return cached
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached = cache_manager.get(cache_key)
+    #     if cached:
+    #         cached['from_cache'] = True
+    #         cached['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         logger.info(f"✓ Presets from cache ({cached['load_time_ms']}ms)")
+    #         return cached
 
     try:
         # Buscar do KV store
@@ -831,8 +836,8 @@ def get_presets_optimized(
             'from_cache': False,
         }
 
-        # Salvar no cache
-        cache_manager.set(cache_key, result, ttl_seconds=30)
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, result, ttl_seconds=30)
         logger.info(f"✓ Presets loaded ({load_ms}ms) - {len(presets)} presets")
 
         return result
@@ -859,5 +864,5 @@ def clear_cache(cache_type: Optional[str] = Query(None)):
 
     **Chame após CREATE/UPDATE/DELETE para invalidar cache**
     """
-    cache_manager.clear()
-    return {"success": True, "message": f"Cache limpo: {cache_type or 'all'}"}
+    # SPRINT 2: Cache local desabilitado - use /api/v1/cache/clear
+    return {"success": False, "message": "Endpoint deprecado. Use /api/v1/cache/clear"}

@@ -63,9 +63,26 @@ class Config:
             sites_data = asyncio.run(kv.get_json('skills/eye/metadata/sites'))
 
             if sites_data:
+                # ESTRUTURA DO KV: {"data": {"sites": [...]}} (duplo wrap após auto_sync)
+                # Extrair array de sites
+                if isinstance(sites_data, dict) and 'data' in sites_data:
+                    # Estrutura dupla: {"data": {"sites": [...]}}
+                    sites_list = sites_data['data'].get('sites', [])
+                elif isinstance(sites_data, dict) and 'sites' in sites_data:
+                    # Estrutura simples: {"sites": [...]}
+                    sites_list = sites_data.get('sites', [])
+                elif isinstance(sites_data, list):
+                    # Estrutura array direto: [...]
+                    sites_list = sites_data
+                else:
+                    logger.warning(f"❌ KV sites estrutura desconhecida: {type(sites_data)}")
+                    sites_list = []
+
                 # Converter lista de sites para dict {hostname: prometheus_instance}
                 nodes = {}
-                for site in sites_data:
+                for site in sites_list:
+                    if not isinstance(site, dict):
+                        continue
                     # Usar hostname se disponível, senão usar name
                     hostname = site.get('hostname') or site.get('name', 'unknown')
                     ip = site.get('prometheus_instance')
@@ -75,8 +92,11 @@ class Config:
 
             # KV vazio: retornar dict vazio (ZERO HARDCODE)
             return {}
-        except Exception:
+        except Exception as e:
             # Falha ao acessar KV: retornar dict vazio (ZERO HARDCODE)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ Erro ao carregar sites do KV: {e}")
             return {}
 
     # Service Names
