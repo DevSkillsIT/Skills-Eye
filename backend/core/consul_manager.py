@@ -824,6 +824,15 @@ class ConsulManager:
                     'is_default': True
                 }]
 
+            # SPRINT 2 - FIX: Validar tipo de dados antes de usar
+            if not isinstance(sites_data, list):
+                logger.error(f"❌ KV metadata/sites tem tipo inválido: {type(sites_data).__name__} (esperado: list)")
+                return [{
+                    'name': 'fallback',
+                    'prometheus_instance': Config.get_main_server(),
+                    'is_default': True
+                }]
+
             # Ordenar: master (is_default=True) primeiro
             sites = sorted(
                 sites_data,
