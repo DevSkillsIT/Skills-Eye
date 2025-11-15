@@ -30,15 +30,13 @@ router = APIRouter(prefix="/metadata-fields", tags=["Metadata Fields"])
 # Path do arquivo de configuração
 CONFIG_FILE = Path(__file__).parent.parent / "config" / "metadata_fields.json"
 
-# Cache para evitar consultas repetidas ao Consul (cache de 5 minutos)
-_servers_cache = {
-    "data": None,
-    "timestamp": None,
-    "ttl": 300  # 5 minutos em segundos
-}
-
-# NOVO: Usar ConsulKVConfigManager para cache unificado (elimina cache manual)
+# SPRINT 2 (2025-11-15): Migração para LocalCache global
+# REMOVIDO: _servers_cache (dict interno)
+# NOVO: Usar LocalCache global para integração com Cache Management
+from core.cache_manager import get_cache
 from core.consul_kv_config_manager import ConsulKVConfigManager
+
+_cache = get_cache(ttl_seconds=60)  # Cache global centralizado
 _kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 
 # Lock global para evitar múltiplas extrações SSH simultâneas
@@ -660,21 +658,16 @@ async def list_servers():
     OTIMIZADO: Não cria conexões SSH, apenas lê variável de ambiente!
     """
     try:
-        # Verificar cache primeiro
-        now = datetime.now()
-        print(f"[CACHE CHECK] data exists: {_servers_cache['data'] is not None}, timestamp: {_servers_cache['timestamp']}")
+        # SPRINT 2: Usar LocalCache global
+        cache_key = "metadata:servers:all"
+        
+        # Tentar buscar do cache
+        cached = await _cache.get(cache_key)
+        if cached is not None:
+            logger.info(f"[CACHE HIT] Retornando servidores do cache (key: {cache_key})")
+            return cached
 
-        if (_servers_cache["data"] is not None and
-            _servers_cache["timestamp"] is not None):
-
-            elapsed = (now - _servers_cache["timestamp"]).total_seconds()
-            if elapsed < _servers_cache["ttl"]:
-                print(f"[CACHE HIT] Returning from cache (age: {elapsed:.1f}s)")
-                logger.info(f"Retornando servidores do CACHE (idade: {elapsed:.1f}s)")
-                return _servers_cache["data"]
-
-        print("[CACHE MISS] Fetching servers from environment...")
-        logger.info("Cache expirado ou vazio, buscando servidores...")
+        logger.info(f"[CACHE MISS] Buscando servidores do ambiente...")
 
         # OTIMIZAÇÃO: Não criar MultiConfigManager (muito lento por causa do SSH)
         # Em vez disso, ler diretamente da variável de ambiente
@@ -797,11 +790,9 @@ async def list_servers():
             "master": servers[0] if servers else None
         }
 
-        # Atualizar cache
-        _servers_cache["data"] = result
-        _servers_cache["timestamp"] = now
-        logger.info(f"Cache de servidores atualizado - {len(servers)} servidores (válido por {_servers_cache['ttl']}s)")
-        print(f"[CACHE UPDATED] {len(servers)} servers cached for {_servers_cache['ttl']}s")
+        # SPRINT 2: Armazenar no cache global (TTL: 300s)
+        await _cache.set(cache_key, result, ttl=300)
+        logger.info(f"[CACHE SET] Cache de servidores atualizado - {len(servers)} servidores (TTL: 300s, key: {cache_key})")
 
         return result
 

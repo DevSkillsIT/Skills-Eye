@@ -5,26 +5,29 @@ from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Optional
 from core.consul_manager import ConsulManager
 from core.config import Config
+from core.cache_manager import get_cache  # SPRINT 2: LocalCache global
 import asyncio
 import time
 
 router = APIRouter(tags=["Nodes"])
 
-# Cache simples para evitar timeouts no cold start
-_nodes_cache: Optional[Dict] = None
-_nodes_cache_time: float = 0
-NODES_CACHE_TTL = 30  # 30 segundos
+# SPRINT 2 (2025-11-15): Migração para LocalCache global
+# REMOVIDO: _nodes_cache, _nodes_cache_time (variáveis globais)
+# NOVO: Usar LocalCache global para integração com Cache Management
+cache = get_cache(ttl_seconds=60)
 
 @router.get("/", include_in_schema=True)
 @router.get("")
 async def get_nodes():
     """Retorna todos os nós do cluster com cache de 30s"""
-    global _nodes_cache, _nodes_cache_time
-
-    # Verificar se cache está válido
-    current_time = time.time()
-    if _nodes_cache and (current_time - _nodes_cache_time) < NODES_CACHE_TTL:
-        return _nodes_cache
+    
+    # SPRINT 2: Usar LocalCache global
+    cache_key = "nodes:list:all"
+    
+    # Verificar cache
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        return cached
 
     try:
         consul = ConsulManager()
@@ -79,9 +82,8 @@ async def get_nodes():
             "main_server": Config.MAIN_SERVER
         }
 
-        # Atualizar cache
-        _nodes_cache = result
-        _nodes_cache_time = current_time
+        # SPRINT 2: Atualizar LocalCache global (TTL 30s)
+        await cache.set(cache_key, result, ttl=30)
 
         return result
     except Exception as e:

@@ -29,6 +29,7 @@ import time
 from core.consul_kv_config_manager import ConsulKVConfigManager
 from core.consul_manager import ConsulManager
 from core.categorization_rule_engine import CategorizationRuleEngine
+from core.cache_manager import get_cache  # ✅ SPRINT 2: Usar LocalCache global
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring", tags=["Monitoring Unified"])
@@ -38,45 +39,38 @@ kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 consul_manager = ConsulManager()
 categorization_engine = CategorizationRuleEngine(kv_manager)
 
-# ✅ OTIMIZAÇÃO: Cache de nós do Consul (TTL: 5 minutos)
-# Nodes mudam raramente (apenas quando add/remove servidores)
-# Benefício: -50ms por request, -95% API calls ao Consul
-_nodes_cache = {
-    "data": None,
-    "timestamp": 0,
-    "ttl": 300  # 5 minutos
-}
+# ✅ SPRINT 2 (2025-11-15): Usar LocalCache global para integração com Cache Management
+# REMOVIDO: _nodes_cache e _services_cache internos
+# NOVO: Usar get_cache() para cache centralizado e monitorável
+cache = get_cache(ttl_seconds=60)
+
 
 async def get_nodes_cached(consul_mgr: ConsulManager) -> List[Dict[str, Any]]:
     """
     Retorna lista de nós do Consul com cache de 5 minutos.
     
+    SPRINT 2: Migrado para LocalCache global.
+    
     Cache hit: ~0ms
     Cache miss: ~50ms (API call ao Consul)
     """
-    now = time.time()
+    cache_key = "monitoring:nodes:all"
     
-    # Cache hit
-    if _nodes_cache["data"] and (now - _nodes_cache["timestamp"]) < _nodes_cache["ttl"]:
-        logger.debug(f"[CACHE HIT] Nodes do Consul (age: {int(now - _nodes_cache['timestamp'])}s)")
-        return _nodes_cache["data"]
+    # Tentar buscar do cache
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(f"[CACHE HIT] Nodes do Consul (key: {cache_key})")
+        return cached
     
     # Cache miss - buscar do Consul
-    logger.debug("[CACHE MISS] Buscando nodes do Consul...")
+    logger.debug(f"[CACHE MISS] Buscando nodes do Consul...")
     nodes = await consul_mgr.get_nodes()
-    _nodes_cache["data"] = nodes
-    _nodes_cache["timestamp"] = now
+    
+    # Armazenar no cache (TTL: 300s = 5 minutos)
+    await cache.set(cache_key, nodes, ttl=300)
     
     return nodes
 
-
-# ✅ OTIMIZAÇÃO CRÍTICA: Cache de SERVICES por categoria (TTL: 30 segundos)
-# Services mudam moderadamente (add/remove targets)
-# Benefício: -200ms por request, reduz 90% do processamento
-_services_cache = {
-    "data": {},  # {category: {data, timestamp}}
-    "ttl": 30    # 30 segundos - balance entre freshness e performance
-}
 
 async def get_services_cached(
     category: str,
@@ -88,38 +82,31 @@ async def get_services_cached(
     """
     Retorna dados de serviços com cache por categoria e filtros.
     
+    SPRINT 2: Migrado para LocalCache global.
+    
     Cache hit: ~5ms (apenas validação de filtros)
     Cache miss: ~200ms (busca completa do Consul + categorização)
     
-    Cache key: f"{category}:{company}:{site}:{env}"
+    Cache key: f"monitoring:services:{category}:{company}:{site}:{env}"
     """
-    now = time.time()
-    
     # Gerar cache key baseado em categoria + filtros
-    cache_key = f"{category}:{company or 'all'}:{site or 'all'}:{env or 'all'}"
+    cache_key = f"monitoring:services:{category}:{company or 'all'}:{site or 'all'}:{env or 'all'}"
     
-    # Cache hit - dados válidos e não expirados
-    if cache_key in _services_cache["data"]:
-        cached_entry = _services_cache["data"][cache_key]
-        age = now - cached_entry["timestamp"]
-        
-        if age < _services_cache["ttl"]:
-            logger.debug(
-                f"[CACHE HIT] Services category='{category}' "
-                f"(age: {int(age)}s, {cached_entry['total']} services)"
-            )
-            return cached_entry["data"]
+    # Tentar buscar do cache
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        logger.debug(
+            f"[CACHE HIT] Services category='{category}' "
+            f"(key: {cache_key}, total: {cached.get('total', 0)})"
+        )
+        return cached
     
     # Cache miss - buscar dados
     logger.debug(f"[CACHE MISS] Buscando services category='{category}'...")
     data = await fetch_function()
     
-    # Armazenar no cache
-    _services_cache["data"][cache_key] = {
-        "data": data,
-        "timestamp": now,
-        "total": data.get("total", 0)
-    }
+    # Armazenar no cache (TTL: 30s padrão do LocalCache)
+    await cache.set(cache_key, data, ttl=30)
     
     return data
 
