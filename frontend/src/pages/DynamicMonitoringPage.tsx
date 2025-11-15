@@ -89,6 +89,10 @@ import { NodeSelector } from '../components/NodeSelector';
 // TIPOS E INTERFACES
 // ============================================================================
 
+// ✅ OTIMIZAÇÃO: Flag para controlar logs de performance
+// Em produção (build), logs serão removidos automaticamente
+const DEBUG_PERFORMANCE = import.meta.env.DEV;
+
 const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   'network-probes': 'Network Probes (Rede)',
   'web-probes': 'Web Probes (Aplicações)',
@@ -141,8 +145,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [advancedConditions, setAdvancedConditions] = useState<SearchCondition[]>([]);
   const [advancedOperator, setAdvancedOperator] = useState<'and' | 'or'>('and');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [syncLoading, setSyncLoading] = useState(false);
 
   // ✅ NOVO: NodeSelector
   const [selectedNode, setSelectedNode] = useState<string>('all');
@@ -546,9 +548,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     try {
       // ⏱️ PERFORMANCE LOG: Início
       const perfStart = performance.now();
-      console.log('%c[PERF] 🚀 requestHandler INÍCIO', 'color: #00ff00; font-weight: bold');
-
-      // Debug: console.log('[MONITORING] Buscando dados:', { category, filters, params, selectedNode });
+      if (DEBUG_PERFORMANCE) {
+        console.log('%c[PERF] 🚀 requestHandler INÍCIO', 'color: #00ff00; font-weight: bold');
+      }
 
       // Chamar endpoint unificado com filtro de nó
       const apiStart = performance.now();
@@ -559,7 +561,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         filters.env
       );
       const apiEnd = performance.now();
-      console.log(`%c[PERF] ⏱️  API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
+      }
 
       // Normalizar resposta: axios retorna response.data
       const response = (axiosResponse && (axiosResponse as any).data) 
@@ -587,7 +591,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       let rows: MonitoringDataItem[] = response.data || [];
-      console.log(`%c[PERF] 📊 Total registros recebidos: ${rows.length}`, 'color: #2196f3; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] 📊 Total registros recebidos: ${rows.length}`, 'color: #2196f3; font-weight: bold');
+      }
 
       // ✅ FILTRO POR NÓ: Compara com node_ip (IP) ao invés de Node (nome)
       // NodeSelector retorna IP do nó, backend agora retorna node_ip
@@ -630,13 +636,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       setMetadataOptionsLoaded(true);  // ✅ SPRINT 1: Marcar como carregado
       const metadataEnd = performance.now();
       const metadataFieldsCount = Object.keys(options).length;
-      console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
+      }
 
       // ✅ NOVO: Aplicar filtros avançados
       const filtersStart = performance.now();
       const filteredRows = applyAdvancedFilters(rows);
       const filtersEnd = performance.now();
-      console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
+      }
 
       // ✅ NOVO: Calcular summary
       const summaryStart = performance.now();
@@ -676,7 +686,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       );
       setSummary(nextSummary);
       const summaryEnd = performance.now();
-      console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
+      }
 
       // ✅ NOVO: Filtrar por keyword (removemos params prop do ProTable)
       const keyword = searchValue.trim().toLowerCase();
@@ -719,7 +731,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         });
       }
       const sortEnd = performance.now();
-      console.log(`%c[PERF] ⏱️  Ordenação em ${(sortEnd - sortStart).toFixed(0)}ms`, 'color: #4caf50; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Ordenação em ${(sortEnd - sortStart).toFixed(0)}ms`, 'color: #4caf50; font-weight: bold');
+      }
 
       setTableSnapshot(sortedRows);
 
@@ -730,13 +744,15 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       const start = (current - 1) * pageSize;
       const paginatedRows = sortedRows.slice(start, start + pageSize);
       const paginationEnd = performance.now();
-      console.log(`%c[PERF] ⏱️  Paginação em ${(paginationEnd - paginationStart).toFixed(0)}ms`, 'color: #3f51b5; font-weight: bold');
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Paginação em ${(paginationEnd - paginationStart).toFixed(0)}ms`, 'color: #3f51b5; font-weight: bold');
+      }
 
       // ⏱️ PERFORMANCE LOG: Fim
       const perfEnd = performance.now();
-      console.log(`%c[PERF] ✅ requestHandler COMPLETO em ${(perfEnd - perfStart).toFixed(0)}ms`, 'color: #00ff00; font-weight: bold; font-size: 14px');
-
-      // Debug: console.log(`[MONITORING] Retornados ${paginatedRows.length}/${sortedRows.length} registros`);
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ✅ requestHandler COMPLETO em ${(perfEnd - perfStart).toFixed(0)}ms`, 'color: #00ff00; font-weight: bold; font-size: 14px');
+      }
 
       return {
         data: paginatedRows,
@@ -763,31 +779,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       };
     }
   }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue]);
-
-  // Handler de sincronização de cache
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleSync = useCallback(async () => {
-    setSyncLoading(true);
-    try {
-      const axiosResponse = await consulAPI.syncMonitoringCache();
-      
-      // Normalizar resposta: axios retorna response.data
-      const response = (axiosResponse && (axiosResponse as any).data) 
-        ? (axiosResponse as any).data 
-        : axiosResponse;
-
-      if (response.success) {
-        message.success(`Cache sincronizado! ${response.total_types} tipos de ${response.total_servers} servidores`);
-        actionRef.current?.reload();
-      } else {
-        throw new Error(response.detail || 'Erro ao sincronizar');
-      }
-    } catch (error: any) {
-      message.error('Erro ao sincronizar: ' + (error.message || error));
-    } finally {
-      setSyncLoading(false);
-    }
-  }, []);
 
   // ✅ NOVO: Handler de edição
   const handleEdit = useCallback((record: MonitoringDataItem) => {

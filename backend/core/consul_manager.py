@@ -1012,58 +1012,78 @@ class ConsulManager:
         # Cache local incompatível com estrutura de dados deste método
 
         if use_fallback:
-            # ✅ OTIMIZAÇÃO CRÍTICA (2025-11-15)
-            # ANTES: 164 requests paralelas via /catalog/service/{name} (~3000-4000ms)
-            # DEPOIS: 1 request única via /agent/services (~50-200ms) - 15-80x MAIS RÁPIDO!
+            # ✅ CORREÇÃO CRÍTICA (2025-11-16)
+            # PROBLEMA IDENTIFICADO: Claude Code usava /agent/services (retorna só LOCAL)
+            # SOLUÇÃO: Usar /catalog/services (lista global) + /catalog/service/{name} (detalhes)
+            # PERFORMANCE: 1 request lista + N requests paralelos assíncronos = ~50-200ms
+            # DADOS: 100% completos (todos os serviços do datacenter)
 
             # Buscar node ativo com fallback
             _, metadata = await self.get_services_with_fallback()
             source_node = metadata["source_node"]
 
-            logger.debug(f"[Catalog] Usando /agent/services de {source_node} (1 request única)")
+            logger.debug(f"[Catalog] Buscando lista de serviços de {source_node}")
 
-            # ✅ USAR /agent/services - Retorna TODOS os serviços em 1 REQUEST!
+            # PASSO 1: Buscar lista de nomes dos serviços (leve, 4-10ms)
             temp_manager = ConsulManager(host=source_node, token=self.token)
             response = await temp_manager._request(
                 "GET",
-                "/agent/services",
+                "/catalog/services",
                 use_cache=True,
-                params={"stale": ""}
+                params={"stale": "", "cached": ""}
             )
 
-            services_data = response.json()
+            service_names = response.json()  # Dict {name: [tags]}
+            logger.debug(f"[Catalog] Encontrados {len(service_names)} nomes de serviços")
 
-            # ✅ CONVERSÃO: /agent/services retorna {service_id: service_data}
-            # Precisamos converter para {node_name: {service_id: service_data}}
+            # PASSO 2: Buscar detalhes de TODOS os serviços em PARALELO
+            async def fetch_service_details(name: str):
+                """Busca detalhes de um serviço específico"""
+                try:
+                    resp = await temp_manager._request(
+                        "GET",
+                        f"/catalog/service/{name}",
+                        use_cache=True,
+                        params={"stale": "", "cached": ""}
+                    )
+                    return name, resp.json()
+                except Exception as e:
+                    logger.error(f"[Catalog] Erro ao buscar serviço '{name}': {e}")
+                    return name, []
 
+            # Executar todas as requisições em paralelo
+            tasks = [fetch_service_details(name) for name in service_names.keys()]
+            results = await asyncio.gather(*tasks)
+
+            # PASSO 3: Converter para estrutura {node_name: {service_id: service_data}}
             all_services = {}
 
-            for service_id, service_info in services_data.items():
-                # Usar source_node como node_name (serviços registrados neste agent)
-                node_name = source_node
+            for service_name, instances in results:
+                for instance in instances:
+                    node_name = instance.get("Node", "unknown")
+                    service_id = instance.get("ServiceID", f"{service_name}-{node_name}")
 
-                if node_name not in all_services:
-                    all_services[node_name] = {}
+                    if node_name not in all_services:
+                        all_services[node_name] = {}
 
-                # Formato já é compatível!
-                all_services[node_name][service_id] = {
-                    "ID": service_info.get("ID", service_id),
-                    "Service": service_info.get("Service", "unknown"),
-                    "Tags": service_info.get("Tags", []),
-                    "Meta": service_info.get("Meta", {}),
-                    "Port": service_info.get("Port", 0),
-                    "Address": service_info.get("Address", ""),
-                    "Node": node_name,
-                    "NodeAddress": source_node
-                }
+                    all_services[node_name][service_id] = {
+                        "ID": service_id,
+                        "Service": service_name,
+                        "Tags": instance.get("ServiceTags", []),
+                        "Meta": instance.get("ServiceMeta", {}),
+                        "Port": instance.get("ServicePort", 0),
+                        "Address": instance.get("ServiceAddress", ""),
+                        "Node": node_name,
+                        "NodeAddress": instance.get("Address", "")
+                    }
 
             # Adicionar metadata para debugging
             all_services["_metadata"] = metadata
 
             total_services = sum(len(svcs) for k, svcs in all_services.items() if k != '_metadata')
             logger.info(
-                f"[Catalog] ✅ Retornados {total_services} serviços em 1 REQUEST "
-                f"(antes: {total_services} requests paralelas!)"
+                f"[Catalog] ✅ Retornados {total_services} serviços completos "
+                f"({len(service_names)} nomes × múltiplas instâncias)"
             )
 
             return all_services

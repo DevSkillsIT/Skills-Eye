@@ -11,7 +11,7 @@
  * IMPORTANTE: Agora busca 100% do Prometheus (via SSH) + configurações do KV
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import type { MetadataFieldDynamic } from '../services/api';
 import { useMetadataFieldsContext } from '../contexts/MetadataFieldsContext';
@@ -197,6 +197,7 @@ export function useRequiredFields(): {
 /**
  * Hook para buscar campos para tabela (colunas)
  * OTIMIZADO: Usa context compartilhado - UMA única requisição
+ * ✅ OTIMIZAÇÃO (2025-11-15): useMemo para evitar re-cálculos desnecessários
  */
 export function useTableFields(context?: string): {
   tableFields: MetadataFieldDynamic[];
@@ -205,45 +206,55 @@ export function useTableFields(context?: string): {
 } {
   const { fields: allFields, loading, error } = useMetadataFieldsContext();
 
-  // DEBUG: Log antes da filtragem
-  console.log('[useTableFields] Processando campos:', {
-    context,
-    allFieldsCount: allFields.length,
-    loading,
-    error
-  });
+  // ✅ OTIMIZAÇÃO: Usar useMemo para cachear resultado da filtragem
+  // Só re-calcula quando allFields ou context mudarem
+  const tableFields = useMemo(() => {
+    // DEBUG: Log antes da filtragem (apenas quando re-calcular)
+    if (import.meta.env.DEV) {
+      console.log('[useTableFields] Processando campos:', {
+        context,
+        allFieldsCount: allFields.length,
+        loading,
+        error
+      });
+    }
 
-  // Filtrar por contexto e show_in_table
-  const tableFields = allFields
-    .filter((f: MetadataFieldDynamic) => {
-      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
-      // Categories: network-probes, web-probes, system-exporters, etc
-      // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
+    // Filtrar por contexto e show_in_table
+    const filtered = allFields
+      .filter((f: MetadataFieldDynamic) => {
+        // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+        // Categories: network-probes, web-probes, system-exporters, etc
+        // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
 
-      if (context === 'services') return f.show_in_services !== false;
-      if (context === 'exporters') return f.show_in_exporters !== false;
-      if (context === 'blackbox') return f.show_in_blackbox !== false;
+        if (context === 'services') return f.show_in_services !== false;
+        if (context === 'exporters') return f.show_in_exporters !== false;
+        if (context === 'blackbox') return f.show_in_blackbox !== false;
 
-      // Mapear categorias dinâmicas para campos base
-      if (context === 'network-probes' || context === 'web-probes') {
-        return f.show_in_blackbox !== false;  // ← probes = blackbox
-      }
-      if (context === 'system-exporters' || context === 'database-exporters' ||
-          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-        return f.show_in_exporters !== false;  // ← exporters categories
-      }
+        // Mapear categorias dinâmicas para campos base
+        if (context === 'network-probes' || context === 'web-probes') {
+          return f.show_in_blackbox !== false;  // ← probes = blackbox
+        }
+        if (context === 'system-exporters' || context === 'database-exporters' ||
+            context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+          return f.show_in_exporters !== false;  // ← exporters categories
+        }
 
-      return true;  // Sem filtro específico
-    })
-    .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
-    .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
+        return true;  // Sem filtro específico
+      })
+      .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_table === true)
+      .sort((a: MetadataFieldDynamic, b: MetadataFieldDynamic) => a.order - b.order);
 
-  // DEBUG: Log após filtragem
-  console.log('[useTableFields] Resultado:', {
-    context,
-    tableFieldsCount: tableFields.length,
-    first3: tableFields.slice(0, 3).map(f => ({ name: f.name, order: f.order }))
-  });
+    // DEBUG: Log após filtragem (apenas quando re-calcular)
+    if (import.meta.env.DEV) {
+      console.log('[useTableFields] Resultado:', {
+        context,
+        tableFieldsCount: filtered.length,
+        first3: filtered.slice(0, 3).map(f => ({ name: f.name, order: f.order }))
+      });
+    }
+
+    return filtered;
+  }, [allFields, context, loading, error]);
 
   return { tableFields, loading, error };
 }/**

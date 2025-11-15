@@ -43,20 +43,8 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
   onReset,
   extra,
 }) => {
-  // 🐛 DEBUG: Log para investigar renderização
-  const filterFieldsCount = fields.length;
-  const optionsKeys = Object.keys(options || {});
-  console.log('[MetadataFilterBar] DEBUG:', {
-    filterFieldsCount,
-    optionsKeys,
-    fieldsWithOptions: optionsKeys.length,
-    fields: fields.map(f => ({
-      name: f.name,
-      display: f.display_name,
-      hasOptions: (options?.[f.name] || []).length > 0,
-      optionsCount: (options?.[f.name] || []).length
-    }))
-  });
+  // ✅ OTIMIZAÇÃO: Remover console.log para reduzir ruído (usar apenas em debug)
+  // console.log('[MetadataFilterBar] DEBUG:', { ... });
 
   const handleChange = (fieldName: string, nextValue?: string) => {
     onChange({
@@ -110,4 +98,14 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
   );
 };
 
-export default MetadataFilterBar;
+// ✅ OTIMIZAÇÃO: React.memo para evitar re-renders desnecessários
+// Só re-renderiza se fields, value, options ou loading mudarem
+export default React.memo(MetadataFilterBar, (prevProps, nextProps) => {
+  // Comparação customizada para evitar re-renders desnecessários
+  return (
+    prevProps.loading === nextProps.loading &&
+    prevProps.fields === nextProps.fields &&
+    prevProps.options === nextProps.options &&
+    JSON.stringify(prevProps.value) === JSON.stringify(nextProps.value)
+  );
+});
