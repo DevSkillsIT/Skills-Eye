@@ -138,8 +138,23 @@ class BlackboxManager:
         return await self.list_targets(persist_modules=True)
 
     async def _fetch_blackbox_services(self) -> List[Dict[str, Any]]:
-        """Returns the raw Consul service entries for blackbox exporters across the cluster."""
-        all_services = await self.consul.get_all_services_from_all_nodes()
+        """
+        Returns the raw Consul service entries for blackbox exporters across the cluster.
+
+        ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
+        """
+        all_services = await self.consul.get_all_services_catalog(use_fallback=True)
+
+        # Extrair metadata de fallback
+        metadata_info = all_services.pop("_metadata", None)
+        if metadata_info:
+            logger.info(
+                f"[Blackbox] Dados obtidos via {metadata_info.get('source_name', 'unknown')} "
+                f"em {metadata_info.get('total_time_ms', 0)}ms"
+            )
+            if not metadata_info.get('is_master', True):
+                logger.warning(f"⚠️ [Blackbox] Master offline! Usando fallback")
+
         results: List[Dict[str, Any]] = []
 
         for node_name, services in (all_services or {}).items():

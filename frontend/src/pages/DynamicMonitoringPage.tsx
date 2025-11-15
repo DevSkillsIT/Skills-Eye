@@ -78,6 +78,7 @@ import type { ColumnConfig } from '../components/ColumnSelector';
 import MetadataFilterBar from '../components/MetadataFilterBar';
 import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
 import type { SearchCondition } from '../components/AdvancedSearchPanel';
+import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
 
@@ -183,6 +184,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
   // ✅ SPRINT 1 (2025-11-14): Estado de loading para evitar race condition
   const [metadataOptionsLoaded, setMetadataOptionsLoaded] = useState(false);
+
+  // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance do backend
+  // _metadata contém: source_name, is_master, cache_status, age_seconds, staleness_ms, total_time_ms
+  const [responseMetadata, setResponseMetadata] = useState<{
+    source_name?: string;
+    is_master?: boolean;
+    cache_status?: string;
+    age_seconds?: number;
+    staleness_ms?: number;
+    total_time_ms?: number;
+  } | null>(null);
 
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
@@ -558,6 +570,20 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         // eslint-disable-next-line no-console
         console.warn('[MONITORING] Payload inesperado:', response);
         throw new Error(response.detail || 'Erro ao buscar dados');
+      }
+
+      // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance
+      if (response._metadata) {
+        setResponseMetadata(response._metadata);
+        console.log(
+          `%c[PERF] 📡 Source: ${response._metadata.source_name} | ` +
+          `Master: ${response._metadata.is_master} | ` +
+          `Cache: ${response._metadata.cache_status} | ` +
+          `Age: ${response._metadata.age_seconds}s | ` +
+          `Staleness: ${response._metadata.staleness_ms}ms | ` +
+          `Total: ${response._metadata.total_time_ms}ms`,
+          'color: #4caf50; font-weight: bold; background: #1b5e20; padding: 4px;'
+        );
       }
 
       let rows: MonitoringDataItem[] = response.data || [];
@@ -995,6 +1021,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             </div>
           </div>
         </Card>
+
+        {/* ✅ SPRINT 2: Performance Indicators - Mostra status do cache, fallback, staleness */}
+        {responseMetadata && (
+          <Card size="small" styles={{ body: { padding: '8px 16px' } }}>
+            <Space align="center" size="small">
+              <Typography.Text type="secondary" style={{ fontSize: '12px', marginRight: 8 }}>
+                Performance:
+              </Typography.Text>
+              <BadgeStatus metadata={responseMetadata} />
+            </Space>
+          </Card>
+        )}
 
         {/* ✅ NOVO: Barra de ações completa - altura mínima para evitar layout shift */}
         <Card size="small" styles={{ body: { minHeight: '60px' } }}>

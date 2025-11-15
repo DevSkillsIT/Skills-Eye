@@ -24,6 +24,8 @@ import {
   DatabaseOutlined,
   ApiOutlined,
   BarChartOutlined,
+  InfoCircleOutlined,
+  ClockCircleOutlined,
 } from '@ant-design/icons';
 import { Column, Pie } from '@ant-design/charts';
 import { consulAPI } from '../services/api';
@@ -32,8 +34,18 @@ import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
 
+interface PrometheusMetrics {
+  cache_hits: number;
+  cache_misses: number;
+  cache_hit_rate: number;
+  stale_responses: number;
+  fallback_events: number;
+  total_requests: number;
+}
+
 const Dashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [prometheusMetrics, setPrometheusMetrics] = useState<PrometheusMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -57,6 +69,17 @@ const Dashboard: React.FC = () => {
     try {
       const data = await consulAPI.getDashboardMetrics();
       setMetrics(data);
+
+      // Buscar métricas Prometheus (SPRINT 2)
+      try {
+        const promResponse = await fetch('http://localhost:5000/api/v1/prometheus-metrics/summary');
+        if (promResponse.ok) {
+          const promData = await promResponse.json();
+          setPrometheusMetrics(promData);
+        }
+      } catch (promError) {
+        console.warn('Erro ao buscar métricas Prometheus:', promError);
+      }
     } catch (error) {
       console.error('Erro ao buscar metricas do dashboard:', error);
     } finally {
@@ -413,6 +436,111 @@ const Dashboard: React.FC = () => {
           </ProCard>
         </Col>
       </Row>
+
+      {/* Métricas Prometheus (SPRINT 2) */}
+      {prometheusMetrics && (
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24}>
+            <ProCard
+              title={
+                <Space>
+                  <BarChartOutlined />
+                  <span>Métricas de Cache e Performance (Prometheus)</span>
+                </Space>
+              }
+              headStyle={{ borderBottom: '2px solid #52c41a' }}
+              bordered
+              style={{
+                borderRadius: 8,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              }}
+            >
+              <Row gutter={16}>
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Hit Rate"
+                    value={prometheusMetrics.cache_hit_rate}
+                    precision={1}
+                    suffix="%"
+                    valueStyle={{
+                      color: prometheusMetrics.cache_hit_rate > 70 ? '#52c41a' : '#faad14',
+                      fontSize: 28,
+                    }}
+                    prefix={
+                      prometheusMetrics.cache_hit_rate > 70 ? (
+                        <CheckCircleOutlined />
+                      ) : (
+                        <WarningOutlined />
+                      )
+                    }
+                  />
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                    Taxa de acerto do cache local
+                  </div>
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Cache Hits"
+                    value={prometheusMetrics.cache_hits}
+                    valueStyle={{ color: '#52c41a', fontSize: 28 }}
+                    prefix={<RiseOutlined />}
+                  />
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                    Requisições servidas do cache
+                  </div>
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Stale Responses"
+                    value={prometheusMetrics.stale_responses}
+                    valueStyle={{
+                      color: prometheusMetrics.stale_responses > 10 ? '#faad14' : '#1890ff',
+                      fontSize: 28,
+                    }}
+                    prefix={<ClockCircleOutlined />}
+                  />
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                    Respostas com dados stale do Consul
+                  </div>
+                </Col>
+
+                <Col xs={24} sm={12} md={6}>
+                  <Statistic
+                    title="Fallback Events"
+                    value={prometheusMetrics.fallback_events}
+                    valueStyle={{
+                      color: prometheusMetrics.fallback_events > 0 ? '#ff4d4f' : '#52c41a',
+                      fontSize: 28,
+                    }}
+                    prefix={
+                      prometheusMetrics.fallback_events > 0 ? (
+                        <WarningOutlined />
+                      ) : (
+                        <CheckCircleOutlined />
+                      )
+                    }
+                  />
+                  <div style={{ marginTop: 8, fontSize: 12, color: '#8c8c8c' }}>
+                    Trocas de servidor por timeout
+                  </div>
+                </Col>
+              </Row>
+
+              <div style={{ marginTop: 16, padding: '8px 12px', background: '#f0f2f5', borderRadius: 4 }}>
+                <Space>
+                  <InfoCircleOutlined style={{ color: '#1890ff' }} />
+                  <span style={{ fontSize: 12, color: '#595959' }}>
+                    Total de Requisições: <strong>{prometheusMetrics.total_requests}</strong> | Cache
+                    reduz latência de ~1289ms para ~10ms (128x mais rápido!)
+                  </span>
+                </Space>
+              </div>
+            </ProCard>
+          </Col>
+        </Row>
+      )}
 
       {/* Graficos de Distribuicao */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>

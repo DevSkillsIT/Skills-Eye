@@ -740,164 +740,6 @@ export const consulAPI = {
     }
   },
 
-  // CÓDIGO OBSOLETO REMOVIDO - Não precisa mais processar no frontend!
-  _old_getDashboardMetrics: async function(): Promise<DashboardMetrics> {
-    try {
-      const flattenServices = (data: any): any[] => {
-        if (!data) return [];
-        const result: any[] = [];
-        const pushService = (service: any) => {
-          if (service && typeof service === 'object') {
-            result.push(service);
-          }
-        };
-
-        const processValue = (value: any) => {
-          if (!value) return;
-          if (Array.isArray(value)) {
-            value.forEach(pushService);
-            return;
-          }
-          if (typeof value === 'object') {
-            if ('Service' in value || 'Meta' in value || 'Tags' in value) {
-              pushService(value);
-              return;
-            }
-            Object.values(value).forEach((inner) => {
-              if (Array.isArray(inner)) {
-                inner.forEach(pushService);
-              } else if (inner && typeof inner === 'object') {
-                if ('Service' in inner || 'Meta' in inner || 'Tags' in inner) {
-                  pushService(inner);
-                } else {
-                  Object.values(inner).forEach(pushService);
-                }
-              }
-            });
-          }
-        };
-
-        if (Array.isArray(data)) {
-          data.forEach(pushService);
-        } else if (typeof data === 'object') {
-          Object.values(data).forEach(processValue);
-        }
-
-        return result;
-      };
-
-      const servicesPayload: any = servicesRes?.data ?? {};
-      const servicesList = flattenServices(servicesPayload.data);
-      const totalServices = typeof servicesPayload.total === 'number'
-        ? servicesPayload.total
-        : servicesList.length;
-
-      const blackboxSummary = (blackboxRes.data as any)?.summary || { total: 0, enabled: 0 };
-      const blackboxTargets = blackboxSummary.total;
-
-      // Lista de modulos conhecidos de exporters (nao blackbox)
-      const EXPORTER_MODULES = [
-        'node_exporter',
-        'windows_exporter',
-        'mysqld_exporter',
-        'redis_exporter',
-        'postgres_exporter',
-        'mongodb_exporter',
-        'blackbox_exporter', // Este é o exporter, não os targets
-      ];
-
-      // Lista de modulos blackbox (NÃO são exporters)
-      const BLACKBOX_MODULES = [
-        'icmp',
-        'http_2xx',
-        'http_4xx',
-        'http_5xx',
-        'http_post_2xx',
-        'https',
-        'tcp_connect',
-        'ssh_banner',
-        'pop3s_banner',
-        'irc_banner',
-      ];
-
-      const exporters = servicesList.filter(
-        (s: any) => {
-          const serviceName = String(s?.Service || s?.service || '').toLowerCase();
-          const moduleName = String(s?.Meta?.module || '').toLowerCase();
-          const metaName = String(s?.Meta?.name || '').toLowerCase();
-
-          // Excluir se for modulo blackbox
-          if (BLACKBOX_MODULES.some(bm => moduleName.includes(bm))) {
-            return false;
-          }
-
-          // Incluir se for modulo exporter conhecido
-          if (EXPORTER_MODULES.some(em => moduleName.includes(em) || serviceName.includes(em) || metaName.includes(em))) {
-            return true;
-          }
-
-          // Incluir se tiver 'exporter' no nome mas NAO for blackbox
-          const hasExporterKeyword = (
-            serviceName.includes('exporter') ||
-            metaName.includes('exporter')
-          );
-
-          return hasExporterKeyword && !moduleName.includes('blackbox');
-        }
-      ).length;
-
-      const statsPayload: any = statsRes?.data ?? {};
-      const stats: any = statsPayload.statistics || {};
-      let datacenterStats: Record<string, number> = stats.by_datacenter || {};
-
-      if (!Object.keys(datacenterStats).length || Object.keys(datacenterStats).every((key) => !key || key === 'unknown')) {
-        const fallback: Record<string, number> = {};
-        servicesList.forEach((service: any) => {
-          const meta = service?.Meta || {};
-          const dc =
-            meta.datacenter ||
-            meta.dc ||
-            service?.Datacenter ||
-            service?.datacenter ||
-            'unknown';
-          const key = (dc || 'unknown') as string;
-          fallback[key] = (fallback[key] || 0) + 1;
-        });
-        if (Object.keys(fallback).length) {
-          datacenterStats = fallback;
-        }
-      }
-
-      const health: any = healthRes.data.summary || { passing: 0, warning: 0, critical: 0 };
-      const recentEvents = auditRes.data.events?.slice(0, 10) || [];
-      const nodesData: any[] = Array.isArray(nodesRes?.data?.data) ? nodesRes.data.data : [];
-      const totalNodes = typeof nodesRes?.data?.total === 'number' ? nodesRes.data.total : nodesData.length;
-      const activeNodes = nodesData.filter((node) => {
-        const status = String(node?.status || node?.Status || '').toLowerCase();
-        return status === 'alive' || status === 'passing' || status === 'online';
-      }).length;
-
-      return {
-        total_services: totalServices,
-        blackbox_targets: blackboxTargets,
-        exporters,
-        active_nodes: activeNodes,
-        total_nodes: totalNodes,
-        health: {
-          passing: health.passing || 0,
-          warning: health.warning || 0,
-          critical: health.critical || 0,
-        },
-        by_env: stats.by_env || {},
-        by_datacenter: datacenterStats,
-        recent_changes: recentEvents,
-      };
-    } catch (error) {
-      // Código obsoleto - não é mais usado!
-      return {} as DashboardMetrics;
-    }
-  },
-
   // ============================================================================
   // OPTIMIZED ENDPOINTS - Cache-enabled for better performance
   // ============================================================================
@@ -1556,6 +1398,42 @@ export const metadataDynamicAPI = {
     api.put(`/metadata-dynamic/fields/${fieldName}/pages`, pages),
 };
 */
+
+// ============================================================================
+// SPRINT 2 (2025-11-15): Cache Management API
+// ============================================================================
+
+export const cacheAPI = {
+  /**
+   * Retorna estatísticas do cache local (hits, misses, hit rate)
+   */
+  getCacheStats: () => api.get('/cache/stats'),
+
+  /**
+   * Retorna lista de todas as chaves no cache
+   */
+  getCacheKeys: () => api.get<string[]>('/cache/keys'),
+
+  /**
+   * Retorna detalhes de uma entrada específica do cache
+   */
+  getCacheEntry: (key: string) => api.get(`/cache/entry/${encodeURIComponent(key)}`),
+
+  /**
+   * Invalida uma chave específica do cache
+   */
+  invalidateCacheKey: (key: string) => api.post('/cache/invalidate', { key }),
+
+  /**
+   * Invalida todas as chaves que correspondem ao padrão (suporta wildcards *)
+   */
+  invalidateCachePattern: (pattern: string) => api.post('/cache/invalidate-pattern', { pattern }),
+
+  /**
+   * Limpa TODO o cache (⚠️ use com cautela!)
+   */
+  clearAllCache: () => api.post('/cache/clear'),
+};
 
 export default api;
 

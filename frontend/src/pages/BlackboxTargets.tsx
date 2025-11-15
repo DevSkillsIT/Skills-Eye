@@ -60,6 +60,7 @@ import { useServiceTags } from '../hooks/useServiceTags';
 import FormFieldRenderer from '../components/FormFieldRenderer';
 import SiteBadge from '../components/SiteBadge';
 import { extractSiteFromMetadata } from '../utils/namingUtils';
+import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 
 const { Paragraph } = Typography;
 const { Search } = Input;
@@ -181,6 +182,17 @@ const BlackboxTargets: React.FC = () => {
   // SISTEMA DINÂMICO: filters agora é dinâmico (qualquer campo metadata)
   const [filters, setFilters] = useState<Record<string, string | undefined>>({});
   const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
+
+  // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance do backend
+  const [responseMetadata, setResponseMetadata] = useState<{
+    source_name?: string;
+    is_master?: boolean;
+    cache_status?: string;
+    age_seconds?: number;
+    staleness_ms?: number;
+    total_time_ms?: number;
+  } | null>(null);
+
   const [selectedNode, setSelectedNode] = useState<string>(ALL_NODES);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
@@ -352,7 +364,21 @@ const BlackboxTargets: React.FC = () => {
       try {
         // 🚀 USAR ENDPOINT OTIMIZADO - Cache de 15s, processado no backend
         const response = await consulAPI.getBlackboxTargetsOptimized();
-        const { data: backendRows, summary: backendSummary } = response.data;
+        const { data: backendRows, summary: backendSummary, _metadata } = response.data;
+
+        // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance
+        if (_metadata) {
+          setResponseMetadata(_metadata);
+          console.log(
+            `%c[PERF] 📡 Source: ${_metadata.source_name} | ` +
+            `Master: ${_metadata.is_master} | ` +
+            `Cache: ${_metadata.cache_status} | ` +
+            `Age: ${_metadata.age_seconds}s | ` +
+            `Staleness: ${_metadata.staleness_ms}ms | ` +
+            `Total: ${_metadata.total_time_ms}ms`,
+            'color: #4caf50; font-weight: bold; background: #1b5e20; padding: 4px;'
+          );
+        }
 
         // Converter para formato esperado pela tabela
         const services = backendRows.map<BlackboxTableItem>((item) => ({
@@ -971,6 +997,18 @@ const BlackboxTargets: React.FC = () => {
             />
           </Space>
         </Card>
+
+        {/* ✅ SPRINT 2: Performance Indicators - Mostra status do cache, fallback, staleness */}
+        {responseMetadata && (
+          <Card size="small" styles={{ body: { padding: '8px 16px' } }}>
+            <Space align="center" size="small">
+              <Typography.Text type="secondary" style={{ fontSize: '12px', marginRight: 8 }}>
+                Performance:
+              </Typography.Text>
+              <BadgeStatus metadata={responseMetadata} />
+            </Space>
+          </Card>
+        )}
 
         {/* Filters and Actions */}
         <Card size="small">

@@ -5,7 +5,8 @@ Cache inteligente + processamento no backend
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Optional
-from core.cache_manager import cache_manager
+# SPRINT 2: Cache antigo removido - agora usa LocalCache no ConsulManager
+# from core.cache_manager import cache_manager
 from core.config import Config
 import requests
 import time
@@ -66,13 +67,13 @@ def get_services_optimized(
     # Chave de cache baseada nos filtros
     cache_key = f"services:list:{node or 'all'}:{search or 'all'}"
 
-    # Tentar cache (se não forçar refresh)
-    if not force_refresh:
-        cached_data = cache_manager.get(cache_key)
-        if cached_data:
-            cached_data['load_time_ms'] = int((time.time() - start_time) * 1000)
-            cached_data['from_cache'] = True
-            return cached_data
+    # SPRINT 2: Cache local desabilitado
+    # if not force_refresh:
+    #     cached_data = cache_manager.get(cache_key)
+    #     if cached_data:
+    #         cached_data['load_time_ms'] = int((time.time() - start_time) * 1000)
+    #         cached_data['from_cache'] = True
+    #         return cached_data
 
     try:
         # Buscar TODOS os nodes e serviços (1 chamada)
@@ -185,8 +186,8 @@ def get_services_optimized(
             'from_cache': False
         }
 
-        # Cachear por 15 segundos
-        cache_manager.set(cache_key, response_data, ttl_seconds=CACHE_TTL)
+        # SPRINT 2: Cache local desabilitado
+        # cache_manager.set(cache_key, response_data, ttl_seconds=CACHE_TTL)
 
         return response_data
 
@@ -202,6 +203,5 @@ def clear_services_cache():
     Limpa TODOS os caches de serviços
     Útil após criar/editar/deletar serviços
     """
-    # Limpar cache com padrão "services:*"
-    cache_manager.clear()  # Por enquanto limpa tudo (podemos melhorar depois)
-    return {"success": True, "message": "Cache de serviços limpo"}
+    # SPRINT 2: Cache local desabilitado - use /api/v1/cache/clear
+    return {"success": False, "message": "Endpoint deprecado. Use /api/v1/cache/clear"}

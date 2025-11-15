@@ -38,6 +38,25 @@ consul_fallback_total = Counter(
     ['from_node', 'to_node']
 )
 
+# SPRINT 1 CORREÇÕES (2025-11-15): Métricas Agent Caching e Stale Reads
+consul_cache_hits = Counter(
+    'consul_cache_hits_total',
+    'Total de cache hits no Agent Caching',
+    ['endpoint', 'age_bucket']  # age_bucket: fresh|stale|very_stale
+)
+
+consul_stale_responses = Counter(
+    'consul_stale_responses_total',
+    'Total de respostas stale (>1s lag)',
+    ['endpoint', 'lag_bucket']  # lag_bucket: 1s-5s|5s-10s|>10s
+)
+
+consul_api_type = Counter(
+    'consul_api_calls_total',
+    'Total de chamadas por tipo de API',
+    ['api_type']  # api_type: agent|catalog|kv|health
+)
+
 # ============================================================================
 # MÉTRICAS DE NEGÓCIO - Serviços e Targets
 # ============================================================================

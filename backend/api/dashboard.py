@@ -6,7 +6,8 @@ Similar ao TenSunS - processa tudo no backend
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, List, Optional
-from core.cache_manager import cache_manager
+# SPRINT 2: Cache antigo removido - dashboard não usa mais cache local
+# from core.cache_manager import cache_manager
 from core.audit_manager import audit_manager
 from core.config import Config
 import requests
@@ -47,13 +48,8 @@ def get_dashboard_metrics_fast():
     """
     start_time = time.time()
 
-    # Tentar cache primeiro (30s TTL) - MUITO RÁPIDO
-    cache_key = "dashboard:metrics"
-    cached_data = cache_manager.get(cache_key)
-
-    if cached_data:
-        cached_data['load_time_ms'] = int((time.time() - start_time) * 1000)
-        return cached_data
+    # SPRINT 2: Cache removido - dashboard sempre busca dados frescos
+    # O cache agora é feito no ConsulManager para get_all_services_catalog()
 
     try:
         # 1 CHAMADA AO CONSUL - Endpoint agregado (rápido!)
@@ -148,9 +144,7 @@ def get_dashboard_metrics_fast():
             'load_time_ms': int((time.time() - start_time) * 1000),
         }
 
-        # Cachear por 30 segundos
-        cache_manager.set(cache_key, metrics, ttl_seconds=30)
-
+        # SPRINT 2: Cache removido - dados sempre frescos
         return metrics
 
     except requests.exceptions.RequestException as e:
@@ -161,6 +155,8 @@ def get_dashboard_metrics_fast():
 
 @router.post("/clear-cache")
 def clear_dashboard_cache():
-    """Limpa o cache do dashboard"""
-    cache_manager.delete("dashboard:metrics")
-    return {"success": True, "message": "Cache limpo com sucesso"}
+    """SPRINT 2: Endpoint deprecado - use /api/v1/cache/clear"""
+    return {
+        "success": False,
+        "message": "Endpoint deprecado. Use /api/v1/cache/clear para limpar o cache global"
+    }

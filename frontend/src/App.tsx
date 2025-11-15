@@ -38,6 +38,8 @@ import ReferenceValues from './pages/ReferenceValues';
 import DynamicMonitoringPage from './pages/DynamicMonitoringPage';
 import MonitoringRules from './pages/MonitoringRules';
 // import Settings from './pages/Settings'; // REMOVIDO - Funcionalidades migradas para MetadataFields
+// ⭐ SPRINT 2 (2025-11-15) - Observability & Cache Management
+import CacheManagement from './pages/CacheManagement';
 
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
@@ -174,6 +176,12 @@ const App: React.FC = () => {
           name: 'Instalar Exporters',
           icon: <ToolOutlined />,
         },
+        // ⭐ SPRINT 2 (2025-11-15)
+        {
+          path: '/cache-management',
+          name: 'Gerenciar Cache',
+          icon: <DatabaseOutlined />,
+        },
       ],
     },
   ];
@@ -232,6 +240,8 @@ const App: React.FC = () => {
             <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
             <Route path="/monitoring/rules" element={<MonitoringRules />} />
             {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
+            {/* ⭐ SPRINT 2 (2025-11-15) - Observability & Cache */}
+            <Route path="/cache-management" element={<CacheManagement />} />
           </Routes>
         </ProLayout>
         </MetadataFieldsProvider>

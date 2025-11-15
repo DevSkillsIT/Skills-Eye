@@ -18,10 +18,14 @@ async def main():
     
     # Carregar regras
     await categorization_engine.load_rules()
-    
+
     # Buscar serviços
-    all_services = await consul_manager.get_all_services_from_all_nodes()
-    
+    # ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
+    all_services = await consul_manager.get_all_services_catalog(use_fallback=True)
+
+    # Remover metadata
+    all_services.pop("_metadata", None)
+
     # Converter para lista
     services_list = []
     for node_name, services_dict in all_services.items():
