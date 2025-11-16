@@ -6,6 +6,7 @@ import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
 import { loadNamingConfig } from './utils/namingUtils';
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
 import { SitesProvider } from './hooks/useSites';
+import { NodesProvider } from './contexts/NodesContext';
 import {
   DashboardOutlined,
   DatabaseOutlined,
@@ -197,6 +198,7 @@ const App: React.FC = () => {
         <AntdApp>
         <SitesProvider>
         <MetadataFieldsProvider>
+        <NodesProvider>
         <ProLayout
           title="Consul Manager"
           fixedHeader
@@ -244,6 +246,7 @@ const App: React.FC = () => {
             <Route path="/cache-management" element={<CacheManagement />} />
           </Routes>
         </ProLayout>
+        </NodesProvider>
         </MetadataFieldsProvider>
         </SitesProvider>
         </AntdApp>
