@@ -24,24 +24,14 @@ class Config:
         Retorna IP do servidor principal.
 
         FONTE: Primeiro nó do KV metadata/sites
-        ZERO HARDCODE - Se KV vazio, usa variável de ambiente
+        ZERO HARDCODE - Se KV vazio, usa variável de ambiente ou localhost
         """
-        # Lazy loading: popular KNOWN_NODES se ainda não foi feito
-        if Config.KNOWN_NODES is None:
-            Config.KNOWN_NODES = Config.get_known_nodes()
-        
-        if Config.KNOWN_NODES:
+        nodes = Config.get_known_nodes()
+        if nodes:
             # Retornar primeiro IP do dicionário
-            return list(Config.KNOWN_NODES.values())[0]
-        
-        # Fallback: APENAS variável de ambiente (ZERO hardcode)
-        env_host = os.getenv("CONSUL_HOST")
-        if not env_host:
-            raise RuntimeError(
-                "❌ ERRO CRÍTICO: CONSUL_HOST não definido em .env e KV metadata/sites vazio! "
-                "Configure CONSUL_HOST=<ip_consul> no arquivo .env"
-            )
-        return env_host
+            return list(nodes.values())[0]
+        # Fallback: variável de ambiente ou localhost (ZERO IPs hardcoded)
+        return os.getenv("CONSUL_HOST", "localhost")
 
     @staticmethod
     def get_main_server_name() -> str:
@@ -49,39 +39,65 @@ class Config:
         Retorna nome do servidor principal.
 
         FONTE: Primeiro hostname do KV metadata/sites
-        ZERO HARDCODE - Se KV vazio, extrai do CONSUL_HOST
+        ZERO HARDCODE - Se KV vazio, retorna "localhost"
         """
-        # Lazy loading: popular KNOWN_NODES se ainda não foi feito
-        if Config.KNOWN_NODES is None:
-            Config.KNOWN_NODES = Config.get_known_nodes()
-            
-        if Config.KNOWN_NODES:
+        nodes = Config.get_known_nodes()
+        if nodes:
             # Retornar primeiro hostname do dicionário
-            return list(Config.KNOWN_NODES.keys())[0]
-        
-        # Fallback: usar IP do CONSUL_HOST como hostname (ZERO hardcode)
-        return os.getenv("CONSUL_HOST", "localhost")
+            return list(nodes.keys())[0]
+        return "localhost"
 
     @staticmethod
     def get_known_nodes() -> Dict[str, str]:
         """
         Retorna mapa de nós conhecidos (hostname → IP).
 
-        SPRINT 2 - FIX CRÍTICO: REMOVIDO asyncio.run() para evitar erro em event loop
-        
-        NOVA ESTRATÉGIA:
-        1. Tenta carregar do cache em memória (se já foi carregado antes)
-        2. Se não tem cache, retorna dict vazio (será carregado sob demanda por endpoints async)
-        
-        ZERO HARDCODE - Valores vêm apenas do KV ou ficam vazios
+        FONTE: Consul KV (skills/eye/metadata/sites)
+        ZERO HARDCODE - Se KV vazio/falhar, retorna dict vazio
         """
-        # Se já foi carregado antes, retornar cache
-        if hasattr(Config, '_known_nodes_cache') and Config._known_nodes_cache:
-            return Config._known_nodes_cache
-        
-        # Não podemos usar asyncio.run() aqui (causa erro em event loop)
-        # Retornar dict vazio - será populado por endpoint async quando necessário
-        return {}
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            import asyncio
+            sites_data = asyncio.run(kv.get_json('skills/eye/metadata/sites'))
+
+            if sites_data:
+                # ESTRUTURA DO KV: {"data": {"sites": [...]}} (duplo wrap após auto_sync)
+                # Extrair array de sites
+                if isinstance(sites_data, dict) and 'data' in sites_data:
+                    # Estrutura dupla: {"data": {"sites": [...]}}
+                    sites_list = sites_data['data'].get('sites', [])
+                elif isinstance(sites_data, dict) and 'sites' in sites_data:
+                    # Estrutura simples: {"sites": [...]}
+                    sites_list = sites_data.get('sites', [])
+                elif isinstance(sites_data, list):
+                    # Estrutura array direto: [...]
+                    sites_list = sites_data
+                else:
+                    logger.warning(f"❌ KV sites estrutura desconhecida: {type(sites_data)}")
+                    sites_list = []
+
+                # Converter lista de sites para dict {hostname: prometheus_instance}
+                nodes = {}
+                for site in sites_list:
+                    if not isinstance(site, dict):
+                        continue
+                    # Usar hostname se disponível, senão usar name
+                    hostname = site.get('hostname') or site.get('name', 'unknown')
+                    ip = site.get('prometheus_instance')
+                    if ip:
+                        nodes[hostname] = ip
+                return nodes
+
+            # KV vazio: retornar dict vazio (ZERO HARDCODE)
+            return {}
+        except Exception as e:
+            # Falha ao acessar KV: retornar dict vazio (ZERO HARDCODE)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ Erro ao carregar sites do KV: {e}")
+            return {}
 
     # Service Names
     SERVICE_NAMES = {
@@ -111,22 +127,50 @@ class Config:
         """
         Retorna todos os campos metadata extraídos do Prometheus.
 
-        SPRINT 2 - FIX: Removido asyncio.run() - retorna lista vazia
-        Campos serão carregados sob demanda por endpoints async
+        NOTA: Agora busca do Consul KV (skills/eye/metadata/fields)
+        Os campos são extraídos dinamicamente do prometheus.yml via SSH
         """
-        # Não usar asyncio.run() - retornar vazio (será carregado por endpoints async)
-        return []
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            # Buscar do KV (dados extraídos do Prometheus)
+            import asyncio
+            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
+
+            if fields_data and 'fields' in fields_data:
+                return [field['name'] for field in fields_data['fields']]
+
+            # Fallback: retornar lista vazia se KV não disponível
+            return []
+        except Exception:
+            # Se falhar, retornar lista vazia (campos serão carregados sob demanda)
+            return []
 
     @staticmethod
     def get_required_fields() -> List[str]:
         """
         Retorna campos obrigatórios extraídos do Prometheus.
 
-        SPRINT 2 - FIX: Removido asyncio.run() - retorna lista vazia
-        Campos serão carregados sob demanda por endpoints async
+        NOTA: Campos obrigatórios agora são definidos pelo flag 'required' no KV
         """
-        # Não usar asyncio.run() - retornar vazio (será carregado por endpoints async)
-        return []
+        try:
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            import asyncio
+            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
+
+            if fields_data and 'fields' in fields_data:
+                return [
+                    field['name']
+                    for field in fields_data['fields']
+                    if field.get('required', False)
+                ]
+
+            return []
+        except Exception:
+            return []
 
     # Propriedades para compatibilidade com código legado
     # (deprecated - usar get_meta_fields() e get_required_fields())
@@ -141,9 +185,7 @@ class Config:
         return Config.get_required_fields()
 
 
-# SPRINT 2 - FIX CRÍTICO: ZERO HARDCODE!
-# Não inicializar no import (causa erro asyncio.run em event loop)
-# Valores serão carregados dinamicamente via lazy loading
-Config.KNOWN_NODES = None  # Lazy loading - será populado na primeira chamada
-Config.MAIN_SERVER = None  # Lazy loading - será populado na primeira chamada
-Config.MAIN_SERVER_NAME = None  # Lazy loading - será populado na primeira chamada
+# Inicializar ao carregar módulo (compatibilidade legado)
+Config.KNOWN_NODES = Config.get_known_nodes()
+Config.MAIN_SERVER = Config.get_main_server()
+Config.MAIN_SERVER_NAME = Config.get_main_server_name()
