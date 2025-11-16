@@ -3,7 +3,8 @@ import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
-import { loadNamingConfig } from './utils/namingUtils';
+// ✅ OTIMIZAÇÃO (2025-11-16): Removido import loadNamingConfig
+// SitesProvider já carrega naming-config via /settings/sites-config
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
 import { SitesProvider } from './hooks/useSites';
 import { NodesProvider } from './contexts/NodesContext';
@@ -45,12 +46,9 @@ import CacheManagement from './pages/CacheManagement';
 const App: React.FC = () => {
   const [darkMode, setDarkMode] = React.useState(false);
 
-  // Carregar configuração de naming multi-site do backend
-  useEffect(() => {
-    loadNamingConfig().catch((error) => {
-      console.warn('[App] Erro ao carregar naming config:', error);
-    });
-  }, []);
+  // ✅ OTIMIZAÇÃO (2025-11-16): Removido loadNamingConfig duplicado
+  // SitesProvider já carrega naming-config via /settings/sites-config
+  // Evita request duplicado
 
   const menuItems = [
     {

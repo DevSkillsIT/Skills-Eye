@@ -1,0 +1,5205 @@
+{
+  "timestamp": "2025-11-16T18:17:08.545820",
+  "page": "network-probes",
+  "url": "http://localhost:8081/monitoring/network-probes",
+  "iterations": 5,
+  "navigation": {
+    "mean_ms": 1679.7539234161377,
+    "median_ms": 1556.2472343444824,
+    "min_ms": 1365.7703399658203,
+    "max_ms": 2443.1495666503906,
+    "p95_ms": 3003.1890869140625
+  },
+  "table_load": {
+    "mean_ms": 2265.2316570281982,
+    "median_ms": 2285.4602336883545,
+    "min_ms": 2086.5023136138916,
+    "max_ms": 2467.9481983184814
+  },
+  "first_contentful_paint": {
+    "mean_ms": 656,
+    "median_ms": 640
+  },
+  "requests": {
+    "mean_total": 102,
+    "mean_api": 7,
+    "mean_monitoring": 1
+  },
+  "detailed_results": [
+    {
+      "iteration": 1,
+      "navigation_time_ms": 1556.2472343444824,
+      "table_load_time_ms": 2305.359125137329,
+      "dom_content_loaded_ms": 0.10000000009313226,
+      "load_complete_ms": 0,
+      "first_paint_ms": 772,
+      "first_contentful_paint_ms": 772,
+      "total_time_ms": 517.7000000001863,
+      "total_requests": 102,
+      "api_requests": 7,
+      "monitoring_requests": 1,
+      "network_requests": [
+        {
+          "url": "http://localhost:8081/monitoring/network-probes",
+          "method": "GET",
+          "resource_type": "document",
+          "start_time": 1763327804.0614176,
+          "end_time": 1763327804.069959,
+          "duration_ms": 8.541345596313477,
+          "status": 200,
+          "size": "628"
+        },
+        {
+          "url": "http://localhost:8081/src/main.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0794468,
+          "end_time": 1763327804.0885723,
+          "duration_ms": 9.125471115112305,
+          "status": 200,
+          "size": "2642"
+        },
+        {
+          "url": "http://localhost:8081/@vite/client",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0793016,
+          "end_time": 1763327804.091235,
+          "duration_ms": 11.933326721191406,
+          "status": 200,
+          "size": "176373"
+        },
+        {
+          "url": "http://localhost:8081/@react-refresh",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0836523,
+          "end_time": 1763327804.0915937,
+          "duration_ms": 7.941484451293945,
+          "status": 200,
+          "size": "111894"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_v5-patch-for-react-19.js?v=07614c37",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.08972,
+          "end_time": 1763327804.092804,
+          "duration_ms": 3.083944320678711,
+          "status": 200,
+          "size": "1103"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0899527,
+          "end_time": 1763327804.094122,
+          "duration_ms": 4.169225692749023,
+          "status": 200,
+          "size": "719"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom_client.js?v=c998ecfb",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.090081,
+          "end_time": 1763327804.0964725,
+          "duration_ms": 6.3915252685546875,
+          "status": 200,
+          "size": "1366"
+        },
+        {
+          "url": "http://localhost:8081/src/index.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.090166,
+          "end_time": 1763327804.0968661,
+          "duration_ms": 6.700038909912109,
+          "status": 200,
+          "size": "2726"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/vite/dist/client/env.mjs",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0919619,
+          "end_time": 1763327804.0975475,
+          "duration_ms": 5.585670471191406,
+          "status": 200,
+          "size": "3478"
+        },
+        {
+          "url": "http://localhost:8081/src/App.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.090395,
+          "end_time": 1763327804.0980566,
+          "duration_ms": 7.661581039428711,
+          "status": 200,
+          "size": "36724"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.090751,
+          "end_time": 1763327804.1084855,
+          "duration_ms": 17.734527587890625,
+          "status": 200,
+          "size": "10434"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/chunk-vVXnpExW.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0931711,
+          "end_time": 1763327804.1119068,
+          "duration_ms": 18.735647201538086,
+          "status": 200,
+          "size": "11256"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom-B1Nc_3Xb.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0935175,
+          "end_time": 1763327804.1120574,
+          "duration_ms": 18.539905548095703,
+          "status": 200,
+          "size": "14456"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-D2ZntekV.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0933504,
+          "end_time": 1763327804.1122768,
+          "duration_ms": 18.926382064819336,
+          "status": 200,
+          "size": "38121"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectWithoutProperties-Cn95vxzA.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0937033,
+          "end_time": 1763327804.112431,
+          "duration_ms": 18.727779388427734,
+          "status": 200,
+          "size": "20035"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-is-D1DCHL_c.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0939484,
+          "end_time": 1763327804.112561,
+          "duration_ms": 18.61262321472168,
+          "status": 200,
+          "size": "45502"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/client-BQyWf48E.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0938509,
+          "end_time": 1763327804.1138635,
+          "duration_ms": 20.012617111206055,
+          "status": 200,
+          "size": "827119"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd.js?v=a6f34578",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1093967,
+          "end_time": 1763327804.1630852,
+          "duration_ms": 53.68852615356445,
+          "status": 200,
+          "size": "14758"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd_locale_pt_BR.js?v=ca617a49",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1095793,
+          "end_time": 1763327804.1632924,
+          "duration_ms": 53.713083267211914,
+          "status": 200,
+          "size": "8700"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-layout.js?v=a56984f4",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.109794,
+          "end_time": 1763327804.1635523,
+          "duration_ms": 53.75838279724121,
+          "status": 200,
+          "size": "6148"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/MetadataFieldsContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1100438,
+          "end_time": 1763327804.1663005,
+          "duration_ms": 56.256771087646484,
+          "status": 200,
+          "size": "15195"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useSites.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110137,
+          "end_time": 1763327804.1696966,
+          "duration_ms": 59.55958366394043,
+          "status": 200,
+          "size": "18527"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/NodesContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110254,
+          "end_time": 1763327804.170203,
+          "duration_ms": 59.94892120361328,
+          "status": 200,
+          "size": "9432"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-router-dom.js?v=4c718566",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.109945,
+          "end_time": 1763327804.1730552,
+          "duration_ms": 63.1101131439209,
+          "status": 200,
+          "size": "382363"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Dashboard.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110423,
+          "end_time": 1763327804.1771646,
+          "duration_ms": 66.7414665222168,
+          "status": 200,
+          "size": "84570"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServiceGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110583,
+          "end_time": 1763327804.177519,
+          "duration_ms": 66.93601608276367,
+          "status": 200,
+          "size": "36592"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Hosts.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.11066,
+          "end_time": 1763327804.1785603,
+          "duration_ms": 67.90018081665039,
+          "status": 200,
+          "size": "55123"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_icons.js?v=a1f9c477",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110341,
+          "end_time": 1763327804.1817434,
+          "duration_ms": 71.40231132507324,
+          "status": 200,
+          "size": "198853"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Services.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110506,
+          "end_time": 1763327804.1824374,
+          "duration_ms": 71.93136215209961,
+          "status": 200,
+          "size": "171653"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Exporters.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1107316,
+          "end_time": 1763327804.1848123,
+          "duration_ms": 74.0807056427002,
+          "status": 200,
+          "size": "192542"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxTargets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.110828,
+          "end_time": 1763327804.1887634,
+          "duration_ms": 77.93545722961426,
+          "status": 200,
+          "size": "141164"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1109204,
+          "end_time": 1763327804.1889877,
+          "duration_ms": 78.06730270385742,
+          "status": 200,
+          "size": "33701"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/KvBrowser.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1110373,
+          "end_time": 1763327804.1891518,
+          "duration_ms": 78.11450958251953,
+          "status": 200,
+          "size": "77773"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServicePresets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.111135,
+          "end_time": 1763327804.1892931,
+          "duration_ms": 78.15814018249512,
+          "status": 200,
+          "size": "72590"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1112137,
+          "end_time": 1763327804.1900067,
+          "duration_ms": 78.79304885864258,
+          "status": 200,
+          "size": "57281"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/AuditLog.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1112854,
+          "end_time": 1763327804.1905372,
+          "duration_ms": 79.25176620483398,
+          "status": 200,
+          "size": "49110"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/PrometheusConfig.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1113577,
+          "end_time": 1763327804.198088,
+          "duration_ms": 86.7302417755127,
+          "status": 200,
+          "size": "440228"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringRules.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1117127,
+          "end_time": 1763327804.2008517,
+          "duration_ms": 89.13898468017578,
+          "status": 200,
+          "size": "71374"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringTypes.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.111495,
+          "end_time": 1763327804.2012317,
+          "duration_ms": 89.7367000579834,
+          "status": 200,
+          "size": "74455"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ReferenceValues.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.111574,
+          "end_time": 1763327804.2037957,
+          "duration_ms": 92.22173690795898,
+          "status": 200,
+          "size": "78097"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MetadataFields.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1114256,
+          "end_time": 1763327804.2042582,
+          "duration_ms": 92.83256530761719,
+          "status": 200,
+          "size": "477470"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/DynamicMonitoringPage.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1116452,
+          "end_time": 1763327804.205892,
+          "duration_ms": 94.24686431884766,
+          "status": 200,
+          "size": "160664"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/CacheManagement.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1117804,
+          "end_time": 1763327804.2061694,
+          "duration_ms": 94.38896179199219,
+          "status": 200,
+          "size": "44332"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectSpread2-De283KI_.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1634445,
+          "end_time": 1763327804.2063534,
+          "duration_ms": 42.90890693664551,
+          "status": 200,
+          "size": "4425"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/SettingOutlined-Ck1if4ck.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1637545,
+          "end_time": 1763327804.2065434,
+          "duration_ms": 42.78898239135742,
+          "status": 200,
+          "size": "6359"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/jsx-runtime-DzYhg4ha.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.16368,
+          "end_time": 1763327804.206728,
+          "duration_ms": 43.04790496826172,
+          "status": 200,
+          "size": "10699"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/axios.js?v=36a310e7",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.166517,
+          "end_time": 1763327804.2245176,
+          "duration_ms": 58.00056457519531,
+          "status": 200,
+          "size": "92031"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.178139,
+          "end_time": 1763327804.2461896,
+          "duration_ms": 68.05062294006348,
+          "status": 200,
+          "size": "7268"
+        },
+        {
+          "url": "http://localhost:8081/src/services/api.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1780636,
+          "end_time": 1763327804.2467768,
+          "duration_ms": 68.71318817138672,
+          "status": 200,
+          "size": "74364"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-components.js?v=317d0e0c",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1778297,
+          "end_time": 1763327804.248919,
+          "duration_ms": 71.08926773071289,
+          "status": 200,
+          "size": "1077929"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-DRRYL-cw.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1638248,
+          "end_time": 1763327804.250939,
+          "duration_ms": 87.11409568786621,
+          "status": 200,
+          "size": "2452690"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useConsulDelete.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1833074,
+          "end_time": 1763327804.2518187,
+          "duration_ms": 68.5112476348877,
+          "status": 200,
+          "size": "10236"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ColumnSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1835165,
+          "end_time": 1763327804.252911,
+          "duration_ms": 69.39458847045898,
+          "status": 200,
+          "size": "31413"
+        },
+        {
+          "url": "http://localhost:8081/src/components/NodeSelector.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1838524,
+          "end_time": 1763327804.2535386,
+          "duration_ms": 69.6861743927002,
+          "status": 200,
+          "size": "19214"
+        },
+        {
+          "url": "http://localhost:8081/src/components/AdvancedSearchPanel.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1837254,
+          "end_time": 1763327804.2538662,
+          "duration_ms": 70.14083862304688,
+          "status": 200,
+          "size": "33967"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useReferenceValues.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.183944,
+          "end_time": 1763327804.2577176,
+          "duration_ms": 73.77362251281738,
+          "status": 200,
+          "size": "39566"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useServiceTags.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1840293,
+          "end_time": 1763327804.258349,
+          "duration_ms": 74.31960105895996,
+          "status": 200,
+          "size": "22438"
+        },
+        {
+          "url": "http://localhost:8081/src/components/TagsInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1841128,
+          "end_time": 1763327804.258613,
+          "duration_ms": 74.50032234191895,
+          "status": 200,
+          "size": "27192"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useMetadataFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1841993,
+          "end_time": 1763327804.2588534,
+          "duration_ms": 74.65410232543945,
+          "status": 200,
+          "size": "34541"
+        },
+        {
+          "url": "http://localhost:8081/src/components/FormFieldRenderer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1842885,
+          "end_time": 1763327804.2617018,
+          "duration_ms": 77.41332054138184,
+          "status": 200,
+          "size": "20855"
+        },
+        {
+          "url": "http://localhost:8081/src/components/SiteBadge.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1843667,
+          "end_time": 1763327804.262158,
+          "duration_ms": 77.79121398925781,
+          "status": 200,
+          "size": "7614"
+        },
+        {
+          "url": "http://localhost:8081/src/utils/namingUtils.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1845155,
+          "end_time": 1763327804.262636,
+          "duration_ms": 78.12047004699707,
+          "status": 200,
+          "size": "15644"
+        },
+        {
+          "url": "http://localhost:8081/src/components/BadgeStatus.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.184612,
+          "end_time": 1763327804.262893,
+          "duration_ms": 78.28092575073242,
+          "status": 200,
+          "size": "17235"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1902366,
+          "end_time": 1763327804.2643003,
+          "duration_ms": 74.06377792358398,
+          "status": 200,
+          "size": "1397"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1903436,
+          "end_time": 1763327804.265192,
+          "duration_ms": 74.84841346740723,
+          "status": 200,
+          "size": "858"
+        },
+        {
+          "url": "http://localhost:8081/src/components/MetadataFilterBar.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1849897,
+          "end_time": 1763327804.2654035,
+          "duration_ms": 80.413818359375,
+          "status": 200,
+          "size": "12167"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/constants.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1904302,
+          "end_time": 1763327804.2655838,
+          "duration_ms": 75.15358924865723,
+          "status": 200,
+          "size": "11812"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ExtractionProgressModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1982937,
+          "end_time": 1763327804.2706225,
+          "duration_ms": 72.32880592346191,
+          "status": 200,
+          "size": "35079"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/usePrometheusFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.198398,
+          "end_time": 1763327804.271408,
+          "duration_ms": 73.00996780395508,
+          "status": 200,
+          "size": "10044"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@monaco-editor_react.js?v=90e462fd",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.198485,
+          "end_time": 1763327804.2722096,
+          "duration_ms": 73.72474670410156,
+          "status": 200,
+          "size": "24772"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ServerSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2014575,
+          "end_time": 1763327804.2732708,
+          "duration_ms": 71.81334495544434,
+          "status": 200,
+          "size": "13994"
+        },
+        {
+          "url": "http://localhost:8081/src/components/CategoryManagementModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2040555,
+          "end_time": 1763327804.2736707,
+          "duration_ms": 69.61512565612793,
+          "status": 200,
+          "size": "43761"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/js-yaml.js?v=c1cf299a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.198565,
+          "end_time": 1763327804.2739983,
+          "duration_ms": 75.43325424194336,
+          "status": 200,
+          "size": "80467"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-resizable.js?v=ceae4ac6",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2464027,
+          "end_time": 1763327804.2767577,
+          "duration_ms": 30.354976654052734,
+          "status": 200,
+          "size": "90159"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/react-resizable/css/styles.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2465246,
+          "end_time": 1763327804.2784932,
+          "duration_ms": 31.96859359741211,
+          "status": 200,
+          "size": "2163"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.246647,
+          "end_time": 1763327804.279019,
+          "duration_ms": 32.372236251831055,
+          "status": 200,
+          "size": "2478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/utilities.esm-6ybf_cHi.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2514057,
+          "end_time": 1763327804.279435,
+          "duration_ms": 28.029203414916992,
+          "status": 200,
+          "size": "7362"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_core.js?v=dae22f3a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2540417,
+          "end_time": 1763327804.2796803,
+          "duration_ms": 25.638580322265625,
+          "status": 200,
+          "size": "5619"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/now-BuqnPu3g.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2512589,
+          "end_time": 1763327804.2807996,
+          "duration_ms": 29.5407772064209,
+          "status": 200,
+          "size": "160283"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/core.esm-fK7lYqyE.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2514977,
+          "end_time": 1763327804.2811723,
+          "duration_ms": 29.674530029296875,
+          "status": 200,
+          "size": "91088"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_utilities.js?v=9ae8d558",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2542086,
+          "end_time": 1763327804.2814784,
+          "duration_ms": 27.269840240478516,
+          "status": 200,
+          "size": "3652"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_sortable.js?v=d35ac97d",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2541304,
+          "end_time": 1763327804.2817,
+          "duration_ms": 27.56953239440918,
+          "status": 200,
+          "size": "18141"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ReferenceValueInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2624216,
+          "end_time": 1763327804.286489,
+          "duration_ms": 24.067401885986328,
+          "status": 200,
+          "size": "19184"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/LogViewer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2645316,
+          "end_time": 1763327804.286815,
+          "duration_ms": 22.283315658569336,
+          "status": 200,
+          "size": "18812"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/CollectorSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2646449,
+          "end_time": 1763327804.287393,
+          "duration_ms": 22.748231887817383,
+          "status": 200,
+          "size": "20934"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/InstallForm.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2647338,
+          "end_time": 1763327804.2878222,
+          "duration_ms": 23.088455200195312,
+          "status": 200,
+          "size": "29912"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-_vAMK92B.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.0940278,
+          "end_time": 1763327804.299582,
+          "duration_ms": 205.55424690246582,
+          "status": 200,
+          "size": "10410665"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/PrecheckModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.264816,
+          "end_time": 1763327804.2998855,
+          "duration_ms": 35.06946563720703,
+          "status": 200,
+          "size": "19335"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useConsulNodes.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2658765,
+          "end_time": 1763327804.3000863,
+          "duration_ms": 34.2097282409668,
+          "status": 200,
+          "size": "7972"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useWebSocketLogs.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2660418,
+          "end_time": 1763327804.300249,
+          "duration_ms": 34.20734405517578,
+          "status": 200,
+          "size": "17586"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/StatusProgress.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.265003,
+          "end_time": 1763327804.3004034,
+          "duration_ms": 35.400390625,
+          "status": 200,
+          "size": "18014"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/WarningModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2649028,
+          "end_time": 1763327804.3013463,
+          "duration_ms": 36.443471908569336,
+          "status": 200,
+          "size": "23303"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useInstaller.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.2661748,
+          "end_time": 1763327804.3015716,
+          "duration_ms": 35.39681434631348,
+          "status": 200,
+          "size": "20292"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-m0GVQSvg.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.182035,
+          "end_time": 1763327804.3018322,
+          "duration_ms": 119.7972297668457,
+          "status": 200,
+          "size": "2542324"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_charts.js?v=efe1b547",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327804.1779728,
+          "end_time": 1763327804.3359663,
+          "duration_ms": 157.99355506896973,
+          "status": 200,
+          "size": "4753458"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.7100766,
+          "end_time": 1763327804.820495,
+          "duration_ms": 110.41831970214844,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.7146533,
+          "end_time": 1763327804.8210475,
+          "duration_ms": 106.39429092407227,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.7151701,
+          "end_time": 1763327804.8214526,
+          "duration_ms": 106.28247261047363,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.7974296,
+          "end_time": 1763327804.821676,
+          "duration_ms": 24.2464542388916,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.7148015,
+          "end_time": 1763327804.8220494,
+          "duration_ms": 107.24782943725586,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327804.797567,
+          "end_time": 1763327804.8222876,
+          "duration_ms": 24.72066879272461,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:8081/api/v1/monitoring/data?category=network-probes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327805.08443,
+          "end_time": 1763327805.1082425,
+          "duration_ms": 23.812532424926758,
+          "status": 200,
+          "size": "101939"
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "navigation_time_ms": 1365.7703399658203,
+      "table_load_time_ms": 2086.5023136138916,
+      "dom_content_loaded_ms": 0,
+      "load_complete_ms": 0,
+      "first_paint_ms": 620,
+      "first_contentful_paint_ms": 620,
+      "total_time_ms": 398.40000000037253,
+      "total_requests": 102,
+      "api_requests": 7,
+      "monitoring_requests": 1,
+      "network_requests": [
+        {
+          "url": "http://localhost:8081/monitoring/network-probes",
+          "method": "GET",
+          "resource_type": "document",
+          "start_time": 1763327809.4060266,
+          "end_time": 1763327809.410099,
+          "duration_ms": 4.072427749633789,
+          "status": 200,
+          "size": "628"
+        },
+        {
+          "url": "http://localhost:8081/src/main.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4139614,
+          "end_time": 1763327809.4154167,
+          "duration_ms": 1.4553070068359375,
+          "status": 200,
+          "size": "2642"
+        },
+        {
+          "url": "http://localhost:8081/@vite/client",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.413713,
+          "end_time": 1763327809.4170334,
+          "duration_ms": 3.320455551147461,
+          "status": 200,
+          "size": "176373"
+        },
+        {
+          "url": "http://localhost:8081/@react-refresh",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4149709,
+          "end_time": 1763327809.4180713,
+          "duration_ms": 3.1003952026367188,
+          "status": 200,
+          "size": "111894"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_v5-patch-for-react-19.js?v=07614c37",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4161148,
+          "end_time": 1763327809.418403,
+          "duration_ms": 2.2881031036376953,
+          "status": 200,
+          "size": "1103"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4162936,
+          "end_time": 1763327809.419912,
+          "duration_ms": 3.618478775024414,
+          "status": 200,
+          "size": "719"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom_client.js?v=c998ecfb",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4164414,
+          "end_time": 1763327809.4200795,
+          "duration_ms": 3.638029098510742,
+          "status": 200,
+          "size": "1366"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.416915,
+          "end_time": 1763327809.4202447,
+          "duration_ms": 3.329753875732422,
+          "status": 200,
+          "size": "10434"
+        },
+        {
+          "url": "http://localhost:8081/src/index.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4165554,
+          "end_time": 1763327809.420381,
+          "duration_ms": 3.825664520263672,
+          "status": 200,
+          "size": "2726"
+        },
+        {
+          "url": "http://localhost:8081/src/App.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4167838,
+          "end_time": 1763327809.420987,
+          "duration_ms": 4.203081130981445,
+          "status": 200,
+          "size": "36724"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/vite/dist/client/env.mjs",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4172077,
+          "end_time": 1763327809.4213068,
+          "duration_ms": 4.099130630493164,
+          "status": 200,
+          "size": "3478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/chunk-vVXnpExW.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4191554,
+          "end_time": 1763327809.426499,
+          "duration_ms": 7.343530654907227,
+          "status": 200,
+          "size": "11256"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-D2ZntekV.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4192944,
+          "end_time": 1763327809.426691,
+          "duration_ms": 7.396697998046875,
+          "status": 200,
+          "size": "38121"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom-B1Nc_3Xb.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4194062,
+          "end_time": 1763327809.4268332,
+          "duration_ms": 7.426977157592773,
+          "status": 200,
+          "size": "14456"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectWithoutProperties-Cn95vxzA.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4195166,
+          "end_time": 1763327809.4269621,
+          "duration_ms": 7.445573806762695,
+          "status": 200,
+          "size": "20035"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-is-D1DCHL_c.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4197025,
+          "end_time": 1763327809.4270792,
+          "duration_ms": 7.376670837402344,
+          "status": 200,
+          "size": "45502"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd_locale_pt_BR.js?v=ca617a49",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4228048,
+          "end_time": 1763327809.4299543,
+          "duration_ms": 7.149457931518555,
+          "status": 200,
+          "size": "8700"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd.js?v=a6f34578",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4224784,
+          "end_time": 1763327809.4307063,
+          "duration_ms": 8.227825164794922,
+          "status": 200,
+          "size": "14758"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-layout.js?v=a56984f4",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.422976,
+          "end_time": 1763327809.4309628,
+          "duration_ms": 7.986783981323242,
+          "status": 200,
+          "size": "6148"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_icons.js?v=a1f9c477",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4234688,
+          "end_time": 1763327809.432087,
+          "duration_ms": 8.61811637878418,
+          "status": 200,
+          "size": "198853"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectSpread2-De283KI_.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4311924,
+          "end_time": 1763327809.433482,
+          "duration_ms": 2.2895336151123047,
+          "status": 200,
+          "size": "4425"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/jsx-runtime-DzYhg4ha.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4314778,
+          "end_time": 1763327809.434713,
+          "duration_ms": 3.2351016998291016,
+          "status": 200,
+          "size": "10699"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/SettingOutlined-Ck1if4ck.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4317067,
+          "end_time": 1763327809.4351892,
+          "duration_ms": 3.4825801849365234,
+          "status": 200,
+          "size": "6359"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-router-dom.js?v=4c718566",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4230952,
+          "end_time": 1763327809.4371133,
+          "duration_ms": 14.018058776855469,
+          "status": 200,
+          "size": "382363"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/client-BQyWf48E.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4196134,
+          "end_time": 1763327809.439407,
+          "duration_ms": 19.79374885559082,
+          "status": 200,
+          "size": "827119"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-DRRYL-cw.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.431902,
+          "end_time": 1763327809.4594004,
+          "duration_ms": 27.498483657836914,
+          "status": 200,
+          "size": "2452690"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-m0GVQSvg.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4322996,
+          "end_time": 1763327809.4606524,
+          "duration_ms": 28.352737426757812,
+          "status": 200,
+          "size": "2542324"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/MetadataFieldsContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4232016,
+          "end_time": 1763327809.47734,
+          "duration_ms": 54.1384220123291,
+          "status": 200,
+          "size": "15195"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useSites.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.423301,
+          "end_time": 1763327809.477726,
+          "duration_ms": 54.42500114440918,
+          "status": 200,
+          "size": "18527"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/NodesContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.423387,
+          "end_time": 1763327809.4779286,
+          "duration_ms": 54.541587829589844,
+          "status": 200,
+          "size": "9432"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Dashboard.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4235497,
+          "end_time": 1763327809.4789143,
+          "duration_ms": 55.36460876464844,
+          "status": 200,
+          "size": "84570"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Services.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4236329,
+          "end_time": 1763327809.4797585,
+          "duration_ms": 56.125640869140625,
+          "status": 200,
+          "size": "171653"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/axios.js?v=36a310e7",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4775884,
+          "end_time": 1763327809.4819992,
+          "duration_ms": 4.410743713378906,
+          "status": 200,
+          "size": "92031"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServiceGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.423718,
+          "end_time": 1763327809.4847002,
+          "duration_ms": 60.98222732543945,
+          "status": 200,
+          "size": "36592"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Hosts.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.423875,
+          "end_time": 1763327809.4853792,
+          "duration_ms": 61.50412559509277,
+          "status": 200,
+          "size": "55123"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.424138,
+          "end_time": 1763327809.485755,
+          "duration_ms": 61.61689758300781,
+          "status": 200,
+          "size": "33701"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.424383,
+          "end_time": 1763327809.4885397,
+          "duration_ms": 64.15677070617676,
+          "status": 200,
+          "size": "57281"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Exporters.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.423976,
+          "end_time": 1763327809.4892797,
+          "duration_ms": 65.30380249023438,
+          "status": 200,
+          "size": "192542"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/AuditLog.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4244537,
+          "end_time": 1763327809.4903197,
+          "duration_ms": 65.86599349975586,
+          "status": 200,
+          "size": "49110"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxTargets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4240556,
+          "end_time": 1763327809.4910471,
+          "duration_ms": 66.99156761169434,
+          "status": 200,
+          "size": "141164"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/KvBrowser.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4242117,
+          "end_time": 1763327809.4920406,
+          "duration_ms": 67.82889366149902,
+          "status": 200,
+          "size": "77773"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServicePresets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4243095,
+          "end_time": 1763327809.4947064,
+          "duration_ms": 70.39690017700195,
+          "status": 200,
+          "size": "72590"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringTypes.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4246578,
+          "end_time": 1763327809.4950125,
+          "duration_ms": 70.35470008850098,
+          "status": 200,
+          "size": "74455"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ReferenceValues.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4247248,
+          "end_time": 1763327809.4953003,
+          "duration_ms": 70.57547569274902,
+          "status": 200,
+          "size": "78097"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringRules.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4248922,
+          "end_time": 1763327809.4958496,
+          "duration_ms": 70.95742225646973,
+          "status": 200,
+          "size": "71374"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/CacheManagement.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4249656,
+          "end_time": 1763327809.4962635,
+          "duration_ms": 71.29788398742676,
+          "status": 200,
+          "size": "44332"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useConsulDelete.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4805048,
+          "end_time": 1763327809.4968073,
+          "duration_ms": 16.30258560180664,
+          "status": 200,
+          "size": "10236"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/DynamicMonitoringPage.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.424823,
+          "end_time": 1763327809.4972858,
+          "duration_ms": 72.46279716491699,
+          "status": 200,
+          "size": "160664"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ColumnSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4806232,
+          "end_time": 1763327809.497591,
+          "duration_ms": 16.9677734375,
+          "status": 200,
+          "size": "31413"
+        },
+        {
+          "url": "http://localhost:8081/src/components/AdvancedSearchPanel.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4807167,
+          "end_time": 1763327809.497909,
+          "duration_ms": 17.192363739013672,
+          "status": 200,
+          "size": "33967"
+        },
+        {
+          "url": "http://localhost:8081/src/services/api.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4796393,
+          "end_time": 1763327809.5004847,
+          "duration_ms": 20.845413208007812,
+          "status": 200,
+          "size": "74364"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4808,
+          "end_time": 1763327809.5008278,
+          "duration_ms": 20.027875900268555,
+          "status": 200,
+          "size": "7268"
+        },
+        {
+          "url": "http://localhost:8081/src/components/NodeSelector.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4808726,
+          "end_time": 1763327809.5014343,
+          "duration_ms": 20.561695098876953,
+          "status": 200,
+          "size": "19214"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useReferenceValues.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4809525,
+          "end_time": 1763327809.5016913,
+          "duration_ms": 20.738840103149414,
+          "status": 200,
+          "size": "39566"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useServiceTags.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4810944,
+          "end_time": 1763327809.5020134,
+          "duration_ms": 20.919084548950195,
+          "status": 200,
+          "size": "22438"
+        },
+        {
+          "url": "http://localhost:8081/src/components/TagsInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4812098,
+          "end_time": 1763327809.502296,
+          "duration_ms": 21.08621597290039,
+          "status": 200,
+          "size": "27192"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/PrometheusConfig.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4245226,
+          "end_time": 1763327809.5037467,
+          "duration_ms": 79.2241096496582,
+          "status": 200,
+          "size": "440228"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useMetadataFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4812894,
+          "end_time": 1763327809.5046794,
+          "duration_ms": 23.39005470275879,
+          "status": 200,
+          "size": "34541"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_core.js?v=dae22f3a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4981842,
+          "end_time": 1763327809.5048485,
+          "duration_ms": 6.664276123046875,
+          "status": 200,
+          "size": "5619"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_sortable.js?v=d35ac97d",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4983304,
+          "end_time": 1763327809.5051847,
+          "duration_ms": 6.85429573059082,
+          "status": 200,
+          "size": "18141"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_utilities.js?v=9ae8d558",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4984736,
+          "end_time": 1763327809.505335,
+          "duration_ms": 6.861448287963867,
+          "status": 200,
+          "size": "3652"
+        },
+        {
+          "url": "http://localhost:8081/src/components/FormFieldRenderer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4813964,
+          "end_time": 1763327809.5055048,
+          "duration_ms": 24.108409881591797,
+          "status": 200,
+          "size": "20855"
+        },
+        {
+          "url": "http://localhost:8081/src/components/SiteBadge.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4815445,
+          "end_time": 1763327809.5057561,
+          "duration_ms": 24.211645126342773,
+          "status": 200,
+          "size": "7614"
+        },
+        {
+          "url": "http://localhost:8081/src/utils/namingUtils.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4816806,
+          "end_time": 1763327809.506008,
+          "duration_ms": 24.32727813720703,
+          "status": 200,
+          "size": "15644"
+        },
+        {
+          "url": "http://localhost:8081/src/components/BadgeStatus.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4818392,
+          "end_time": 1763327809.506159,
+          "duration_ms": 24.319887161254883,
+          "status": 200,
+          "size": "17235"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4860606,
+          "end_time": 1763327809.5075617,
+          "duration_ms": 21.50106430053711,
+          "status": 200,
+          "size": "1397"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MetadataFields.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.424589,
+          "end_time": 1763327809.5085702,
+          "duration_ms": 83.98127555847168,
+          "status": 200,
+          "size": "477470"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4862218,
+          "end_time": 1763327809.5101662,
+          "duration_ms": 23.944377899169922,
+          "status": 200,
+          "size": "858"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-resizable.js?v=ceae4ac6",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5010633,
+          "end_time": 1763327809.5104966,
+          "duration_ms": 9.433269500732422,
+          "status": 200,
+          "size": "90159"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/constants.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4863255,
+          "end_time": 1763327809.5107446,
+          "duration_ms": 24.419069290161133,
+          "status": 200,
+          "size": "11812"
+        },
+        {
+          "url": "http://localhost:8081/src/components/MetadataFilterBar.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.491652,
+          "end_time": 1763327809.5119722,
+          "duration_ms": 20.32017707824707,
+          "status": 200,
+          "size": "12167"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ServerSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4955459,
+          "end_time": 1763327809.5122464,
+          "duration_ms": 16.70050621032715,
+          "status": 200,
+          "size": "13994"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@monaco-editor_react.js?v=90e462fd",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.504465,
+          "end_time": 1763327809.5125175,
+          "duration_ms": 8.052349090576172,
+          "status": 200,
+          "size": "24772"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/utilities.esm-6ybf_cHi.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.504982,
+          "end_time": 1763327809.5127661,
+          "duration_ms": 7.784128189086914,
+          "status": 200,
+          "size": "7362"
+        },
+        {
+          "url": "http://localhost:8081/src/components/CategoryManagementModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.495681,
+          "end_time": 1763327809.5131245,
+          "duration_ms": 17.443418502807617,
+          "status": 200,
+          "size": "43761"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ExtractionProgressModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5042145,
+          "end_time": 1763327809.513496,
+          "duration_ms": 9.281396865844727,
+          "status": 200,
+          "size": "35079"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/usePrometheusFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5043597,
+          "end_time": 1763327809.5137086,
+          "duration_ms": 9.348869323730469,
+          "status": 200,
+          "size": "10044"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/js-yaml.js?v=c1cf299a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.504555,
+          "end_time": 1763327809.5141401,
+          "duration_ms": 9.585142135620117,
+          "status": 200,
+          "size": "80467"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/react-resizable/css/styles.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.501187,
+          "end_time": 1763327809.514472,
+          "duration_ms": 13.284921646118164,
+          "status": 200,
+          "size": "2163"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5012977,
+          "end_time": 1763327809.5147054,
+          "duration_ms": 13.407707214355469,
+          "status": 200,
+          "size": "2478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/core.esm-fK7lYqyE.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5050712,
+          "end_time": 1763327809.5149138,
+          "duration_ms": 9.842634201049805,
+          "status": 200,
+          "size": "91088"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ReferenceValueInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5056443,
+          "end_time": 1763327809.5158694,
+          "duration_ms": 10.225057601928711,
+          "status": 200,
+          "size": "19184"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/LogViewer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5077963,
+          "end_time": 1763327809.5160804,
+          "duration_ms": 8.28409194946289,
+          "status": 200,
+          "size": "18812"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/CollectorSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5079043,
+          "end_time": 1763327809.51625,
+          "duration_ms": 8.345603942871094,
+          "status": 200,
+          "size": "20934"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/InstallForm.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5079815,
+          "end_time": 1763327809.5164104,
+          "duration_ms": 8.428812026977539,
+          "status": 200,
+          "size": "29912"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/PrecheckModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.508055,
+          "end_time": 1763327809.51655,
+          "duration_ms": 8.495092391967773,
+          "status": 200,
+          "size": "19335"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useInstaller.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5117514,
+          "end_time": 1763327809.5190568,
+          "duration_ms": 7.305383682250977,
+          "status": 200,
+          "size": "20292"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/StatusProgress.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5082006,
+          "end_time": 1763327809.5195346,
+          "duration_ms": 11.333942413330078,
+          "status": 200,
+          "size": "18014"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/WarningModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.508126,
+          "end_time": 1763327809.519857,
+          "duration_ms": 11.73090934753418,
+          "status": 200,
+          "size": "23303"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useConsulNodes.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.511421,
+          "end_time": 1763327809.5201066,
+          "duration_ms": 8.685588836669922,
+          "status": 200,
+          "size": "7972"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useWebSocketLogs.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5115979,
+          "end_time": 1763327809.5203738,
+          "duration_ms": 8.775949478149414,
+          "status": 200,
+          "size": "17586"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-components.js?v=317d0e0c",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.479307,
+          "end_time": 1763327809.521321,
+          "duration_ms": 42.014122009277344,
+          "status": 200,
+          "size": "1077929"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/now-BuqnPu3g.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.5215514,
+          "end_time": 1763327809.5280864,
+          "duration_ms": 6.535053253173828,
+          "status": 200,
+          "size": "160283"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-_vAMK92B.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.419802,
+          "end_time": 1763327809.5842798,
+          "duration_ms": 164.47782516479492,
+          "status": 200,
+          "size": "10410665"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_charts.js?v=efe1b547",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327809.4794943,
+          "end_time": 1763327809.589865,
+          "duration_ms": 110.37063598632812,
+          "status": 200,
+          "size": "4753458"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327809.9242742,
+          "end_time": 1763327810.0160568,
+          "duration_ms": 91.7825698852539,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327809.9281428,
+          "end_time": 1763327810.01651,
+          "duration_ms": 88.36722373962402,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327809.928384,
+          "end_time": 1763327810.0167248,
+          "duration_ms": 88.34075927734375,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327810.0038056,
+          "end_time": 1763327810.0172338,
+          "duration_ms": 13.428211212158203,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327809.928291,
+          "end_time": 1763327810.017565,
+          "duration_ms": 89.27392959594727,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327810.003947,
+          "end_time": 1763327810.0177808,
+          "duration_ms": 13.833761215209961,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:8081/api/v1/monitoring/data?category=network-probes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327810.2426555,
+          "end_time": 1763327810.2672687,
+          "duration_ms": 24.613142013549805,
+          "status": 200,
+          "size": "101939"
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "navigation_time_ms": 1643.0931091308594,
+      "table_load_time_ms": 2285.4602336883545,
+      "dom_content_loaded_ms": 0.09999999962747097,
+      "load_complete_ms": 0,
+      "first_paint_ms": 660,
+      "first_contentful_paint_ms": 660,
+      "total_time_ms": 403.6999999997206,
+      "total_requests": 102,
+      "api_requests": 7,
+      "monitoring_requests": 1,
+      "network_requests": [
+        {
+          "url": "http://localhost:8081/monitoring/network-probes",
+          "method": "GET",
+          "resource_type": "document",
+          "start_time": 1763327814.5161943,
+          "end_time": 1763327814.5198236,
+          "duration_ms": 3.6292076110839844,
+          "status": 200,
+          "size": "628"
+        },
+        {
+          "url": "http://localhost:8081/src/main.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5237787,
+          "end_time": 1763327814.525077,
+          "duration_ms": 1.2984275817871094,
+          "status": 200,
+          "size": "2642"
+        },
+        {
+          "url": "http://localhost:8081/@vite/client",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5236387,
+          "end_time": 1763327814.5264335,
+          "duration_ms": 2.7947425842285156,
+          "status": 200,
+          "size": "176373"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_v5-patch-for-react-19.js?v=07614c37",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5254185,
+          "end_time": 1763327814.5270991,
+          "duration_ms": 1.680612564086914,
+          "status": 200,
+          "size": "1103"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5255265,
+          "end_time": 1763327814.5286243,
+          "duration_ms": 3.0977725982666016,
+          "status": 200,
+          "size": "719"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom_client.js?v=c998ecfb",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5256226,
+          "end_time": 1763327814.5287523,
+          "duration_ms": 3.129720687866211,
+          "status": 200,
+          "size": "1366"
+        },
+        {
+          "url": "http://localhost:8081/@react-refresh",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5249288,
+          "end_time": 1763327814.5288684,
+          "duration_ms": 3.9396286010742188,
+          "status": 200,
+          "size": "111894"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5261235,
+          "end_time": 1763327814.5289798,
+          "duration_ms": 2.8562545776367188,
+          "status": 200,
+          "size": "10434"
+        },
+        {
+          "url": "http://localhost:8081/src/index.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5259173,
+          "end_time": 1763327814.5290976,
+          "duration_ms": 3.180265426635742,
+          "status": 200,
+          "size": "2726"
+        },
+        {
+          "url": "http://localhost:8081/src/App.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5260293,
+          "end_time": 1763327814.5298438,
+          "duration_ms": 3.8144588470458984,
+          "status": 200,
+          "size": "36724"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/chunk-vVXnpExW.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5279758,
+          "end_time": 1763327814.5331748,
+          "duration_ms": 5.198955535888672,
+          "status": 200,
+          "size": "11256"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-D2ZntekV.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5281153,
+          "end_time": 1763327814.5333037,
+          "duration_ms": 5.188465118408203,
+          "status": 200,
+          "size": "38121"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom-B1Nc_3Xb.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5282032,
+          "end_time": 1763327814.533514,
+          "duration_ms": 5.310773849487305,
+          "status": 200,
+          "size": "14456"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/vite/dist/client/env.mjs",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.52672,
+          "end_time": 1763327814.5337121,
+          "duration_ms": 6.992101669311523,
+          "status": 200,
+          "size": "3478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectWithoutProperties-Cn95vxzA.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5282893,
+          "end_time": 1763327814.5398114,
+          "duration_ms": 11.522054672241211,
+          "status": 200,
+          "size": "20035"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-is-D1DCHL_c.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.528446,
+          "end_time": 1763327814.5400054,
+          "duration_ms": 11.559486389160156,
+          "status": 200,
+          "size": "45502"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd.js?v=a6f34578",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5310588,
+          "end_time": 1763327814.540168,
+          "duration_ms": 9.109258651733398,
+          "status": 200,
+          "size": "14758"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-layout.js?v=a56984f4",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5313077,
+          "end_time": 1763327814.5403078,
+          "duration_ms": 9.000062942504883,
+          "status": 200,
+          "size": "6148"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd_locale_pt_BR.js?v=ca617a49",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5312064,
+          "end_time": 1763327814.5404344,
+          "duration_ms": 9.227991104125977,
+          "status": 200,
+          "size": "8700"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_icons.js?v=a1f9c477",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5316958,
+          "end_time": 1763327814.5406177,
+          "duration_ms": 8.92186164855957,
+          "status": 200,
+          "size": "198853"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-router-dom.js?v=4c718566",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.531392,
+          "end_time": 1763327814.5450516,
+          "duration_ms": 13.659477233886719,
+          "status": 200,
+          "size": "382363"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/jsx-runtime-DzYhg4ha.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5435562,
+          "end_time": 1763327814.545294,
+          "duration_ms": 1.737833023071289,
+          "status": 200,
+          "size": "10699"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/SettingOutlined-Ck1if4ck.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5437477,
+          "end_time": 1763327814.5455253,
+          "duration_ms": 1.77764892578125,
+          "status": 200,
+          "size": "6359"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectSpread2-De283KI_.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5440588,
+          "end_time": 1763327814.5457242,
+          "duration_ms": 1.665353775024414,
+          "status": 200,
+          "size": "4425"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/client-BQyWf48E.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5283701,
+          "end_time": 1763327814.548115,
+          "duration_ms": 19.744873046875,
+          "status": 200,
+          "size": "827119"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-DRRYL-cw.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.543882,
+          "end_time": 1763327814.5664368,
+          "duration_ms": 22.554874420166016,
+          "status": 200,
+          "size": "2452690"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-m0GVQSvg.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.54484,
+          "end_time": 1763327814.5694582,
+          "duration_ms": 24.618148803710938,
+          "status": 200,
+          "size": "2542324"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/MetadataFieldsContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.531469,
+          "end_time": 1763327814.5836997,
+          "duration_ms": 52.2305965423584,
+          "status": 200,
+          "size": "15195"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useSites.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.531546,
+          "end_time": 1763327814.5840893,
+          "duration_ms": 52.54316329956055,
+          "status": 200,
+          "size": "18527"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/NodesContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5316222,
+          "end_time": 1763327814.5842986,
+          "duration_ms": 52.67643928527832,
+          "status": 200,
+          "size": "9432"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Dashboard.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5317698,
+          "end_time": 1763327814.5859523,
+          "duration_ms": 54.18252944946289,
+          "status": 200,
+          "size": "84570"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Services.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.531878,
+          "end_time": 1763327814.5870044,
+          "duration_ms": 55.12642860412598,
+          "status": 200,
+          "size": "171653"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/axios.js?v=36a310e7",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.583921,
+          "end_time": 1763327814.5888693,
+          "duration_ms": 4.94837760925293,
+          "status": 200,
+          "size": "92031"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServiceGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5319548,
+          "end_time": 1763327814.5905945,
+          "duration_ms": 58.6397647857666,
+          "status": 200,
+          "size": "36592"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Hosts.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.53203,
+          "end_time": 1763327814.5907898,
+          "duration_ms": 58.75968933105469,
+          "status": 200,
+          "size": "55123"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5322602,
+          "end_time": 1763327814.591961,
+          "duration_ms": 59.700727462768555,
+          "status": 200,
+          "size": "33701"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5324755,
+          "end_time": 1763327814.5953333,
+          "duration_ms": 62.857866287231445,
+          "status": 200,
+          "size": "57281"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Exporters.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5321035,
+          "end_time": 1763327814.5958316,
+          "duration_ms": 63.72809410095215,
+          "status": 200,
+          "size": "192542"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/AuditLog.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.532549,
+          "end_time": 1763327814.5960286,
+          "duration_ms": 63.47966194152832,
+          "status": 200,
+          "size": "49110"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxTargets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.532181,
+          "end_time": 1763327814.5966032,
+          "duration_ms": 64.4221305847168,
+          "status": 200,
+          "size": "141164"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/KvBrowser.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5323339,
+          "end_time": 1763327814.5970812,
+          "duration_ms": 64.74733352661133,
+          "status": 200,
+          "size": "77773"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServicePresets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5324037,
+          "end_time": 1763327814.5972512,
+          "duration_ms": 64.84746932983398,
+          "status": 200,
+          "size": "72590"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringTypes.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5327902,
+          "end_time": 1763327814.6003582,
+          "duration_ms": 67.56806373596191,
+          "status": 200,
+          "size": "74455"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ReferenceValues.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5328617,
+          "end_time": 1763327814.600842,
+          "duration_ms": 67.98028945922852,
+          "status": 200,
+          "size": "78097"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringRules.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5330088,
+          "end_time": 1763327814.6017125,
+          "duration_ms": 68.70365142822266,
+          "status": 200,
+          "size": "71374"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/CacheManagement.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5330808,
+          "end_time": 1763327814.6028924,
+          "duration_ms": 69.81158256530762,
+          "status": 200,
+          "size": "44332"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useConsulDelete.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5878372,
+          "end_time": 1763327814.6033385,
+          "duration_ms": 15.501260757446289,
+          "status": 200,
+          "size": "10236"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ColumnSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5879474,
+          "end_time": 1763327814.6036625,
+          "duration_ms": 15.71512222290039,
+          "status": 200,
+          "size": "31413"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/DynamicMonitoringPage.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5329356,
+          "end_time": 1763327814.6039174,
+          "duration_ms": 70.98174095153809,
+          "status": 200,
+          "size": "160664"
+        },
+        {
+          "url": "http://localhost:8081/src/components/AdvancedSearchPanel.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5880284,
+          "end_time": 1763327814.6050615,
+          "duration_ms": 17.033100128173828,
+          "status": 200,
+          "size": "33967"
+        },
+        {
+          "url": "http://localhost:8081/src/services/api.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5864165,
+          "end_time": 1763327814.6057954,
+          "duration_ms": 19.3789005279541,
+          "status": 200,
+          "size": "74364"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5881174,
+          "end_time": 1763327814.6061766,
+          "duration_ms": 18.059253692626953,
+          "status": 200,
+          "size": "7268"
+        },
+        {
+          "url": "http://localhost:8081/src/components/NodeSelector.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5881941,
+          "end_time": 1763327814.6066916,
+          "duration_ms": 18.497467041015625,
+          "status": 200,
+          "size": "19214"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useReferenceValues.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5882688,
+          "end_time": 1763327814.6080112,
+          "duration_ms": 19.742488861083984,
+          "status": 200,
+          "size": "39566"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useServiceTags.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.58834,
+          "end_time": 1763327814.6082437,
+          "duration_ms": 19.90365982055664,
+          "status": 200,
+          "size": "22438"
+        },
+        {
+          "url": "http://localhost:8081/src/components/TagsInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5884075,
+          "end_time": 1763327814.6084158,
+          "duration_ms": 20.008325576782227,
+          "status": 200,
+          "size": "27192"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/PrometheusConfig.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5326533,
+          "end_time": 1763327814.6085823,
+          "duration_ms": 75.92892646789551,
+          "status": 200,
+          "size": "440228"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useMetadataFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.588474,
+          "end_time": 1763327814.6107244,
+          "duration_ms": 22.25041389465332,
+          "status": 200,
+          "size": "34541"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_core.js?v=dae22f3a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6043973,
+          "end_time": 1763327814.6111171,
+          "duration_ms": 6.719827651977539,
+          "status": 200,
+          "size": "5619"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_sortable.js?v=d35ac97d",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6045048,
+          "end_time": 1763327814.6114016,
+          "duration_ms": 6.896734237670898,
+          "status": 200,
+          "size": "18141"
+        },
+        {
+          "url": "http://localhost:8081/src/components/FormFieldRenderer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5885475,
+          "end_time": 1763327814.6116264,
+          "duration_ms": 23.07891845703125,
+          "status": 200,
+          "size": "20855"
+        },
+        {
+          "url": "http://localhost:8081/src/components/SiteBadge.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5886133,
+          "end_time": 1763327814.6120913,
+          "duration_ms": 23.478031158447266,
+          "status": 200,
+          "size": "7614"
+        },
+        {
+          "url": "http://localhost:8081/src/utils/namingUtils.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5886753,
+          "end_time": 1763327814.612291,
+          "duration_ms": 23.61583709716797,
+          "status": 200,
+          "size": "15644"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_utilities.js?v=9ae8d558",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6046045,
+          "end_time": 1763327814.612629,
+          "duration_ms": 8.024454116821289,
+          "status": 200,
+          "size": "3652"
+        },
+        {
+          "url": "http://localhost:8081/src/components/BadgeStatus.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5887394,
+          "end_time": 1763327814.6131203,
+          "duration_ms": 24.380922317504883,
+          "status": 200,
+          "size": "17235"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.592634,
+          "end_time": 1763327814.6143436,
+          "duration_ms": 21.709680557250977,
+          "status": 200,
+          "size": "1397"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MetadataFields.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.532721,
+          "end_time": 1763327814.6152825,
+          "duration_ms": 82.56149291992188,
+          "status": 200,
+          "size": "477470"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@monaco-editor_react.js?v=90e462fd",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6090178,
+          "end_time": 1763327814.6156368,
+          "duration_ms": 6.618976593017578,
+          "status": 200,
+          "size": "24772"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5927806,
+          "end_time": 1763327814.6169553,
+          "duration_ms": 24.17469024658203,
+          "status": 200,
+          "size": "858"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/constants.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5929487,
+          "end_time": 1763327814.6172502,
+          "duration_ms": 24.301528930664062,
+          "status": 200,
+          "size": "11812"
+        },
+        {
+          "url": "http://localhost:8081/src/components/MetadataFilterBar.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.596936,
+          "end_time": 1763327814.6175451,
+          "duration_ms": 20.609140396118164,
+          "status": 200,
+          "size": "12167"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-resizable.js?v=ceae4ac6",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.606987,
+          "end_time": 1763327814.6178076,
+          "duration_ms": 10.820627212524414,
+          "status": 200,
+          "size": "90159"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ServerSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6012197,
+          "end_time": 1763327814.6179976,
+          "duration_ms": 16.777992248535156,
+          "status": 200,
+          "size": "13994"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/js-yaml.js?v=c1cf299a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6094546,
+          "end_time": 1763327814.6186256,
+          "duration_ms": 9.171009063720703,
+          "status": 200,
+          "size": "80467"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/utilities.esm-6ybf_cHi.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6124346,
+          "end_time": 1763327814.6189091,
+          "duration_ms": 6.474494934082031,
+          "status": 200,
+          "size": "7362"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/react-resizable/css/styles.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.607309,
+          "end_time": 1763327814.6191797,
+          "duration_ms": 11.870622634887695,
+          "status": 200,
+          "size": "2163"
+        },
+        {
+          "url": "http://localhost:8081/src/components/CategoryManagementModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6014555,
+          "end_time": 1763327814.619449,
+          "duration_ms": 17.993450164794922,
+          "status": 200,
+          "size": "43761"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6076772,
+          "end_time": 1763327814.6197066,
+          "duration_ms": 12.029409408569336,
+          "status": 200,
+          "size": "2478"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ExtractionProgressModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.608776,
+          "end_time": 1763327814.619917,
+          "duration_ms": 11.140823364257812,
+          "status": 200,
+          "size": "35079"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/usePrometheusFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6088858,
+          "end_time": 1763327814.620153,
+          "duration_ms": 11.26718521118164,
+          "status": 200,
+          "size": "10044"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/core.esm-fK7lYqyE.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.612518,
+          "end_time": 1763327814.6210115,
+          "duration_ms": 8.493423461914062,
+          "status": 200,
+          "size": "91088"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ReferenceValueInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6127474,
+          "end_time": 1763327814.6214433,
+          "duration_ms": 8.695840835571289,
+          "status": 200,
+          "size": "19184"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/LogViewer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6159008,
+          "end_time": 1763327814.6226308,
+          "duration_ms": 6.730079650878906,
+          "status": 200,
+          "size": "18812"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/CollectorSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6160626,
+          "end_time": 1763327814.622845,
+          "duration_ms": 6.782293319702148,
+          "status": 200,
+          "size": "20934"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/InstallForm.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6162188,
+          "end_time": 1763327814.6234322,
+          "duration_ms": 7.213354110717773,
+          "status": 200,
+          "size": "29912"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/PrecheckModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6163836,
+          "end_time": 1763327814.6241364,
+          "duration_ms": 7.752895355224609,
+          "status": 200,
+          "size": "19335"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/WarningModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6165414,
+          "end_time": 1763327814.6244574,
+          "duration_ms": 7.915973663330078,
+          "status": 200,
+          "size": "23303"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/StatusProgress.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.616739,
+          "end_time": 1763327814.6253223,
+          "duration_ms": 8.583307266235352,
+          "status": 200,
+          "size": "18014"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useConsulNodes.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6181571,
+          "end_time": 1763327814.6257203,
+          "duration_ms": 7.563114166259766,
+          "status": 200,
+          "size": "7972"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useWebSocketLogs.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.6182802,
+          "end_time": 1763327814.626032,
+          "duration_ms": 7.751941680908203,
+          "status": 200,
+          "size": "17586"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useInstaller.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.618429,
+          "end_time": 1763327814.626257,
+          "duration_ms": 7.827997207641602,
+          "status": 200,
+          "size": "20292"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-components.js?v=317d0e0c",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.5862012,
+          "end_time": 1763327814.6274998,
+          "duration_ms": 41.298627853393555,
+          "status": 200,
+          "size": "1077929"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/now-BuqnPu3g.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.627789,
+          "end_time": 1763327814.632677,
+          "duration_ms": 4.888057708740234,
+          "status": 200,
+          "size": "160283"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-_vAMK92B.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.52853,
+          "end_time": 1763327814.6881304,
+          "duration_ms": 159.60049629211426,
+          "status": 200,
+          "size": "10410665"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_charts.js?v=efe1b547",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327814.586316,
+          "end_time": 1763327814.6936855,
+          "duration_ms": 107.36942291259766,
+          "status": 200,
+          "size": "4753458"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.0623,
+          "end_time": 1763327815.164687,
+          "duration_ms": 102.3869514465332,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.0674424,
+          "end_time": 1763327815.165184,
+          "duration_ms": 97.74160385131836,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.0676389,
+          "end_time": 1763327815.1654098,
+          "duration_ms": 97.77092933654785,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.1525023,
+          "end_time": 1763327815.1659157,
+          "duration_ms": 13.413429260253906,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.0675607,
+          "end_time": 1763327815.1663132,
+          "duration_ms": 98.75249862670898,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.1526213,
+          "end_time": 1763327815.1665795,
+          "duration_ms": 13.958215713500977,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:8081/api/v1/monitoring/data?category=network-probes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327815.4011908,
+          "end_time": 1763327815.6556263,
+          "duration_ms": 254.43553924560547,
+          "status": 200,
+          "size": "101939"
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "navigation_time_ms": 2443.1495666503906,
+      "table_load_time_ms": 2467.9481983184814,
+      "dom_content_loaded_ms": 0,
+      "load_complete_ms": 0,
+      "first_paint_ms": 588,
+      "first_contentful_paint_ms": 588,
+      "total_time_ms": 374.79999999981374,
+      "total_requests": 102,
+      "api_requests": 7,
+      "monitoring_requests": 1,
+      "network_requests": [
+        {
+          "url": "http://localhost:8081/monitoring/network-probes",
+          "method": "GET",
+          "resource_type": "document",
+          "start_time": 1763327819.8258307,
+          "end_time": 1763327819.829243,
+          "duration_ms": 3.4122467041015625,
+          "status": 200,
+          "size": "628"
+        },
+        {
+          "url": "http://localhost:8081/src/main.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8331182,
+          "end_time": 1763327819.834263,
+          "duration_ms": 1.1448860168457031,
+          "status": 200,
+          "size": "2642"
+        },
+        {
+          "url": "http://localhost:8081/@vite/client",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8329918,
+          "end_time": 1763327819.834545,
+          "duration_ms": 1.5530586242675781,
+          "status": 200,
+          "size": "176373"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_v5-patch-for-react-19.js?v=07614c37",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.834905,
+          "end_time": 1763327819.8363523,
+          "duration_ms": 1.447439193725586,
+          "status": 200,
+          "size": "1103"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8350215,
+          "end_time": 1763327819.8389506,
+          "duration_ms": 3.92913818359375,
+          "status": 200,
+          "size": "719"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom_client.js?v=c998ecfb",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8351192,
+          "end_time": 1763327819.839117,
+          "duration_ms": 3.997802734375,
+          "status": 200,
+          "size": "1366"
+        },
+        {
+          "url": "http://localhost:8081/@react-refresh",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8344522,
+          "end_time": 1763327819.8403108,
+          "duration_ms": 5.858659744262695,
+          "status": 200,
+          "size": "111894"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.835372,
+          "end_time": 1763327819.840492,
+          "duration_ms": 5.120038986206055,
+          "status": 200,
+          "size": "10434"
+        },
+        {
+          "url": "http://localhost:8081/src/index.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8352082,
+          "end_time": 1763327819.8425102,
+          "duration_ms": 7.302045822143555,
+          "status": 200,
+          "size": "2726"
+        },
+        {
+          "url": "http://localhost:8081/src/App.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8352847,
+          "end_time": 1763327819.842781,
+          "duration_ms": 7.496356964111328,
+          "status": 200,
+          "size": "36724"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/vite/dist/client/env.mjs",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8354545,
+          "end_time": 1763327819.8429542,
+          "duration_ms": 7.49969482421875,
+          "status": 200,
+          "size": "3478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/chunk-vVXnpExW.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.836729,
+          "end_time": 1763327819.843081,
+          "duration_ms": 6.351947784423828,
+          "status": 200,
+          "size": "11256"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-D2ZntekV.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8369002,
+          "end_time": 1763327819.8431966,
+          "duration_ms": 6.296396255493164,
+          "status": 200,
+          "size": "38121"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom-B1Nc_3Xb.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8369966,
+          "end_time": 1763327819.8474488,
+          "duration_ms": 10.4522705078125,
+          "status": 200,
+          "size": "14456"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectWithoutProperties-Cn95vxzA.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8370821,
+          "end_time": 1763327819.8475902,
+          "duration_ms": 10.508060455322266,
+          "status": 200,
+          "size": "20035"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-is-D1DCHL_c.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8372667,
+          "end_time": 1763327819.847738,
+          "duration_ms": 10.471343994140625,
+          "status": 200,
+          "size": "45502"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd.js?v=a6f34578",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8443978,
+          "end_time": 1763327819.8484066,
+          "duration_ms": 4.008769989013672,
+          "status": 200,
+          "size": "14758"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd_locale_pt_BR.js?v=ca617a49",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.844641,
+          "end_time": 1763327819.8493335,
+          "duration_ms": 4.692554473876953,
+          "status": 200,
+          "size": "8700"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-layout.js?v=a56984f4",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.844846,
+          "end_time": 1763327819.849586,
+          "duration_ms": 4.739999771118164,
+          "status": 200,
+          "size": "6148"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_icons.js?v=a1f9c477",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.845862,
+          "end_time": 1763327819.851262,
+          "duration_ms": 5.400180816650391,
+          "status": 200,
+          "size": "198853"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectSpread2-De283KI_.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8498218,
+          "end_time": 1763327819.852077,
+          "duration_ms": 2.2552013397216797,
+          "status": 200,
+          "size": "4425"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/SettingOutlined-Ck1if4ck.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8503535,
+          "end_time": 1763327819.8525226,
+          "duration_ms": 2.1691322326660156,
+          "status": 200,
+          "size": "6359"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/jsx-runtime-DzYhg4ha.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8502185,
+          "end_time": 1763327819.852822,
+          "duration_ms": 2.6035308837890625,
+          "status": 200,
+          "size": "10699"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/client-BQyWf48E.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8371603,
+          "end_time": 1763327819.8533578,
+          "duration_ms": 16.19744300842285,
+          "status": 200,
+          "size": "827119"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-router-dom.js?v=4c718566",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8450608,
+          "end_time": 1763327819.8550398,
+          "duration_ms": 9.979009628295898,
+          "status": 200,
+          "size": "382363"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-DRRYL-cw.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.850453,
+          "end_time": 1763327819.8725052,
+          "duration_ms": 22.052288055419922,
+          "status": 200,
+          "size": "2452690"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-m0GVQSvg.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8517404,
+          "end_time": 1763327819.8755388,
+          "duration_ms": 23.798465728759766,
+          "status": 200,
+          "size": "2542324"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/MetadataFieldsContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8452706,
+          "end_time": 1763327819.8908806,
+          "duration_ms": 45.60995101928711,
+          "status": 200,
+          "size": "15195"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useSites.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8455672,
+          "end_time": 1763327819.8911037,
+          "duration_ms": 45.53651809692383,
+          "status": 200,
+          "size": "18527"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/NodesContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8456984,
+          "end_time": 1763327819.891802,
+          "duration_ms": 46.103715896606445,
+          "status": 200,
+          "size": "9432"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Dashboard.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8459582,
+          "end_time": 1763327819.8935483,
+          "duration_ms": 47.590017318725586,
+          "status": 200,
+          "size": "84570"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Services.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.846038,
+          "end_time": 1763327819.8941567,
+          "duration_ms": 48.11859130859375,
+          "status": 200,
+          "size": "171653"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/axios.js?v=36a310e7",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.891246,
+          "end_time": 1763327819.8958335,
+          "duration_ms": 4.587411880493164,
+          "status": 200,
+          "size": "92031"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Hosts.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8461816,
+          "end_time": 1763327819.8996553,
+          "duration_ms": 53.473711013793945,
+          "status": 200,
+          "size": "55123"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServiceGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8461115,
+          "end_time": 1763327819.899869,
+          "duration_ms": 53.757429122924805,
+          "status": 200,
+          "size": "36592"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8463817,
+          "end_time": 1763327819.9005966,
+          "duration_ms": 54.2149543762207,
+          "status": 200,
+          "size": "33701"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Exporters.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8462472,
+          "end_time": 1763327819.9047227,
+          "duration_ms": 58.475494384765625,
+          "status": 200,
+          "size": "192542"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8465831,
+          "end_time": 1763327819.9049625,
+          "duration_ms": 58.379411697387695,
+          "status": 200,
+          "size": "57281"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/AuditLog.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8466988,
+          "end_time": 1763327819.9051356,
+          "duration_ms": 58.43687057495117,
+          "status": 200,
+          "size": "49110"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxTargets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8463156,
+          "end_time": 1763327819.905328,
+          "duration_ms": 59.012413024902344,
+          "status": 200,
+          "size": "141164"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/KvBrowser.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8464465,
+          "end_time": 1763327819.906085,
+          "duration_ms": 59.63850021362305,
+          "status": 200,
+          "size": "77773"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServicePresets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8465145,
+          "end_time": 1763327819.9064114,
+          "duration_ms": 59.89694595336914,
+          "status": 200,
+          "size": "72590"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringTypes.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.847012,
+          "end_time": 1763327819.909518,
+          "duration_ms": 62.50596046447754,
+          "status": 200,
+          "size": "74455"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ReferenceValues.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8471162,
+          "end_time": 1763327819.9098072,
+          "duration_ms": 62.69097328186035,
+          "status": 200,
+          "size": "78097"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringRules.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8472557,
+          "end_time": 1763327819.9105887,
+          "duration_ms": 63.33303451538086,
+          "status": 200,
+          "size": "71374"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/CacheManagement.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.847321,
+          "end_time": 1763327819.9115915,
+          "duration_ms": 64.2704963684082,
+          "status": 200,
+          "size": "44332"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useConsulDelete.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.894603,
+          "end_time": 1763327819.9120955,
+          "duration_ms": 17.49253273010254,
+          "status": 200,
+          "size": "10236"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/DynamicMonitoringPage.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8471897,
+          "end_time": 1763327819.9129236,
+          "duration_ms": 65.7339096069336,
+          "status": 200,
+          "size": "160664"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ColumnSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8947206,
+          "end_time": 1763327819.9133785,
+          "duration_ms": 18.657922744750977,
+          "status": 200,
+          "size": "31413"
+        },
+        {
+          "url": "http://localhost:8081/src/components/AdvancedSearchPanel.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8948119,
+          "end_time": 1763327819.9135933,
+          "duration_ms": 18.781423568725586,
+          "status": 200,
+          "size": "33967"
+        },
+        {
+          "url": "http://localhost:8081/src/services/api.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.894006,
+          "end_time": 1763327819.914667,
+          "duration_ms": 20.660877227783203,
+          "status": 200,
+          "size": "74364"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.894892,
+          "end_time": 1763327819.916343,
+          "duration_ms": 21.45099639892578,
+          "status": 200,
+          "size": "7268"
+        },
+        {
+          "url": "http://localhost:8081/src/components/NodeSelector.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.894968,
+          "end_time": 1763327819.9170616,
+          "duration_ms": 22.093534469604492,
+          "status": 200,
+          "size": "19214"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useReferenceValues.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8951209,
+          "end_time": 1763327819.9173315,
+          "duration_ms": 22.21059799194336,
+          "status": 200,
+          "size": "39566"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useServiceTags.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8952744,
+          "end_time": 1763327819.9177158,
+          "duration_ms": 22.441387176513672,
+          "status": 200,
+          "size": "22438"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/PrometheusConfig.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8468113,
+          "end_time": 1763327819.9181752,
+          "duration_ms": 71.36392593383789,
+          "status": 200,
+          "size": "440228"
+        },
+        {
+          "url": "http://localhost:8081/src/components/TagsInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8953598,
+          "end_time": 1763327819.9184709,
+          "duration_ms": 23.11110496520996,
+          "status": 200,
+          "size": "27192"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useMetadataFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.895447,
+          "end_time": 1763327819.9211993,
+          "duration_ms": 25.75230598449707,
+          "status": 200,
+          "size": "34541"
+        },
+        {
+          "url": "http://localhost:8081/src/components/FormFieldRenderer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8955257,
+          "end_time": 1763327819.9214544,
+          "duration_ms": 25.928735733032227,
+          "status": 200,
+          "size": "20855"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_core.js?v=dae22f3a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9141598,
+          "end_time": 1763327819.9217162,
+          "duration_ms": 7.556438446044922,
+          "status": 200,
+          "size": "5619"
+        },
+        {
+          "url": "http://localhost:8081/src/components/SiteBadge.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8955956,
+          "end_time": 1763327819.9222102,
+          "duration_ms": 26.614665985107422,
+          "status": 200,
+          "size": "7614"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_sortable.js?v=d35ac97d",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9142776,
+          "end_time": 1763327819.9228306,
+          "duration_ms": 8.553028106689453,
+          "status": 200,
+          "size": "18141"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_utilities.js?v=9ae8d558",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.914369,
+          "end_time": 1763327819.9230309,
+          "duration_ms": 8.661746978759766,
+          "status": 200,
+          "size": "3652"
+        },
+        {
+          "url": "http://localhost:8081/src/utils/namingUtils.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8956616,
+          "end_time": 1763327819.9232807,
+          "duration_ms": 27.619123458862305,
+          "status": 200,
+          "size": "15644"
+        },
+        {
+          "url": "http://localhost:8081/src/components/BadgeStatus.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8957255,
+          "end_time": 1763327819.9235222,
+          "duration_ms": 27.79674530029297,
+          "status": 200,
+          "size": "17235"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9007676,
+          "end_time": 1763327819.9252398,
+          "duration_ms": 24.47223663330078,
+          "status": 200,
+          "size": "1397"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MetadataFields.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8469155,
+          "end_time": 1763327819.9263117,
+          "duration_ms": 79.39624786376953,
+          "status": 200,
+          "size": "477470"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9008424,
+          "end_time": 1763327819.927737,
+          "duration_ms": 26.894569396972656,
+          "status": 200,
+          "size": "858"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/constants.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9009125,
+          "end_time": 1763327819.9280348,
+          "duration_ms": 27.12225914001465,
+          "status": 200,
+          "size": "11812"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@monaco-editor_react.js?v=90e462fd",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9189932,
+          "end_time": 1763327819.9283426,
+          "duration_ms": 9.349346160888672,
+          "status": 200,
+          "size": "24772"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-resizable.js?v=ceae4ac6",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9166453,
+          "end_time": 1763327819.9286494,
+          "duration_ms": 12.00413703918457,
+          "status": 200,
+          "size": "90159"
+        },
+        {
+          "url": "http://localhost:8081/src/components/MetadataFilterBar.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9059033,
+          "end_time": 1763327819.9289308,
+          "duration_ms": 23.027420043945312,
+          "status": 200,
+          "size": "12167"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ServerSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9100223,
+          "end_time": 1763327819.9296472,
+          "duration_ms": 19.624948501586914,
+          "status": 200,
+          "size": "13994"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/utilities.esm-6ybf_cHi.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.922484,
+          "end_time": 1763327819.9298735,
+          "duration_ms": 7.389545440673828,
+          "status": 200,
+          "size": "7362"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/js-yaml.js?v=c1cf299a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9191082,
+          "end_time": 1763327819.9300354,
+          "duration_ms": 10.927200317382812,
+          "status": 200,
+          "size": "80467"
+        },
+        {
+          "url": "http://localhost:8081/src/components/CategoryManagementModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.910111,
+          "end_time": 1763327819.9301932,
+          "duration_ms": 20.08223533630371,
+          "status": 200,
+          "size": "43761"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/react-resizable/css/styles.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9167855,
+          "end_time": 1763327819.9303389,
+          "duration_ms": 13.553380966186523,
+          "status": 200,
+          "size": "2163"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.916902,
+          "end_time": 1763327819.9304748,
+          "duration_ms": 13.57269287109375,
+          "status": 200,
+          "size": "2478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/core.esm-fK7lYqyE.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9226534,
+          "end_time": 1763327819.9311454,
+          "duration_ms": 8.491992950439453,
+          "status": 200,
+          "size": "91088"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ExtractionProgressModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9187193,
+          "end_time": 1763327819.9318163,
+          "duration_ms": 13.097047805786133,
+          "status": 200,
+          "size": "35079"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/usePrometheusFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9188693,
+          "end_time": 1763327819.932074,
+          "duration_ms": 13.204813003540039,
+          "status": 200,
+          "size": "10044"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-components.js?v=317d0e0c",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8937957,
+          "end_time": 1763327819.9341052,
+          "duration_ms": 40.30942916870117,
+          "status": 200,
+          "size": "1077929"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ReferenceValueInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.921953,
+          "end_time": 1763327819.9344852,
+          "duration_ms": 12.532234191894531,
+          "status": 200,
+          "size": "19184"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/LogViewer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9267418,
+          "end_time": 1763327819.9347785,
+          "duration_ms": 8.036613464355469,
+          "status": 200,
+          "size": "18812"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/CollectorSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9269345,
+          "end_time": 1763327819.9351594,
+          "duration_ms": 8.224964141845703,
+          "status": 200,
+          "size": "20934"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/InstallForm.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9270873,
+          "end_time": 1763327819.935424,
+          "duration_ms": 8.336782455444336,
+          "status": 200,
+          "size": "29912"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/PrecheckModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9272172,
+          "end_time": 1763327819.9356165,
+          "duration_ms": 8.399248123168945,
+          "status": 200,
+          "size": "19335"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/WarningModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.92735,
+          "end_time": 1763327819.9357557,
+          "duration_ms": 8.405685424804688,
+          "status": 200,
+          "size": "23303"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/StatusProgress.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.927493,
+          "end_time": 1763327819.936503,
+          "duration_ms": 9.009838104248047,
+          "status": 200,
+          "size": "18014"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useConsulNodes.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9291532,
+          "end_time": 1763327819.936824,
+          "duration_ms": 7.670879364013672,
+          "status": 200,
+          "size": "7972"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useWebSocketLogs.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.929297,
+          "end_time": 1763327819.9370198,
+          "duration_ms": 7.7228546142578125,
+          "status": 200,
+          "size": "17586"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useInstaller.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9294937,
+          "end_time": 1763327819.9371924,
+          "duration_ms": 7.698774337768555,
+          "status": 200,
+          "size": "20292"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/now-BuqnPu3g.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.9350002,
+          "end_time": 1763327819.9397113,
+          "duration_ms": 4.711151123046875,
+          "status": 200,
+          "size": "160283"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-_vAMK92B.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.8373454,
+          "end_time": 1763327819.9999921,
+          "duration_ms": 162.64677047729492,
+          "status": 200,
+          "size": "10410665"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_charts.js?v=efe1b547",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327819.893898,
+          "end_time": 1763327820.0054276,
+          "duration_ms": 111.52958869934082,
+          "status": 200,
+          "size": "4753458"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.316927,
+          "end_time": 1763327820.4028606,
+          "duration_ms": 85.93368530273438,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.3915598,
+          "end_time": 1763327820.4034526,
+          "duration_ms": 11.89279556274414,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.3170505,
+          "end_time": 1763327820.4036405,
+          "duration_ms": 86.59005165100098,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.391689,
+          "end_time": 1763327820.5960243,
+          "duration_ms": 204.33521270751953,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:8081/api/v1/monitoring/data?category=network-probes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.6155984,
+          "end_time": 1763327820.638178,
+          "duration_ms": 22.579669952392578,
+          "status": 200,
+          "size": "101939"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.3133957,
+          "end_time": 1763327821.7676954,
+          "duration_ms": 1454.2996883392334,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327820.317184,
+          "end_time": 1763327821.7679462,
+          "duration_ms": 1450.7622718811035,
+          "status": 200,
+          "size": "466"
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "navigation_time_ms": 1390.5093669891357,
+      "table_load_time_ms": 2180.8884143829346,
+      "dom_content_loaded_ms": 0,
+      "load_complete_ms": 0,
+      "first_paint_ms": 640,
+      "first_contentful_paint_ms": 640,
+      "total_time_ms": 411.90000000037253,
+      "total_requests": 102,
+      "api_requests": 7,
+      "monitoring_requests": 1,
+      "network_requests": [
+        {
+          "url": "http://localhost:8081/monitoring/network-probes",
+          "method": "GET",
+          "resource_type": "document",
+          "start_time": 1763327825.315034,
+          "end_time": 1763327825.3185096,
+          "duration_ms": 3.475666046142578,
+          "status": 200,
+          "size": "628"
+        },
+        {
+          "url": "http://localhost:8081/src/main.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.322209,
+          "end_time": 1763327825.3232944,
+          "duration_ms": 1.085519790649414,
+          "status": 200,
+          "size": "2642"
+        },
+        {
+          "url": "http://localhost:8081/@vite/client",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.322079,
+          "end_time": 1763327825.3245304,
+          "duration_ms": 2.4514198303222656,
+          "status": 200,
+          "size": "176373"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_v5-patch-for-react-19.js?v=07614c37",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.323865,
+          "end_time": 1763327825.3254368,
+          "duration_ms": 1.5718936920166016,
+          "status": 200,
+          "size": "1103"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3239882,
+          "end_time": 1763327825.3267815,
+          "duration_ms": 2.7933120727539062,
+          "status": 200,
+          "size": "719"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom_client.js?v=c998ecfb",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3240864,
+          "end_time": 1763327825.3269622,
+          "duration_ms": 2.875804901123047,
+          "status": 200,
+          "size": "1366"
+        },
+        {
+          "url": "http://localhost:8081/@react-refresh",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3228934,
+          "end_time": 1763327825.3271234,
+          "duration_ms": 4.230022430419922,
+          "status": 200,
+          "size": "111894"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=5dbaf438",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3243916,
+          "end_time": 1763327825.3272867,
+          "duration_ms": 2.8951168060302734,
+          "status": 200,
+          "size": "10434"
+        },
+        {
+          "url": "http://localhost:8081/src/index.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3241782,
+          "end_time": 1763327825.3292549,
+          "duration_ms": 5.07664680480957,
+          "status": 200,
+          "size": "2726"
+        },
+        {
+          "url": "http://localhost:8081/src/App.tsx?t=1763327799873",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3242745,
+          "end_time": 1763327825.329768,
+          "duration_ms": 5.493402481079102,
+          "status": 200,
+          "size": "36724"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/chunk-vVXnpExW.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.325638,
+          "end_time": 1763327825.3300173,
+          "duration_ms": 4.3792724609375,
+          "status": 200,
+          "size": "11256"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-dom-B1Nc_3Xb.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.325856,
+          "end_time": 1763327825.330168,
+          "duration_ms": 4.312038421630859,
+          "status": 200,
+          "size": "14456"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectWithoutProperties-Cn95vxzA.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3259516,
+          "end_time": 1763327825.3303227,
+          "duration_ms": 4.371166229248047,
+          "status": 200,
+          "size": "20035"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/vite/dist/client/env.mjs",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3247097,
+          "end_time": 1763327825.330461,
+          "duration_ms": 5.751371383666992,
+          "status": 200,
+          "size": "3478"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-D2ZntekV.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3257399,
+          "end_time": 1763327825.330592,
+          "duration_ms": 4.852056503295898,
+          "status": 200,
+          "size": "38121"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-is-D1DCHL_c.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3261964,
+          "end_time": 1763327825.3348136,
+          "duration_ms": 8.617162704467773,
+          "status": 200,
+          "size": "45502"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd.js?v=a6f34578",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3317332,
+          "end_time": 1763327825.3383315,
+          "duration_ms": 6.598234176635742,
+          "status": 200,
+          "size": "14758"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-layout.js?v=a56984f4",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3319557,
+          "end_time": 1763327825.3388014,
+          "duration_ms": 6.845712661743164,
+          "status": 200,
+          "size": "6148"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/antd_locale_pt_BR.js?v=ca617a49",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.331857,
+          "end_time": 1763327825.3391876,
+          "duration_ms": 7.330656051635742,
+          "status": 200,
+          "size": "8700"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/jsx-runtime-DzYhg4ha.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3394463,
+          "end_time": 1763327825.3401453,
+          "duration_ms": 0.6990432739257812,
+          "status": 200,
+          "size": "10699"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_icons.js?v=a1f9c477",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3325095,
+          "end_time": 1763327825.340502,
+          "duration_ms": 7.99250602722168,
+          "status": 200,
+          "size": "198853"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/SettingOutlined-Ck1if4ck.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3396683,
+          "end_time": 1763327825.3406665,
+          "duration_ms": 0.9982585906982422,
+          "status": 200,
+          "size": "6359"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/objectSpread2-De283KI_.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3399522,
+          "end_time": 1763327825.3408098,
+          "duration_ms": 0.8575916290283203,
+          "status": 200,
+          "size": "4425"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/client-BQyWf48E.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3260365,
+          "end_time": 1763327825.3443763,
+          "duration_ms": 18.339872360229492,
+          "status": 200,
+          "size": "827119"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-router-dom.js?v=4c718566",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.332041,
+          "end_time": 1763327825.345958,
+          "duration_ms": 13.916969299316406,
+          "status": 200,
+          "size": "382363"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-DRRYL-cw.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3398192,
+          "end_time": 1763327825.3618412,
+          "duration_ms": 22.022008895874023,
+          "status": 200,
+          "size": "2452690"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-m0GVQSvg.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3409526,
+          "end_time": 1763327825.3662994,
+          "duration_ms": 25.346755981445312,
+          "status": 200,
+          "size": "2542324"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/MetadataFieldsContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3321218,
+          "end_time": 1763327825.3842967,
+          "duration_ms": 52.17480659484863,
+          "status": 200,
+          "size": "15195"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useSites.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.332199,
+          "end_time": 1763327825.3850594,
+          "duration_ms": 52.860260009765625,
+          "status": 200,
+          "size": "18527"
+        },
+        {
+          "url": "http://localhost:8081/src/contexts/NodesContext.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.332275,
+          "end_time": 1763327825.3854926,
+          "duration_ms": 53.21764945983887,
+          "status": 200,
+          "size": "9432"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Dashboard.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3326101,
+          "end_time": 1763327825.3857636,
+          "duration_ms": 53.15351486206055,
+          "status": 200,
+          "size": "84570"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/axios.js?v=36a310e7",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3853211,
+          "end_time": 1763327825.3887973,
+          "duration_ms": 3.4761428833007812,
+          "status": 200,
+          "size": "92031"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServiceGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3327804,
+          "end_time": 1763327825.3903408,
+          "duration_ms": 57.56044387817383,
+          "status": 200,
+          "size": "36592"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Hosts.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3328605,
+          "end_time": 1763327825.3921561,
+          "duration_ms": 59.295654296875,
+          "status": 200,
+          "size": "55123"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.333279,
+          "end_time": 1763327825.3940659,
+          "duration_ms": 60.78696250915527,
+          "status": 200,
+          "size": "33701"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Services.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3326993,
+          "end_time": 1763327825.3959353,
+          "duration_ms": 63.23599815368652,
+          "status": 200,
+          "size": "171653"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/KvBrowser.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.333384,
+          "end_time": 1763327825.3993464,
+          "duration_ms": 65.96231460571289,
+          "status": 200,
+          "size": "77773"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Exporters.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.33294,
+          "end_time": 1763327825.3996172,
+          "duration_ms": 66.67709350585938,
+          "status": 200,
+          "size": "192542"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxTargets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3331447,
+          "end_time": 1763327825.399875,
+          "duration_ms": 66.73026084899902,
+          "status": 200,
+          "size": "141164"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/BlackboxGroups.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3335588,
+          "end_time": 1763327825.400324,
+          "duration_ms": 66.76530838012695,
+          "status": 200,
+          "size": "57281"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/AuditLog.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3336732,
+          "end_time": 1763327825.4004936,
+          "duration_ms": 66.82038307189941,
+          "status": 200,
+          "size": "49110"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ServicePresets.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3334744,
+          "end_time": 1763327825.4006968,
+          "duration_ms": 67.22235679626465,
+          "status": 200,
+          "size": "72590"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringTypes.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.334159,
+          "end_time": 1763327825.4049833,
+          "duration_ms": 70.82438468933105,
+          "status": 200,
+          "size": "74455"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/CacheManagement.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3346455,
+          "end_time": 1763327825.4052773,
+          "duration_ms": 70.63174247741699,
+          "status": 200,
+          "size": "44332"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/ReferenceValues.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.334327,
+          "end_time": 1763327825.4056835,
+          "duration_ms": 71.35653495788574,
+          "status": 200,
+          "size": "78097"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MonitoringRules.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3345568,
+          "end_time": 1763327825.4061854,
+          "duration_ms": 71.62857055664062,
+          "status": 200,
+          "size": "71374"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3907921,
+          "end_time": 1763327825.4082868,
+          "duration_ms": 17.494678497314453,
+          "status": 200,
+          "size": "7268"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/DynamicMonitoringPage.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.334465,
+          "end_time": 1763327825.4088416,
+          "duration_ms": 74.37658309936523,
+          "status": 200,
+          "size": "160664"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3942623,
+          "end_time": 1763327825.40919,
+          "duration_ms": 14.92762565612793,
+          "status": 200,
+          "size": "1397"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/index.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3943563,
+          "end_time": 1763327825.4104035,
+          "duration_ms": 16.047239303588867,
+          "status": 200,
+          "size": "858"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/constants.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3944352,
+          "end_time": 1763327825.4106317,
+          "duration_ms": 16.196489334106445,
+          "status": 200,
+          "size": "11812"
+        },
+        {
+          "url": "http://localhost:8081/src/services/api.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3870928,
+          "end_time": 1763327825.4107985,
+          "duration_ms": 23.705720901489258,
+          "status": 200,
+          "size": "74364"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useConsulDelete.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3973212,
+          "end_time": 1763327825.4119215,
+          "duration_ms": 14.600276947021484,
+          "status": 200,
+          "size": "10236"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ColumnSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3974566,
+          "end_time": 1763327825.4140117,
+          "duration_ms": 16.555070877075195,
+          "status": 200,
+          "size": "31413"
+        },
+        {
+          "url": "http://localhost:8081/src/components/AdvancedSearchPanel.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3975513,
+          "end_time": 1763327825.4153328,
+          "duration_ms": 17.781496047973633,
+          "status": 200,
+          "size": "33967"
+        },
+        {
+          "url": "http://localhost:8081/src/components/NodeSelector.tsx?t=1763327782088",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3977644,
+          "end_time": 1763327825.415799,
+          "duration_ms": 18.03445816040039,
+          "status": 200,
+          "size": "19214"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useReferenceValues.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3979783,
+          "end_time": 1763327825.4161549,
+          "duration_ms": 18.176555633544922,
+          "status": 200,
+          "size": "39566"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/PrometheusConfig.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3337817,
+          "end_time": 1763327825.4167845,
+          "duration_ms": 83.00280570983887,
+          "status": 200,
+          "size": "440228"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useServiceTags.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3981514,
+          "end_time": 1763327825.4180882,
+          "duration_ms": 19.936800003051758,
+          "status": 200,
+          "size": "22438"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/MetadataFields.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3339682,
+          "end_time": 1763327825.41916,
+          "duration_ms": 85.19172668457031,
+          "status": 200,
+          "size": "477470"
+        },
+        {
+          "url": "http://localhost:8081/src/components/TagsInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3982627,
+          "end_time": 1763327825.419543,
+          "duration_ms": 21.280288696289062,
+          "status": 200,
+          "size": "27192"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/useMetadataFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.398463,
+          "end_time": 1763327825.419866,
+          "duration_ms": 21.403074264526367,
+          "status": 200,
+          "size": "34541"
+        },
+        {
+          "url": "http://localhost:8081/src/components/FormFieldRenderer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3986244,
+          "end_time": 1763327825.4200876,
+          "duration_ms": 21.46315574645996,
+          "status": 200,
+          "size": "20855"
+        },
+        {
+          "url": "http://localhost:8081/src/components/SiteBadge.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3987544,
+          "end_time": 1763327825.4205592,
+          "duration_ms": 21.8048095703125,
+          "status": 200,
+          "size": "7614"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/react-resizable.js?v=ceae4ac6",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4097636,
+          "end_time": 1763327825.42181,
+          "duration_ms": 12.046337127685547,
+          "status": 200,
+          "size": "90159"
+        },
+        {
+          "url": "http://localhost:8081/src/utils/namingUtils.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3989751,
+          "end_time": 1763327825.422202,
+          "duration_ms": 23.22697639465332,
+          "status": 200,
+          "size": "15644"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_core.js?v=dae22f3a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4148335,
+          "end_time": 1763327825.4224775,
+          "duration_ms": 7.643938064575195,
+          "status": 200,
+          "size": "5619"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_sortable.js?v=d35ac97d",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4149702,
+          "end_time": 1763327825.42293,
+          "duration_ms": 7.959842681884766,
+          "status": 200,
+          "size": "18141"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@dnd-kit_utilities.js?v=9ae8d558",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.415064,
+          "end_time": 1763327825.4231484,
+          "duration_ms": 8.084297180175781,
+          "status": 200,
+          "size": "3652"
+        },
+        {
+          "url": "http://localhost:8081/src/components/BadgeStatus.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3991501,
+          "end_time": 1763327825.4247663,
+          "duration_ms": 25.616168975830078,
+          "status": 200,
+          "size": "17235"
+        },
+        {
+          "url": "http://localhost:8081/src/components/MetadataFilterBar.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.400154,
+          "end_time": 1763327825.4251914,
+          "duration_ms": 25.037288665771484,
+          "status": 200,
+          "size": "12167"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ServerSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4055073,
+          "end_time": 1763327825.4255555,
+          "duration_ms": 20.048141479492188,
+          "status": 200,
+          "size": "13994"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@monaco-editor_react.js?v=90e462fd",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4171286,
+          "end_time": 1763327825.4259465,
+          "duration_ms": 8.817911148071289,
+          "status": 200,
+          "size": "24772"
+        },
+        {
+          "url": "http://localhost:8081/src/components/CategoryManagementModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4059057,
+          "end_time": 1763327825.4262476,
+          "duration_ms": 20.341873168945312,
+          "status": 200,
+          "size": "43761"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_pro-components.js?v=317d0e0c",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.386689,
+          "end_time": 1763327825.4276814,
+          "duration_ms": 40.99249839782715,
+          "status": 200,
+          "size": "1077929"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/js-yaml.js?v=c1cf299a",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4172018,
+          "end_time": 1763327825.4280522,
+          "duration_ms": 10.85042953491211,
+          "status": 200,
+          "size": "80467"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/react-resizable/css/styles.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4099796,
+          "end_time": 1763327825.428283,
+          "duration_ms": 18.303394317626953,
+          "status": 200,
+          "size": "2163"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ResizableTitle.css",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4101284,
+          "end_time": 1763327825.4286747,
+          "duration_ms": 18.546342849731445,
+          "status": 200,
+          "size": "2478"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/LogViewer.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.410932,
+          "end_time": 1763327825.4288833,
+          "duration_ms": 17.951250076293945,
+          "status": 200,
+          "size": "18812"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/CollectorSelector.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4110146,
+          "end_time": 1763327825.429332,
+          "duration_ms": 18.317461013793945,
+          "status": 200,
+          "size": "20934"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/utilities.esm-6ybf_cHi.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4226732,
+          "end_time": 1763327825.4297974,
+          "duration_ms": 7.124185562133789,
+          "status": 200,
+          "size": "7362"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/InstallForm.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.411099,
+          "end_time": 1763327825.4307256,
+          "duration_ms": 19.626617431640625,
+          "status": 200,
+          "size": "29912"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/PrecheckModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4111743,
+          "end_time": 1763327825.4321935,
+          "duration_ms": 21.01922035217285,
+          "status": 200,
+          "size": "19335"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/WarningModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4112825,
+          "end_time": 1763327825.4325392,
+          "duration_ms": 21.256685256958008,
+          "status": 200,
+          "size": "23303"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/core.esm-fK7lYqyE.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4227788,
+          "end_time": 1763327825.4329426,
+          "duration_ms": 10.16378402709961,
+          "status": 200,
+          "size": "91088"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/components/StatusProgress.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4113631,
+          "end_time": 1763327825.433456,
+          "duration_ms": 22.092819213867188,
+          "status": 200,
+          "size": "18014"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useConsulNodes.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4114387,
+          "end_time": 1763327825.4339144,
+          "duration_ms": 22.475719451904297,
+          "status": 200,
+          "size": "7972"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useWebSocketLogs.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.411509,
+          "end_time": 1763327825.4348044,
+          "duration_ms": 23.29540252685547,
+          "status": 200,
+          "size": "17586"
+        },
+        {
+          "url": "http://localhost:8081/src/pages/Installer/hooks/useInstaller.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.411581,
+          "end_time": 1763327825.436003,
+          "duration_ms": 24.42193031311035,
+          "status": 200,
+          "size": "20292"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ExtractionProgressModal.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4169645,
+          "end_time": 1763327825.4364626,
+          "duration_ms": 19.498109817504883,
+          "status": 200,
+          "size": "35079"
+        },
+        {
+          "url": "http://localhost:8081/src/hooks/usePrometheusFields.ts",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.4170556,
+          "end_time": 1763327825.4368687,
+          "duration_ms": 19.813060760498047,
+          "status": 200,
+          "size": "10044"
+        },
+        {
+          "url": "http://localhost:8081/src/components/ReferenceValueInput.tsx",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.420305,
+          "end_time": 1763327825.4371533,
+          "duration_ms": 16.848325729370117,
+          "status": 200,
+          "size": "19184"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/now-BuqnPu3g.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.428495,
+          "end_time": 1763327825.4380958,
+          "duration_ms": 9.60087776184082,
+          "status": 200,
+          "size": "160283"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/@ant-design_charts.js?v=efe1b547",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.386944,
+          "end_time": 1763327825.5018628,
+          "duration_ms": 114.91870880126953,
+          "status": 200,
+          "size": "4753458"
+        },
+        {
+          "url": "http://localhost:8081/node_modules/.vite/deps/es-_vAMK92B.js?v=6efc066f",
+          "method": "GET",
+          "resource_type": "script",
+          "start_time": 1763327825.3263218,
+          "end_time": 1763327825.5078137,
+          "duration_ms": 181.49185180664062,
+          "status": 200,
+          "size": "10410665"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.8514268,
+          "end_time": 1763327825.9459684,
+          "duration_ms": 94.54154968261719,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.8553731,
+          "end_time": 1763327825.9466186,
+          "duration_ms": 91.24541282653809,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.934881,
+          "end_time": 1763327825.947209,
+          "duration_ms": 12.327909469604492,
+          "status": 200,
+          "size": "33797"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.8555973,
+          "end_time": 1763327825.9474187,
+          "duration_ms": 91.82143211364746,
+          "status": 200,
+          "size": "466"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.8555086,
+          "end_time": 1763327825.9478142,
+          "duration_ms": 92.30566024780273,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327825.9350595,
+          "end_time": 1763327825.947992,
+          "duration_ms": 12.932538986206055,
+          "status": 200,
+          "size": "600"
+        },
+        {
+          "url": "http://localhost:8081/api/v1/monitoring/data?category=network-probes",
+          "method": "GET",
+          "resource_type": "xhr",
+          "start_time": 1763327826.1791303,
+          "end_time": 1763327826.2022932,
+          "duration_ms": 23.162841796875,
+          "status": 200,
+          "size": "101939"
+        }
+      ]
+    }
+  ]
+}
