@@ -249,34 +249,26 @@ class ConsulManager:
 
     async def get_service_names(self) -> List[str]:
         """
-        Retorna apenas os nomes dos serviços cadastrados
+        Retorna apenas os nomes dos serviços cadastrados do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 REVISADA (2025-11-16):
-        - Usa ?stale para escalabilidade (permite qualquer server responder)
-        - Timeout curto (2s) para evitar espera em nodes offline
-        - Fallback: se falhar, tenta sem ?stale (pode ser node único)
-        - Baseado em: https://developer.hashicorp.com/consul/api-docs/catalog#read-scaling
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido e consistente)
+        - Site principal está sempre próximo (is_default=True no KV)
+        - ?stale só faz sentido para clusters grandes (1000+ nodes) ou fallback
+        - Para 3-5 nodes, default mode é melhor
+        - Fallback já implementado em get_services_with_fallback() se necessário
         
-        NOTA: ?stale NÃO ajuda quando node está offline - ambos falham igual.
-        Testes reais mostram +20.95% melhoria (não +300% teórico).
+        Baseado em análise crítica do contexto real:
+        - Arquitetura: 1 SERVER (master) + 2 CLIENTS
+        - Sistema sempre próximo do site principal
+        - Não precisa distribuir carga (apenas 3 nodes)
         """
         try:
-            # Tentar com ?stale primeiro (timeout curto)
-            try:
-                response = await asyncio.wait_for(
-                    self._request("GET", "/catalog/services", params={"stale": ""}),
-                    timeout=2.0
-                )
-                services = response.json()
-                services.pop("consul", None)
-                return sorted(list(services.keys()))
-            except (asyncio.TimeoutError, httpx.RequestError):
-                # Se falhar com ?stale (node offline?), tentar sem ?stale
-                logger.debug("get_service_names: ?stale falhou, tentando sem ?stale")
-                response = await self._request("GET", "/catalog/services")
-                services = response.json()
-                services.pop("consul", None)
-                return sorted(list(services.keys()))
+            # Site principal SEM ?stale (default mode - mais rápido)
+            response = await self._request("GET", "/catalog/services")
+            services = response.json()
+            services.pop("consul", None)
+            return sorted(list(services.keys()))
         except Exception as exc:
             logger.error("Failed to list service names: %s", exc)
             return []
@@ -478,23 +470,17 @@ class ConsulManager:
 
     async def get_catalog_services(self) -> Dict:
         """
-        Lista todos os serviços do catálogo
+        Lista todos os serviços do catálogo do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 REVISADA (2025-11-16):
-        - Usa ?stale com timeout curto e fallback
-        - Testes reais: +20.95% melhoria (não +300% teórico)
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido)
+        - Site principal está sempre próximo (is_default=True no KV)
+        - ?stale apenas no fallback (get_services_with_fallback)
         """
         try:
-            try:
-                response = await asyncio.wait_for(
-                    self._request("GET", "/catalog/services", params={"stale": ""}),
-                    timeout=2.0
-                )
-                return response.json()
-            except (asyncio.TimeoutError, httpx.RequestError):
-                # Fallback se ?stale falhar
-                response = await self._request("GET", "/catalog/services")
-                return response.json()
+            # Site principal SEM ?stale (default mode)
+            response = await self._request("GET", "/catalog/services")
+            return response.json()
         except:
             return {}
 
@@ -566,13 +552,14 @@ class ConsulManager:
 
     async def get_services_by_name(self, service_name: str) -> List[Dict]:
         """
-        Obtém todos os serviços com um nome específico do catálogo
+        Obtém todos os serviços com um nome específico do catálogo do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
-        - Adicionado ?stale para escalabilidade
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido)
+        - ?stale apenas no fallback (get_services_with_fallback)
         """
         try:
-            response = await self._request("GET", f"/catalog/service/{service_name}", params={"stale": ""})
+            response = await self._request("GET", f"/catalog/service/{service_name}")
             return response.json()
         except:
             return []
@@ -591,39 +578,42 @@ class ConsulManager:
 
     async def get_datacenters(self) -> List[str]:
         """
-        Lista todos os datacenters do Consul
+        Lista todos os datacenters do Consul do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
-        - Adicionado ?stale para escalabilidade
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido)
+        - ?stale apenas no fallback se necessário
         """
         try:
-            response = await self._request("GET", "/catalog/datacenters", params={"stale": ""})
+            response = await self._request("GET", "/catalog/datacenters")
             return response.json()
         except:
             return []
 
     async def get_nodes(self) -> List[Dict]:
         """
-        Lista todos os nós do catálogo
+        Lista todos os nós do catálogo do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
-        - Adicionado ?stale para escalabilidade
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido)
+        - ?stale apenas no fallback se necessário
         """
         try:
-            response = await self._request("GET", "/catalog/nodes", params={"stale": ""})
+            response = await self._request("GET", "/catalog/nodes")
             return response.json()
         except:
             return []
 
     async def get_node_services(self, node_name: str) -> Dict:
         """
-        Obtém todos os serviços de um nó específico pelo nome
+        Obtém todos os serviços de um nó específico pelo nome do site principal.
         
-        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
-        - Adicionado ?stale para escalabilidade
+        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+        - Usa site principal SEM ?stale (default mode - mais rápido)
+        - ?stale apenas no fallback se necessário
         """
         try:
-            response = await self._request("GET", f"/catalog/node/{node_name}", params={"stale": ""})
+            response = await self._request("GET", f"/catalog/node/{node_name}")
             return response.json()
         except:
             return {}
@@ -979,18 +969,33 @@ class ConsulManager:
                 # Criar manager temporário para o node específico
                 temp_manager = ConsulManager(host=node_addr, token=self.token)
 
-                # ✅ CORREÇÃO CRÍTICA: Catalog API (não Agent API!)
+                # ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
+                # - Master: SEM ?stale (default mode - mais rápido e consistente)
+                # - Clients: COM ?stale (permite distribuir se master offline)
                 # Catalog API retorna TODOS os serviços do datacenter
                 # Agent API retornaria APENAS serviços locais do node
-                response = await asyncio.wait_for(
-                    temp_manager._request(
-                        "GET",
-                        "/catalog/services",
-                        use_cache=True,  # ← Agent caching (OFFICIAL FEATURE)
-                        params={"stale": ""}  # ← Stale reads (OFFICIAL CONSISTENCY MODE)
-                    ),
-                    timeout=timeout_per_node
-                )
+                
+                if is_master:
+                    # Master: SEM ?stale (default mode - mais rápido)
+                    response = await asyncio.wait_for(
+                        temp_manager._request(
+                            "GET",
+                            "/catalog/services",
+                            use_cache=True  # ← Agent caching (OFFICIAL FEATURE)
+                        ),
+                        timeout=timeout_per_node
+                    )
+                else:
+                    # Clients: COM ?stale (distribui se master offline)
+                    response = await asyncio.wait_for(
+                        temp_manager._request(
+                            "GET",
+                            "/catalog/services",
+                            use_cache=True,  # ← Agent caching (OFFICIAL FEATURE)
+                            params={"stale": ""}  # ← Stale reads apenas no fallback
+                        ),
+                        timeout=timeout_per_node
+                    )
 
                 services = response.json()
                 elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -1098,17 +1103,27 @@ class ConsulManager:
             # Buscar node ativo com fallback
             _, metadata = await self.get_services_with_fallback()
             source_node = metadata["source_node"]
+            is_master = metadata.get("is_master", False)
 
-            logger.debug(f"[Catalog] Buscando lista de serviços de {source_node}")
+            logger.debug(f"[Catalog] Buscando lista de serviços de {source_node} (master: {is_master})")
 
             # PASSO 1: Buscar lista de nomes dos serviços (leve, 4-10ms)
             temp_manager = ConsulManager(host=source_node, token=self.token)
-            response = await temp_manager._request(
-                "GET",
-                "/catalog/services",
-                use_cache=True,
-                params={"stale": "", "cached": ""}
-            )
+            
+            # ✅ ESTRATÉGIA CORRIGIDA: Master SEM ?stale, clients COM ?stale
+            if is_master:
+                response = await temp_manager._request(
+                    "GET",
+                    "/catalog/services",
+                    use_cache=True  # ← Agent caching apenas
+                )
+            else:
+                response = await temp_manager._request(
+                    "GET",
+                    "/catalog/services",
+                    use_cache=True,
+                    params={"stale": ""}  # ← Stale apenas no fallback
+                )
 
             service_names = response.json()  # Dict {name: [tags]}
             logger.debug(f"[Catalog] Encontrados {len(service_names)} nomes de serviços")
@@ -1117,12 +1132,20 @@ class ConsulManager:
             async def fetch_service_details(name: str):
                 """Busca detalhes de um serviço específico"""
                 try:
-                    resp = await temp_manager._request(
-                        "GET",
-                        f"/catalog/service/{name}",
-                        use_cache=True,
-                        params={"stale": "", "cached": ""}
-                    )
+                    # ✅ ESTRATÉGIA CORRIGIDA: Master SEM ?stale, clients COM ?stale
+                    if is_master:
+                        resp = await temp_manager._request(
+                            "GET",
+                            f"/catalog/service/{name}",
+                            use_cache=True
+                        )
+                    else:
+                        resp = await temp_manager._request(
+                            "GET",
+                            f"/catalog/service/{name}",
+                            use_cache=True,
+                            params={"stale": ""}
+                        )
                     return name, resp.json()
                 except Exception as e:
                     logger.error(f"[Catalog] Erro ao buscar serviço '{name}': {e}")
@@ -1165,13 +1188,13 @@ class ConsulManager:
 
             return all_services
         else:
-            # Modo legado: apenas consulta self.host (MAIN_SERVER)
+            # Modo legado: apenas consulta self.host (MAIN_SERVER - site principal)
             logger.debug("[Catalog] Modo legado sem fallback - consultando MAIN_SERVER")
+            # ✅ ESTRATÉGIA CORRIGIDA: Site principal SEM ?stale
             response = await self._request(
                 "GET",
                 "/catalog/services",
-                use_cache=True,
-                params={"stale": ""}
+                use_cache=True  # ← Agent caching apenas
             )
             services = response.json()
             return {"default": services}
