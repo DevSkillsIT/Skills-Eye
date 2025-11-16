@@ -39,9 +39,10 @@ Implementar correções críticas identificadas na análise completa de alinhame
 - ✅ 6/15 chamadas Catalog API agora usam `?stale` com fallback
 - ⚠️ 9 chamadas restantes são em métodos internos que já têm `?stale` (get_all_services_catalog, get_services_with_fallback)
 
-**Impacto Esperado:**
-- Escalabilidade: +300% (distribui reads para todos servers)
-- Performance: Melhora em clusters grandes (não sobrecarrega leader)
+**Impacto Real (Validado com Testes):**
+- Performance: +20.95% na média, +51.77% no P95 (testes reais executados)
+- Escalabilidade: Melhoria em clusters grandes (não sobrecarrega leader)
+- ⚠️ **NOTA:** NÃO é +300% como teoria sugeria. Sempre validar com testes reais!
 
 ---
 
