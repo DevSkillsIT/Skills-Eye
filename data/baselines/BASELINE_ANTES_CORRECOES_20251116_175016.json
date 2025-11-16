@@ -1,0 +1,139 @@
+{
+  "timestamp": "2025-11-16T17:50:16.175034",
+  "branch": "main",
+  "commit": "479572f",
+  "tests": {
+    "backend_endpoints": {
+      "monitoring_data_network": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "monitoring_data_web": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "monitoring_data_system": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "metadata_fields": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "categorization_rules": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "services": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      },
+      "nodes": {
+        "status": "EXCEPTION",
+        "error": "All connection attempts failed"
+      }
+    },
+    "consul_api_performance": {
+      "catalog_services_no_stale": {
+        "duration_ms": 4.52,
+        "status_code": 200,
+        "has_data": true
+      },
+      "catalog_services_with_stale": {
+        "duration_ms": 1.6,
+        "status_code": 200,
+        "has_data": true
+      },
+      "agent_services_no_cached": {
+        "duration_ms": 6.79,
+        "status_code": 200,
+        "has_data": true
+      },
+      "agent_services_with_cached": {
+        "duration_ms": 10.32,
+        "status_code": 200,
+        "cache_status": "UNKNOWN",
+        "age_seconds": 0,
+        "has_data": true
+      }
+    },
+    "promql_queries": {
+      "network_probes": {
+        "status": "ERROR",
+        "status_code": 401,
+        "duration_ms": 2.49
+      },
+      "system_exporters": {
+        "status": "ERROR",
+        "status_code": 401,
+        "duration_ms": 1.23
+      },
+      "database_exporters": {
+        "status": "ERROR",
+        "status_code": 401,
+        "duration_ms": 1.16
+      }
+    },
+    "unit_tests": {
+      "test_categorization_rule_engine.py": {
+        "status": "SUCCESS",
+        "return_code": 0,
+        "total": 10,
+        "passed": 10,
+        "failed": 0,
+        "output_summary": "PASSED [ 60%]\ntest_categorization_rule_engine.py::TestCategorize::test_categorize_priority_order PASSED [ 70%]\ntest_categorization_rule_engine.py::TestCategorize::test_categorize_fallback_to_default PASSED [ 80%]\ntest_categorization_rule_engine.py::TestCategorize::test_categorize_module_matching PASSED [ 90%]\ntest_categorization_rule_engine.py::TestCategorize::test_categorize_metrics_path_distinction PASSED [100%]\n\n============================== 10 passed in 0.03s ==============================\n"
+      }
+    },
+    "consul_manager_methods": {
+      "get_service_names": {
+        "duration_ms": 16.95,
+        "count": 4,
+        "has_data": true
+      },
+      "query_agent_services": {
+        "duration_ms": 24.61,
+        "count": 141,
+        "has_data": true
+      },
+      "get_all_services_catalog": {
+        "duration_ms": 149.82,
+        "total_services": 164,
+        "nodes": 3,
+        "has_metadata": true
+      }
+    },
+    "code_issues": {
+      "asyncio_run_usage": {
+        "count": 3,
+        "locations": [
+          "63:            sites_data = asyncio.run(kv.get_json('skills/eye/metadata/sites'))",
+          "139:            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))",
+          "162:            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))"
+        ]
+      },
+      "catalog_stale_usage": {
+        "total_catalog_calls": 15,
+        "with_stale": 0,
+        "without_stale": 15
+      },
+      "agent_cached_usage": {
+        "total_agent_calls": 7,
+        "with_cached": 0,
+        "without_cached": 7
+      }
+    }
+  },
+  "summary": {
+    "total_tests": 21,
+    "errors": 7,
+    "error_list": [
+      "/monitoring/data?category=network-probes: All connection attempts failed",
+      "/monitoring/data?category=web-probes: All connection attempts failed",
+      "/monitoring/data?category=system-exporters: All connection attempts failed",
+      "/metadata-fields/: All connection attempts failed",
+      "/categorization-rules: All connection attempts failed",
+      "/services: All connection attempts failed",
+      "/nodes: All connection attempts failed"
+    ]
+  }
+}

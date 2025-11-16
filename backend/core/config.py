@@ -2,10 +2,39 @@
 Configuração central adaptada do consul-manager.py original
 """
 import os
-from typing import Dict, List, Set
+import asyncio
+from typing import Dict, List, Set, Coroutine, Any
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _run_async_safe(coro: Coroutine[Any, Any, Any]) -> Any:
+    """
+    Executa corrotina de forma segura, detectando se há event loop rodando.
+    
+    ✅ CORREÇÃO FASE 1.3 (2025-11-16):
+    - Remove uso de asyncio.run() que pode causar RuntimeError em contextos async
+    - Baseado em: https://docs.python.org/3/library/asyncio-task.html#asyncio.run
+    
+    Args:
+        coro: Corrotina a ser executada
+        
+    Returns:
+        Resultado da corrotina
+    """
+    try:
+        # Tentar obter event loop existente
+        loop = asyncio.get_running_loop()
+        # Já existe event loop - usar ThreadPoolExecutor para executar em thread separada
+        import concurrent.futures
+        
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, coro)
+            return future.result()
+    except RuntimeError:
+        # Não há event loop - usar asyncio.run() normalmente
+        return asyncio.run(coro)
 
 class Config:
     """Configuração central do ambiente Skills IT
@@ -59,8 +88,8 @@ class Config:
             from core.kv_manager import KVManager
             kv = KVManager()
 
-            import asyncio
-            sites_data = asyncio.run(kv.get_json('skills/eye/metadata/sites'))
+            # ✅ CORREÇÃO FASE 1.3: Usar helper seguro ao invés de asyncio.run()
+            sites_data = _run_async_safe(kv.get_json('skills/eye/metadata/sites'))
 
             if sites_data:
                 # ESTRUTURA DO KV: {"data": {"sites": [...]}} (duplo wrap após auto_sync)
@@ -135,8 +164,8 @@ class Config:
             kv = KVManager()
 
             # Buscar do KV (dados extraídos do Prometheus)
-            import asyncio
-            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
+            # ✅ CORREÇÃO FASE 1.3: Usar helper seguro ao invés de asyncio.run()
+            fields_data = _run_async_safe(kv.get_json('skills/eye/metadata/fields'))
 
             if fields_data and 'fields' in fields_data:
                 return [field['name'] for field in fields_data['fields']]
@@ -158,8 +187,8 @@ class Config:
             from core.kv_manager import KVManager
             kv = KVManager()
 
-            import asyncio
-            fields_data = asyncio.run(kv.get_json('skills/eye/metadata/fields'))
+            # ✅ CORREÇÃO FASE 1.3: Usar helper seguro ao invés de asyncio.run()
+            fields_data = _run_async_safe(kv.get_json('skills/eye/metadata/fields'))
 
             if fields_data and 'fields' in fields_data:
                 return [

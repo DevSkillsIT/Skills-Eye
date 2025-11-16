@@ -204,10 +204,16 @@ class ConsulManager:
         return candidate
 
     async def query_agent_services(self, filter_expr: Optional[str] = None) -> Dict[str, Dict]:
-        """Consulta /agent/services com filtro opcional"""
-        params = {"filter": filter_expr} if filter_expr else None
+        """
+        Consulta /agent/services com filtro opcional
+        
+        ✅ CORREÇÃO FASE 1.2 (2025-11-16):
+        - Adicionado use_cache=True para Agent Caching (background refresh)
+        - Baseado em: https://developer.hashicorp.com/consul/api-docs/agent/service#agent-caching
+        """
+        params = {"filter": filter_expr} if filter_expr else {}
         try:
-            response = await self._request("GET", "/agent/services", params=params)
+            response = await self._request("GET", "/agent/services", use_cache=True, params=params)
             return response.json()
         except Exception as exc:
             logger.error("Failed to query agent services: %s", exc)
@@ -242,9 +248,15 @@ class ConsulManager:
             return []
 
     async def get_service_names(self) -> List[str]:
-        """Retorna apenas os nomes dos serviços cadastrados"""
+        """
+        Retorna apenas os nomes dos serviços cadastrados
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade (permite qualquer server responder)
+        - Baseado em: https://developer.hashicorp.com/consul/api-docs/catalog#read-scaling
+        """
         try:
-            response = await self._request("GET", "/catalog/services")
+            response = await self._request("GET", "/catalog/services", params={"stale": ""})
             services = response.json()
             services.pop("consul", None)
             return sorted(list(services.keys()))
@@ -387,14 +399,19 @@ class ConsulManager:
             ]
 
     async def get_services(self, node_addr: str = None) -> Dict:
-        """Obtém serviços de um nó específico ou local"""
+        """
+        Obtém serviços de um nó específico ou local
+        
+        ✅ CORREÇÃO FASE 1.2 (2025-11-16):
+        - Adicionado use_cache=True para Agent Caching (alta frequência de chamadas)
+        """
         if node_addr and node_addr != self.host:
             # Conectar ao nó específico
             temp_manager = ConsulManager(host=node_addr, token=self.token)
             return await temp_manager.get_services()
 
         try:
-            response = await self._request("GET", "/agent/services")
+            response = await self._request("GET", "/agent/services", use_cache=True)
             return response.json()
         except:
             return {}
@@ -443,9 +460,14 @@ class ConsulManager:
             return []
 
     async def get_catalog_services(self) -> Dict:
-        """Lista todos os serviços do catálogo"""
+        """
+        Lista todos os serviços do catálogo
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade
+        """
         try:
-            response = await self._request("GET", "/catalog/services")
+            response = await self._request("GET", "/catalog/services", params={"stale": ""})
             return response.json()
         except:
             return {}
@@ -517,9 +539,14 @@ class ConsulManager:
         return services.get(service_id)
 
     async def get_services_by_name(self, service_name: str) -> List[Dict]:
-        """Obtém todos os serviços com um nome específico do catálogo"""
+        """
+        Obtém todos os serviços com um nome específico do catálogo
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade
+        """
         try:
-            response = await self._request("GET", f"/catalog/service/{service_name}")
+            response = await self._request("GET", f"/catalog/service/{service_name}", params={"stale": ""})
             return response.json()
         except:
             return []
@@ -537,25 +564,40 @@ class ConsulManager:
             return {}
 
     async def get_datacenters(self) -> List[str]:
-        """Lista todos os datacenters do Consul"""
+        """
+        Lista todos os datacenters do Consul
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade
+        """
         try:
-            response = await self._request("GET", "/catalog/datacenters")
+            response = await self._request("GET", "/catalog/datacenters", params={"stale": ""})
             return response.json()
         except:
             return []
 
     async def get_nodes(self) -> List[Dict]:
-        """Lista todos os nós do catálogo"""
+        """
+        Lista todos os nós do catálogo
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade
+        """
         try:
-            response = await self._request("GET", "/catalog/nodes")
+            response = await self._request("GET", "/catalog/nodes", params={"stale": ""})
             return response.json()
         except:
             return []
 
     async def get_node_services(self, node_name: str) -> Dict:
-        """Obtém todos os serviços de um nó específico pelo nome"""
+        """
+        Obtém todos os serviços de um nó específico pelo nome
+        
+        ✅ CORREÇÃO FASE 1.1 (2025-11-16):
+        - Adicionado ?stale para escalabilidade
+        """
         try:
-            response = await self._request("GET", f"/catalog/node/{node_name}")
+            response = await self._request("GET", f"/catalog/node/{node_name}", params={"stale": ""})
             return response.json()
         except:
             return {}
