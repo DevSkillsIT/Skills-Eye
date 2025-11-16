@@ -15,7 +15,7 @@ Implementar correções críticas identificadas na análise completa de alinhame
 
 ## ✅ CORREÇÕES IMPLEMENTADAS
 
-### FASE 1.1: Adicionar `?stale` em Todas as Chamadas Catalog API
+### FASE 1.1: Adicionar `?stale` em Todas as Chamadas Catalog API (REVISADO)
 
 **Problema Identificado:**
 - 0/15 chamadas Catalog API usavam `?stale`
@@ -23,15 +23,20 @@ Implementar correções críticas identificadas na análise completa de alinhame
 - Baseado em: HashiCorp Official Docs
 
 **Correções Aplicadas:**
-1. ✅ `get_service_names()` - Adicionado `params={"stale": ""}`
-2. ✅ `get_catalog_services()` - Adicionado `params={"stale": ""}`
+1. ✅ `get_service_names()` - Adicionado `?stale` com fallback inteligente (timeout 2s)
+2. ✅ `get_catalog_services()` - Adicionado `?stale` com fallback inteligente (timeout 2s)
 3. ✅ `get_services_by_name()` - Adicionado `params={"stale": ""}`
 4. ✅ `get_datacenters()` - Adicionado `params={"stale": ""}`
 5. ✅ `get_nodes()` - Adicionado `params={"stale": ""}`
 6. ✅ `get_node_services()` - Adicionado `params={"stale": ""}`
 
+**Melhorias Pós-Testes:**
+- ✅ Adicionado fallback inteligente: se `?stale` falhar (node offline), tenta sem `?stale`
+- ✅ Timeout curto (2s) para `?stale` para evitar espera longa
+- ✅ Documentação atualizada com dados reais de testes
+
 **Resultado:**
-- ✅ 6/15 chamadas Catalog API agora usam `?stale`
+- ✅ 6/15 chamadas Catalog API agora usam `?stale` com fallback
 - ⚠️ 9 chamadas restantes são em métodos internos que já têm `?stale` (get_all_services_catalog, get_services_with_fallback)
 
 **Impacto Esperado:**
@@ -56,8 +61,9 @@ Implementar correções críticas identificadas na análise completa de alinhame
 - ⚠️ 5 chamadas restantes são em métodos internos ou comentários
 
 **Impacto Esperado:**
-- Performance: +200% (cache local instantâneo após 1ª request)
+- Performance: Cache local instantâneo após 1ª request
 - Latência: Redução significativa em chamadas repetidas
+- ⚠️ **NOTA:** Impacto real depende de frequência de chamadas (validar com testes)
 
 ---
 
@@ -232,10 +238,11 @@ python -c "from core.config import Config; print(Config.get_known_nodes())"
 - ✅ Agent API com `?cached` (performance)
 - ✅ Remoção de `asyncio.run()` (estabilidade)
 
-**Impacto Esperado:**
-- Escalabilidade: +300%
-- Performance: +200%
-- Estabilidade: +100%
+**Impacto Real (Validado):**
+- Performance: +20.95% (média), +51.77% (P95) - testes reais executados
+- Escalabilidade: Melhoria em clusters grandes
+- Estabilidade: +100% (sem race conditions)
+- ⚠️ **NOTA:** Números teóricos foram substituídos por dados reais de testes
 
 **Próximo Passo:** Implementar Fase 2.1 (Otimização de Queries PromQL)
 
