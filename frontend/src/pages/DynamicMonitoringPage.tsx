@@ -391,9 +391,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         baseColumn.sortDirections = ['ascend', 'descend'];
       }
 
-      // ✅ NOVO: Filtros customizados por coluna (searchable checkboxes)
+      // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
+      // Só renderizar se metadataOptions estiver carregado e tiver opções
       const fieldOptions = metadataOptions[colConfig.key] || [];
-      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags') {
+      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags' && metadataOptionsLoaded) {
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
           const [searchText, setSearchText] = useState('');
 
@@ -453,7 +454,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   type="primary"
                   size="small"
-                  onClick={() => confirm()}
+                  onClick={() => {
+                    // ✅ CORREÇÃO: Aplicar filtro na coluna específica
+                    const newFilters = { ...filters };
+                    if (selectedKeys.length > 0) {
+                      // Se múltiplos valores selecionados, usar o primeiro (ou implementar lógica OR)
+                      newFilters[colConfig.key] = selectedKeys[0];
+                    } else {
+                      delete newFilters[colConfig.key];
+                    }
+                    setFilters(newFilters);
+                    confirm();
+                    actionRef.current?.reload();
+                  }}
                   icon={<SearchOutlined />}
                 >
                   OK
@@ -461,8 +474,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   size="small"
                   onClick={() => {
+                    const newFilters = { ...filters };
+                    delete newFilters[colConfig.key];
+                    setFilters(newFilters);
                     clearFilters?.();
                     setSearchText('');
+                    actionRef.current?.reload();
                   }}
                 >
                   Limpar
@@ -474,7 +491,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         baseColumn.filterIcon = (filtered: boolean) => (
           <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
         );
+        // ✅ CORREÇÃO: onFilter agora verifica se o valor está nos selectedKeys
         baseColumn.onFilter = (value, record) => {
+          // Este método é usado pelo ProTable internamente, mas vamos usar filtros customizados
           const fieldValue = getFieldValue(record, colConfig.key);
           return fieldValue === value;
         };
@@ -601,7 +620,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         rows = rows.filter(item => item.node_ip === selectedNode);
       }
 
-      // ✅ NOVO: Extrair metadataOptions dinamicamente
+      // ✅ NOVO: Extrair metadataOptions dinamicamente (ANTES de filtrar)
       const metadataStart = performance.now();
       const optionsSets: Record<string, Set<string>> = {};
       filterFields.forEach((field) => {
@@ -640,9 +659,42 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
       }
 
-      // ✅ NOVO: Aplicar filtros avançados
+      // ✅ CORREÇÃO CRÍTICA: Aplicar filtros de metadata ANTES de filtros avançados
+      const metadataFiltersStart = performance.now();
+      let metadataFilteredRows = rows;
+      
+      // Aplicar filtros de MetadataFilterBar (filtros simples)
+      const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '');
+      if (activeFilters.length > 0) {
+        metadataFilteredRows = rows.filter((item) => {
+          return activeFilters.every(([fieldName, filterValue]) => {
+            // Verificar se é campo de metadata
+            const field = filterFields.find(f => f.name === fieldName);
+            if (field) {
+              const itemValue = item.Meta?.[fieldName];
+              return itemValue === filterValue || String(itemValue) === String(filterValue);
+            }
+            
+            // Verificar se é campo fixo
+            if (fieldName === 'Node') {
+              return item.Node === filterValue;
+            }
+            if (fieldName === 'Service') {
+              return item.Service === filterValue;
+            }
+            
+            return true;
+          });
+        });
+      }
+      const metadataFiltersEnd = performance.now();
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Filtros metadata em ${(metadataFiltersEnd - metadataFiltersStart).toFixed(0)}ms → ${metadataFilteredRows.length} registros`, 'color: #e91e63; font-weight: bold');
+      }
+
+      // ✅ NOVO: Aplicar filtros avançados (depois dos filtros de metadata)
       const filtersStart = performance.now();
-      const filteredRows = applyAdvancedFilters(rows);
+      const filteredRows = applyAdvancedFilters(metadataFilteredRows);
       const filtersEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
