@@ -1182,6 +1182,10 @@ function App() {
 #### **Roteamento:**
 - **React Router DOM 7** - Sistema de navegação entre páginas da aplicação
 
+#### **Styling (Estilização):**
+- **Tailwind CSS** - Framework CSS utility-first (obrigatório com shadcn/ui) - Classes utilitárias para styling rápido e consistente
+- **CSS Modules** - Alternativa para Ant Design Pro - Estilos scoped por componente
+
 ---
 
 ### **⚙️ BACKEND (Servidor e Lógica de Negócio)**
