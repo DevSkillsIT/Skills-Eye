@@ -3,6 +3,7 @@ import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
 import { BrowserRouter, Route, Routes, Link, useLocation } from 'react-router-dom';
+import './styles/sidebar.css';
 // ✅ OTIMIZAÇÃO (2025-11-16): Removido import loadNamingConfig
 // SitesProvider já carrega naming-config via /settings/sites-config
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
