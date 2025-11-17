@@ -802,7 +802,7 @@ export const useUIStore = create<UIState>((set) => ({
 
 ## 🎯 STACK FINAL RECOMENDADA
 
-### **FRONTEND:**
+### **FRONTEND (Opção 1: shadcn/ui - Modernidade):**
 
 ```json
 {
@@ -833,6 +833,44 @@ export const useUIStore = create<UIState>((set) => ({
 ```
 
 **Nota:** shadcn/ui não é instalado via npm, você copia os componentes para seu projeto usando `npx shadcn-ui@latest add [component]`
+
+### **FRONTEND (Opção 2: Ant Design Pro - Enterprise/Produtividade):**
+
+```json
+{
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.9.4",
+    "@refinedev/core": "^4.50.0",
+    "@refinedev/antd": "^5.50.0",
+    "@refinedev/react-router-v6": "^4.50.0",
+    "@ant-design/pro-components": "^2.8.10",
+    "@ant-design/pro-layout": "^7.22.7",
+    "antd": "^5.28.0",
+    "@tanstack/react-query": "^5.50.0",
+    "zustand": "^4.5.0",
+    "axios": "^1.12.2",
+    "react-hook-form": "^7.52.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "vite": "^7.1.14",
+    "typescript": "^5.9.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@biomejs/biome": "^1.9.0",
+    "vitest": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "lefthook": "^0.9.0"
+  }
+}
+```
+
+**Vantagens:**
+- ✅ ProTable/ProForm prontos (economiza 40+ horas)
+- ✅ Features enterprise completas
+- ✅ Visual corporativo
+- ✅ Muito maduro e testado
 
 ### **BACKEND:**
 
