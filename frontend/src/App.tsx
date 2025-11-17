@@ -198,13 +198,6 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
           path: '/',
           routes: menuItems,
         }}
-        menu={{
-          style: {
-            fontSize: '15px',
-            fontWeight: 500,
-            padding: '8px 0',
-          },
-        }}
         siderMenuProps={{
           style: {
             backgroundColor: darkMode ? '#001529' : '#ffffff',
