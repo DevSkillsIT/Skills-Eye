@@ -384,6 +384,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     [advancedConditions, advancedOperator, getFieldValue],
   );
 
+  // ✅ OTIMIZAÇÃO: Serializar dependências uma vez para evitar recálculos
+  const columnConfigKey = useMemo(
+    () => columnConfig.map(c => `${c.key}:${c.visible}`).join(','),
+    [columnConfig]
+  );
+  
+  const tableFieldsKey = useMemo(
+    () => tableFields.map(f => f.name).join(','),
+    [tableFields]
+  );
+  
+  const columnWidthsKey = useMemo(
+    () => JSON.stringify(columnWidths),
+    [columnWidths]
+  );
+
   // SISTEMA DINÂMICO: Gerar colunas do ProTable com TODAS as features
   // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos
   const lastProTableColumnsRef = useRef<string>('');
@@ -617,12 +633,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       return baseColumn;
     });
   }, [
-    // ✅ OTIMIZAÇÃO: Usar serialização para comparação ao invés de arrays completos
+    // ✅ OTIMIZAÇÃO: Usar chaves serializadas memoizadas ao invés de recalcular a cada render
     columnConfig.length,
-    columnConfig.map(c => `${c.key}:${c.visible}`).join(','),
-    JSON.stringify(columnWidths),
+    columnConfigKey,
+    columnWidthsKey,
     tableFields.length,
-    tableFields.map(f => f.name).join(','),
+    tableFieldsKey,
     metadataOptionsLoaded,
     handleResize,
     getFieldValue,
