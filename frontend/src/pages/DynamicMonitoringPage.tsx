@@ -475,6 +475,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       // Só renderizar se metadataOptions estiver carregado e tiver opções
       const fieldOptions = metadataOptions[colConfig.key] || [];
       if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags' && metadataOptionsLoaded) {
+        // ✅ CORREÇÃO: Usar filteredValue para controlar estado visual do filtro
+        baseColumn.filteredValue = filters[colConfig.key] ? [filters[colConfig.key]] : null;
+        
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
           const [searchText, setSearchText] = useState('');
 
