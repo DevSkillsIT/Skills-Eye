@@ -313,6 +313,8 @@ const MetadataFieldsPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);
   const [serverJustChanged, setServerJustChanged] = useState(false);
+  // ✅ OTIMIZAÇÃO: useRef para prevenir execução duplicada em StrictMode
+  const serverChangeProcessingRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('meta-fields');  // Aba ativa
   const [externalLabels, setExternalLabels] = useState<Record<string, string>>({});  // External labels do servidor
   const [loadingExternalLabels, setLoadingExternalLabels] = useState(false);
@@ -1281,33 +1283,56 @@ const MetadataFieldsPage: React.FC = () => {
   }, []); // Array vazio = executa apenas no mount
 
   // Quando trocar de servidor: APENAS atualizar sync status (não recarrega campos)
+  // ✅ OTIMIZAÇÃO: Proteção robusta contra StrictMode duplicando execução
   useEffect(() => {
-    if (selectedServer && fields.length > 0) {
-      // Animação de "servidor alterado"
-      setServerJustChanged(true);
-      setTimeout(() => setServerJustChanged(false), 2000);
-
-      setServerHasNoPrometheus(false);
-      setServerPrometheusMessage('');
-
-      // IMPORTANTE: Buscar external_labels PRIMEIRO, DEPOIS sync status
-      // Isso garante que o filtro funcione corretamente
-      const loadData = async () => {
-        console.log('[DEBUG] Servidor alterado, atualizando external_labels e sync status...');
-
-        // PASSO 1: Buscar external_labels (necessário para filtrar campos)
-        await fetchExternalLabels(selectedServer);
-
-        // PASSO 2: Buscar sync status (atualiza status nos fields existentes)
-        // NÃO chama fetchFields() novamente!
-        await fetchSyncStatus(selectedServer);
-
-        console.log('[DEBUG] Todos os dados carregados!');
-      };
-
-      loadData();
+    if (!selectedServer || fields.length === 0) return;
+    
+    // ✅ PROTEÇÃO ROBUSTA: useRef previne execução duplicada em StrictMode
+    // Se já estamos processando este servidor, ignorar segunda execução
+    if (serverChangeProcessingRef.current === selectedServer) {
+      console.log('[MetadataFields] ⚠️ Ignorando execução duplicada do StrictMode para servidor:', selectedServer);
+      return;
     }
-  }, [selectedServer]);
+    
+    // Marcar que estamos processando este servidor
+    serverChangeProcessingRef.current = selectedServer;
+    
+    // Animação de "servidor alterado"
+    setServerJustChanged(true);
+    setTimeout(() => setServerJustChanged(false), 2000);
+
+    setServerHasNoPrometheus(false);
+    setServerPrometheusMessage('');
+
+    // IMPORTANTE: Buscar external_labels PRIMEIRO, DEPOIS sync status
+    // Isso garante que o filtro funcione corretamente
+    const loadData = async () => {
+      console.log('[DEBUG] Servidor alterado, atualizando external_labels e sync status...');
+
+      // PASSO 1: Buscar external_labels (necessário para filtrar campos)
+      await fetchExternalLabels(selectedServer);
+
+      // PASSO 2: Buscar sync status (atualiza status nos fields existentes)
+      // NÃO chama fetchFields() novamente!
+      await fetchSyncStatus(selectedServer);
+
+      console.log('[DEBUG] Todos os dados carregados!');
+      
+      // Limpar ref após completar
+      if (serverChangeProcessingRef.current === selectedServer) {
+        serverChangeProcessingRef.current = null;
+      }
+    };
+
+    loadData();
+    
+    // Limpar ref após um pequeno delay para permitir próxima mudança
+    setTimeout(() => {
+      if (serverChangeProcessingRef.current === selectedServer) {
+        serverChangeProcessingRef.current = null;
+      }
+    }, 100);
+  }, [selectedServer, fields.length]);
 
   // CORREÇÃO: Carregar external labels quando a aba é selecionada
   // Problema identificado: fetchExternalLabels() só era chamado quando servidor mudava
