@@ -1,0 +1,783 @@
+{
+  "timestamp": "2025-11-16T22:03:12.782512",
+  "test_type": "servers_frontend_baseline_antes",
+  "pages": {
+    "PrometheusConfig": {
+      "page_name": "PrometheusConfig",
+      "page_path": "/prometheus-config",
+      "iterations": 3,
+      "metrics": [
+        {
+          "navigation_time_ms": 597.51,
+          "dom_content_loaded_ms": 592,
+          "load_complete_ms": 593,
+          "first_contentful_paint_ms": 1232,
+          "total_requests": 106,
+          "api_requests": 10,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 256.81,
+              "status": 200
+            },
+            {
+              "duration_ms": 242.38,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 256.81,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 786.89,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 242.92,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 243.9,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 242.38,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 772.49,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 18.29,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 19.6,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/files?hostname=172.16.1.26",
+              "duration_ms": 7.79,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/file/structure?file_path=%2Fetc%2Fprometheus%2Fprometheus.yml&hostname=172.16.1.26",
+              "duration_ms": 6.71,
+              "status": 200
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 256.87,
+          "dom_content_loaded_ms": 251,
+          "load_complete_ms": 251,
+          "first_contentful_paint_ms": 628,
+          "total_requests": 107,
+          "api_requests": 11,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 163.94,
+              "status": 200
+            },
+            {
+              "duration_ms": 155.48,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/prometheus-config/fields",
+              "duration_ms": 1.01,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 163.94,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 164.12,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 155.41,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 156.2,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 155.48,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 154.64,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 9.0,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 9.36,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/files?hostname=172.16.1.26",
+              "duration_ms": 3.31,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/file/structure?file_path=%2Fetc%2Fprometheus%2Fprometheus.yml&hostname=172.16.1.26",
+              "duration_ms": 4.51,
+              "status": 200
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 225.37,
+          "dom_content_loaded_ms": 223,
+          "load_complete_ms": 223,
+          "first_contentful_paint_ms": 576,
+          "total_requests": 107,
+          "api_requests": 11,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 162.19,
+              "status": 200
+            },
+            {
+              "duration_ms": 153.57,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/prometheus-config/fields",
+              "duration_ms": 0.35,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 162.19,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 162.46,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 152.68,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 154.13,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 153.57,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 152.67,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 9.26,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 10.61,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/files?hostname=172.16.1.26",
+              "duration_ms": 4.01,
+              "status": 200
+            },
+            {
+              "url": "/prometheus-config/file/structure?file_path=%2Fetc%2Fprometheus%2Fprometheus.yml&hostname=172.16.1.26",
+              "duration_ms": 4.96,
+              "status": 200
+            }
+          ]
+        }
+      ],
+      "statistics": {
+        "navigation": {
+          "mean_ms": 359.92,
+          "median_ms": 256.87,
+          "min_ms": 225.37,
+          "max_ms": 597.51
+        },
+        "servers_requests": {
+          "mean_count": 2,
+          "total_requests": 6
+        }
+      }
+    },
+    "MetadataFields": {
+      "page_name": "MetadataFields",
+      "page_path": "/metadata-fields",
+      "iterations": 3,
+      "metrics": [
+        {
+          "navigation_time_ms": 216.56,
+          "dom_content_loaded_ms": 214,
+          "load_complete_ms": 215,
+          "first_contentful_paint_ms": 576,
+          "total_requests": 111,
+          "api_requests": 13,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 160.61,
+              "status": 200
+            },
+            {
+              "duration_ms": 153.47,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/prometheus-config/fields",
+              "duration_ms": 0.51,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 164.77,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 160.61,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 159.62,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 152.44,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 155.62,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 156.75,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 153.47,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 152.34,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 10.75,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 13.32,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 0,
+              "status": 0
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 0,
+              "status": 0
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 208.35,
+          "dom_content_loaded_ms": 207,
+          "load_complete_ms": 207,
+          "first_contentful_paint_ms": 548,
+          "total_requests": 112,
+          "api_requests": 14,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 165.3,
+              "status": 200
+            },
+            {
+              "duration_ms": 161.43,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/metadata-fields/?_t=1763341400922",
+              "duration_ms": 0.55,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/?_t=1763341400968",
+              "duration_ms": 0.49,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 173.41,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 165.3,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 166.75,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 158.65,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 166.33,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 167.74,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 161.43,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 160.54,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 12.81,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 17.3,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 0,
+              "status": 0
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 0,
+              "status": 0
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 188.76,
+          "dom_content_loaded_ms": 187,
+          "load_complete_ms": 187,
+          "first_contentful_paint_ms": 528,
+          "total_requests": 114,
+          "api_requests": 16,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 167.41,
+              "status": 200
+            },
+            {
+              "duration_ms": 163.18,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/metadata-fields/?_t=1763341402548",
+              "duration_ms": 0.97,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/?_t=1763341402606",
+              "duration_ms": 0.68,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 176.22,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 167.41,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 168.25,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 161.53,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 166.58,
+              "status": 200
+            },
+            {
+              "url": "/reference-values/categories",
+              "duration_ms": 167.76,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 163.18,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 162.21,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 12.93,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 17.1,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 21.49,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/config/sites",
+              "duration_ms": 79.59,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/?_t=1763341404159",
+              "duration_ms": 56.99,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/?_t=1763341404217",
+              "duration_ms": 391.57,
+              "status": 200
+            }
+          ]
+        }
+      ],
+      "statistics": {
+        "navigation": {
+          "mean_ms": 204.56,
+          "median_ms": 208.35,
+          "min_ms": 188.76,
+          "max_ms": 216.56
+        },
+        "servers_requests": {
+          "mean_count": 2,
+          "total_requests": 6
+        }
+      }
+    },
+    "MonitoringTypes": {
+      "page_name": "MonitoringTypes",
+      "page_path": "/monitoring-types",
+      "iterations": 3,
+      "metrics": [
+        {
+          "navigation_time_ms": 200.37,
+          "dom_content_loaded_ms": 198,
+          "load_complete_ms": 198,
+          "first_contentful_paint_ms": 408,
+          "total_requests": 106,
+          "api_requests": 10,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 108.48,
+              "status": 200
+            },
+            {
+              "duration_ms": 111.23,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 96.87,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 108.48,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 110.0,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 101.76,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 112.73,
+              "status": 200
+            },
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 106.41,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 111.23,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 108.8,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 37.06,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 43.08,
+              "status": 200
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 199.92,
+          "dom_content_loaded_ms": 197,
+          "load_complete_ms": 197,
+          "first_contentful_paint_ms": 388,
+          "total_requests": 106,
+          "api_requests": 10,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 89.86,
+              "status": 200
+            },
+            {
+              "duration_ms": 90.55,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 88.31,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 89.86,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 92.63,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 86.96,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 95.77,
+              "status": 200
+            },
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 89.06,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 90.55,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 92.03,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 28.34,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 30.95,
+              "status": 200
+            }
+          ]
+        },
+        {
+          "navigation_time_ms": 278.02,
+          "dom_content_loaded_ms": 224,
+          "load_complete_ms": 224,
+          "first_contentful_paint_ms": 420,
+          "total_requests": 106,
+          "api_requests": 10,
+          "servers_requests_count": 2,
+          "servers_requests_details": [
+            {
+              "duration_ms": 89.82,
+              "status": 200
+            },
+            {
+              "duration_ms": 100.78,
+              "status": 200
+            }
+          ],
+          "all_requests": [
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 86.55,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 89.82,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 87.88,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 88.41,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 103.09,
+              "status": 200
+            },
+            {
+              "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+              "duration_ms": 90.98,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/servers",
+              "duration_ms": 100.78,
+              "status": 200
+            },
+            {
+              "url": "/nodes",
+              "duration_ms": 98.36,
+              "status": 200
+            },
+            {
+              "url": "/metadata-fields/",
+              "duration_ms": 31.15,
+              "status": 200
+            },
+            {
+              "url": "/settings/sites-config",
+              "duration_ms": 40.83,
+              "status": 200
+            }
+          ]
+        }
+      ],
+      "statistics": {
+        "navigation": {
+          "mean_ms": 226.1,
+          "median_ms": 200.37,
+          "min_ms": 199.92,
+          "max_ms": 278.02
+        },
+        "servers_requests": {
+          "mean_count": 2,
+          "total_requests": 6
+        }
+      }
+    }
+  },
+  "summary": {
+    "total_pages_tested": 3,
+    "total_servers_requests": 18,
+    "expected_after_optimization": 1,
+    "reduction_expected": 94.44
+  }
+}
