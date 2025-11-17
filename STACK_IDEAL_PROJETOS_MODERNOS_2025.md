@@ -943,9 +943,11 @@ projeto/
 ### 1. **Criar Projeto Frontend (Refine.dev + shadcn/ui):**
 
 ```bash
-# ✅ USAR PNPM (mais rápido que npm/yarn)
+# ✅ USAR NPM (documentação oficial do Refine.dev)
 # ✅ USAR PRESET OFICIAL (vite-shadcn)
-pnpm create refine-app@latest my-dashboard -- --preset vite-shadcn
+npm create refine-app@latest my-dashboard -- --preset vite-shadcn
+
+# Nota: pnpm também funciona, mas npm é o padrão da documentação oficial
 
 # O que vem incluído:
 # - Vite configurado
@@ -955,12 +957,12 @@ pnpm create refine-app@latest my-dashboard -- --preset vite-shadcn
 # - Exemplos de componentes
 
 # Adicionar ferramentas modernas
-pnpm add -D @biomejs/biome vitest @testing-library/react
-pnpm add -D lefthook  # Git hooks (Rust, mais rápido que Husky)
+npm install -D @biomejs/biome vitest @testing-library/react
+npm install -D lefthook  # Git hooks (Rust, mais rápido que Husky)
 
 # Configurar
-pnpm biome init
-pnpm lefthook install
+npm run biome init
+npx lefthook install
 ```
 
 **⚠️ IMPORTANTE:** Use o preset `vite-shadcn` para ter tudo configurado automaticamente!
@@ -1334,11 +1336,10 @@ Refine.dev tem **suporte OFICIAL completo** para shadcn/ui, incluindo:
 #### **Método 1: CLI com Preset (RECOMENDADO!)** ⭐⭐⭐⭐⭐
 
 ```bash
-# Criar projeto com preset oficial
+# Criar projeto com preset oficial (npm é o padrão da documentação)
 npm create refine-app@latest my-app -- --preset vite-shadcn
 
-# Ou com pnpm
-pnpm create refine-app@latest my-app -- --preset vite-shadcn
+# Nota: pnpm/yarn também funcionam, mas npm é o padrão oficial
 ```
 
 **O que vem incluído:**
@@ -1947,7 +1948,7 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 7. ✅✅✅ **Ferramentas Modernas**
    - Biome: 25x faster que ESLint+Prettier
    - Vitest: 25x faster que Jest
-   - pnpm: Mais rápido e eficiente
+   - npm: Padrão oficial (pnpm/yarn opcionais)
 
 ---
 
@@ -2013,23 +2014,19 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 
 2. **Setup Inicial:**
    ```bash
-   # Opção 1: Template pronto (Ant Design ou Material UI)
-   pnpm create refine-app@latest my-project
-   # Escolher: Vite + Ant Design + REST API
+   # Opção 1: shadcn/ui (RECOMENDADO - preset oficial)
+   npm create refine-app@latest my-project -- --preset vite-shadcn
    
-   # Opção 2: shadcn/ui (configuração manual)
-   pnpm create vite@latest my-project --template react-ts
-   pnpm add @refinedev/core @refinedev/react-router-v6
-   # Depois adicionar shadcn/ui manualmente
+   # Opção 2: Template pronto (Ant Design ou Material UI)
+   npm create refine-app@latest my-project
+   # Escolher: Vite + Ant Design + REST API
    ```
 
 3. **Seguir Checklist:**
    - Ver seção "📋 CHECKLIST COMPLETO DE IMPLEMENTAÇÃO" (8-9 dias)
 
-4. **Documentação:**
-   - Refine.dev: https://refine.dev/docs
-   - FastAPI: https://fastapi.tiangolo.com
-   - React 19: https://react.dev
+4. **Documentação Oficial:**
+   - Ver seção "📚 LINKS DE DOCUMENTAÇÃO OFICIAL" abaixo
 
 ---
 
@@ -2070,7 +2067,7 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 ```json
 {
   "scripts": {
-    "audit": "pnpm audit --audit-level=moderate",
+    "audit": "npm audit --audit-level=moderate",
     "security:check": "snyk test"
   }
 }
@@ -2386,7 +2383,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'npm run dev',
     url: 'http://localhost:8081',
     reuseExistingServer: !process.env.CI,
   },
@@ -2458,17 +2455,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: pnpm install
-      - run: pnpm biome check
-      - run: pnpm vitest
-      - run: pnpm playwright test
-      - run: pnpm build
+          - uses: actions/setup-node@v4
+            with:
+              node-version: '20'
+          - run: npm install
+          - run: npm run biome check
+          - run: npm run test
+          - run: npm run test:e2e
+          - run: npm run build
 
   security:
     runs-on: ubuntu-latest
