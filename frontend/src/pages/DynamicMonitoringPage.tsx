@@ -240,13 +240,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // ✅ NOVO: Handler de mudanças na tabela (ordenação)
+  // ✅ CORREÇÃO: Recarregar tabela quando ordenação mudar
   const handleTableChange = useCallback((_pagination: any, _filters: any, sorter: any) => {
     if (sorter && sorter.field) {
       setSortField(sorter.field);
       setSortOrder(sorter.order || null);
+      // ✅ CORREÇÃO: Recarregar tabela para aplicar ordenação
+      // Pequeno delay para garantir que estado foi atualizado
+      setTimeout(() => {
+        actionRef.current?.reload();
+      }, 0);
     } else {
       setSortField(null);
       setSortOrder(null);
+      // Recarregar quando ordenação for removida
+      setTimeout(() => {
+        actionRef.current?.reload();
+      }, 0);
     }
   }, []);
 
