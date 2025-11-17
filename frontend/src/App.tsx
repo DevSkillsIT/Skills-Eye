@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
-import { BrowserRouter, Route, Routes, Link } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, Link, useLocation } from 'react-router-dom';
 // ✅ OTIMIZAÇÃO (2025-11-16): Removido import loadNamingConfig
 // SitesProvider já carrega naming-config via /settings/sites-config
 import { MetadataFieldsProvider } from './contexts/MetadataFieldsContext';
@@ -44,12 +44,9 @@ import MonitoringRules from './pages/MonitoringRules';
 // ⭐ SPRINT 2 (2025-11-15) - Observability & Cache Management
 import CacheManagement from './pages/CacheManagement';
 
-const App: React.FC = () => {
-  const [darkMode, setDarkMode] = React.useState(false);
-
-  // ✅ OTIMIZAÇÃO (2025-11-16): Removido loadNamingConfig duplicado
-  // SitesProvider já carrega naming-config via /settings/sites-config
-  // Evita request duplicado
+// ✅ CORREÇÃO (2025-11-16): Componente interno para acessar useLocation
+const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) => void }> = ({ darkMode, setDarkMode }) => {
+  const location = useLocation();
 
   const menuItems = [
     {
@@ -203,6 +200,7 @@ const App: React.FC = () => {
           title="Consul Manager"
           fixedHeader
           fixSiderbar
+          location={location}
           menuItemRender={(item, dom) => (
             <Link to={item.path || '/'}>{dom}</Link>
           )}
@@ -210,10 +208,34 @@ const App: React.FC = () => {
             path: '/',
             routes: menuItems,
           }}
+          menu={{
+            style: {
+              fontSize: '15px',
+              fontWeight: 500,
+              padding: '8px 0',
+            },
+          }}
+          siderMenuProps={{
+            style: {
+              backgroundColor: darkMode ? '#001529' : '#ffffff',
+              borderRight: darkMode ? '1px solid #1f1f1f' : '1px solid #f0f0f0',
+            },
+          }}
+          menuProps={{
+            style: {
+              padding: '12px 0',
+            },
+          }}
+          logoStyle={{
+            padding: '16px 24px',
+            fontSize: '18px',
+            fontWeight: 600,
+            color: darkMode ? '#ffffff' : '#1890ff',
+          }}
           rightContentRender={() => (
             <a
               onClick={() => setDarkMode((value) => !value)}
-              style={{ marginRight: 16 }}
+              style={{ marginRight: 16, cursor: 'pointer' }}
             >
               {darkMode ? 'Modo claro' : 'Modo escuro'}
             </a>
@@ -250,6 +272,33 @@ const App: React.FC = () => {
         </NodesProvider>
         </MetadataFieldsProvider>
         </SitesProvider>
+        </AntdApp>
+      </ConfigProvider>
+    </>
+  );
+};
+
+const App: React.FC = () => {
+  const [darkMode, setDarkMode] = React.useState(false);
+
+  return (
+    <BrowserRouter>
+      <ConfigProvider
+        locale={ptBR}
+        theme={{
+          algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+        }}
+      >
+        <AntdApp>
+          <SitesProvider>
+            <MetadataFieldsProvider>
+              <NodesProvider>
+                <ServersProvider>
+                  <AppContent darkMode={darkMode} setDarkMode={setDarkMode} />
+                </ServersProvider>
+              </NodesProvider>
+            </MetadataFieldsProvider>
+          </SitesProvider>
         </AntdApp>
       </ConfigProvider>
     </BrowserRouter>

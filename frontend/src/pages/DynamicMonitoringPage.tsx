@@ -1346,35 +1346,37 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
 
         {/* ✅ COMPLETO: Tabela com TODAS as features */}
-        <ProTable<MonitoringDataItem>
-          actionRef={actionRef}
-          rowKey="ID"
-          columns={proTableColumns}
-          request={requestHandler}
-          onChange={handleTableChange}
-          search={false}
-          pagination={{
-            defaultPageSize: 50,
-            showSizeChanger: true,
-            pageSizeOptions: ['20', '50', '100', '200'],
-            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
-            style: { marginBottom: 8 },
-          }}
-          scroll={{
-            x: 2000, // Força scroll horizontal para fixed columns
-            y: 'calc(100vh - 450px)'
-          }}
-          sticky
-          options={{
-            reload: true,
-            setting: true,
-            density: true,
-            fullScreen: false,
-          }}
-          toolbar={{
-            settings: [],
-          }}
-          components={{
+        {/* ✅ CORREÇÃO LAYOUT SHIFT: Container com altura mínima para evitar CLS */}
+        <div style={{ minHeight: '600px', position: 'relative' }}>
+          <ProTable<MonitoringDataItem>
+            actionRef={actionRef}
+            rowKey="ID"
+            columns={proTableColumns}
+            request={requestHandler}
+            onChange={handleTableChange}
+            search={false}
+            pagination={{
+              defaultPageSize: 50,
+              showSizeChanger: true,
+              pageSizeOptions: ['20', '50', '100', '200'],
+              showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
+              style: { marginBottom: 8 },
+            }}
+            scroll={{
+              x: 2000, // Força scroll horizontal para fixed columns
+              y: 'calc(100vh - 450px)'
+            }}
+            sticky
+            options={{
+              reload: true,
+              setting: true,
+              density: true,
+              fullScreen: false,
+            }}
+            toolbar={{
+              settings: [],
+            }}
+            components={{
             header: {
               cell: ResizableTitle,
             },
@@ -1419,10 +1421,24 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             },
             fixed: true,
           }}
+          locale={{
+            emptyText: (
+              <div style={{ padding: '60px 0', textAlign: 'center', minHeight: '400px' }}>
+                <div style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: 16 }}>📊</div>
+                <div style={{ fontSize: '16px', color: '#8c8c8c', marginBottom: 8 }}>
+                  Não há dados disponíveis
+                </div>
+                <div style={{ fontSize: '14px', color: '#bfbfbf' }}>
+                  Tente ajustar os filtros ou selecionar outro nó do Consul
+                </div>
+              </div>
+            ),
+          }}
           tableAlertRender={({ selectedRowKeys: keys }) =>
             keys.length ? <span>{`${keys.length} registros selecionados`}</span> : null
           }
         />
+        </div>
       </Space>
 
       {/* ✅ NOVO: Drawer de busca avançada */}
