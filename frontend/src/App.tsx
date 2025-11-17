@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ConfigProvider, theme, App as AntdApp } from 'antd';
 import ptBR from 'antd/locale/pt_BR';
 import ProLayout from '@ant-design/pro-layout';
@@ -185,96 +185,74 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
   ];
 
   return (
-    <BrowserRouter>
-      <ConfigProvider
-        locale={ptBR}
-        theme={{
-          algorithm: darkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+    <>
+      <ProLayout
+        title="Consul Manager"
+        fixedHeader
+        fixSiderbar
+        location={location}
+        menuItemRender={(item, dom) => (
+          <Link to={item.path || '/'}>{dom}</Link>
+        )}
+        route={{
+          path: '/',
+          routes: menuItems,
         }}
+        menu={{
+          style: {
+            fontSize: '15px',
+            fontWeight: 500,
+            padding: '8px 0',
+          },
+        }}
+        siderMenuProps={{
+          style: {
+            backgroundColor: darkMode ? '#001529' : '#ffffff',
+            borderRight: darkMode ? '1px solid #1f1f1f' : '1px solid #f0f0f0',
+          },
+        }}
+        logoStyle={{
+          padding: '16px 24px',
+          fontSize: '18px',
+          fontWeight: 600,
+          color: darkMode ? '#ffffff' : '#1890ff',
+        }}
+        rightContentRender={() => (
+          <a
+            onClick={() => setDarkMode(!darkMode)}
+            style={{ marginRight: 16, cursor: 'pointer' }}
+          >
+            {darkMode ? 'Modo claro' : 'Modo escuro'}
+          </a>
+        )}
       >
-        <AntdApp>
-        <SitesProvider>
-        <MetadataFieldsProvider>
-        <NodesProvider>
-        <ServersProvider>
-        <ProLayout
-          title="Consul Manager"
-          fixedHeader
-          fixSiderbar
-          location={location}
-          menuItemRender={(item, dom) => (
-            <Link to={item.path || '/'}>{dom}</Link>
-          )}
-          route={{
-            path: '/',
-            routes: menuItems,
-          }}
-          menu={{
-            style: {
-              fontSize: '15px',
-              fontWeight: 500,
-              padding: '8px 0',
-            },
-          }}
-          siderMenuProps={{
-            style: {
-              backgroundColor: darkMode ? '#001529' : '#ffffff',
-              borderRight: darkMode ? '1px solid #1f1f1f' : '1px solid #f0f0f0',
-            },
-          }}
-          menuProps={{
-            style: {
-              padding: '12px 0',
-            },
-          }}
-          logoStyle={{
-            padding: '16px 24px',
-            fontSize: '18px',
-            fontWeight: 600,
-            color: darkMode ? '#ffffff' : '#1890ff',
-          }}
-          rightContentRender={() => (
-            <a
-              onClick={() => setDarkMode((value) => !value)}
-              style={{ marginRight: 16, cursor: 'pointer' }}
-            >
-              {darkMode ? 'Modo claro' : 'Modo escuro'}
-            </a>
-          )}
-        >
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/services" element={<Services />} />
-            <Route path="/service-groups" element={<ServiceGroups />} />
-            <Route path="/hosts" element={<Hosts />} />
-            <Route path="/exporters" element={<Exporters />} />
-            <Route path="/blackbox" element={<BlackboxTargets />} />
-            <Route path="/blackbox-groups" element={<BlackboxGroups />} />
-            <Route path="/presets" element={<ServicePresets />} />
-            <Route path="/kv-browser" element={<KvBrowser />} />
-            <Route path="/prometheus-config" element={<PrometheusConfig />} />
-            <Route path="/metadata-fields" element={<MetadataFields />} />
-            <Route path="/audit-log" element={<AuditLog />} />
-            <Route path="/installer" element={<Installer />} />
-            <Route path="/monitoring-types" element={<MonitoringTypes />} />
-            <Route path="/reference-values" element={<ReferenceValues />} />
-            {/* ⭐ NOVAS ROTAS DINÂMICAS - v2.0 (2025-11-13) */}
-            <Route path="/monitoring/network-probes" element={<DynamicMonitoringPage category="network-probes" />} />
-            <Route path="/monitoring/web-probes" element={<DynamicMonitoringPage category="web-probes" />} />
-            <Route path="/monitoring/system-exporters" element={<DynamicMonitoringPage category="system-exporters" />} />
-            <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
-            <Route path="/monitoring/rules" element={<MonitoringRules />} />
-            {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
-            {/* ⭐ SPRINT 2 (2025-11-15) - Observability & Cache */}
-            <Route path="/cache-management" element={<CacheManagement />} />
-          </Routes>
-        </ProLayout>
-        </ServersProvider>
-        </NodesProvider>
-        </MetadataFieldsProvider>
-        </SitesProvider>
-        </AntdApp>
-      </ConfigProvider>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/services" element={<Services />} />
+          <Route path="/service-groups" element={<ServiceGroups />} />
+          <Route path="/hosts" element={<Hosts />} />
+          <Route path="/exporters" element={<Exporters />} />
+          <Route path="/blackbox" element={<BlackboxTargets />} />
+          <Route path="/blackbox-groups" element={<BlackboxGroups />} />
+          <Route path="/presets" element={<ServicePresets />} />
+          <Route path="/kv-browser" element={<KvBrowser />} />
+          <Route path="/prometheus-config" element={<PrometheusConfig />} />
+          <Route path="/metadata-fields" element={<MetadataFields />} />
+          <Route path="/audit-log" element={<AuditLog />} />
+          <Route path="/installer" element={<Installer />} />
+          <Route path="/monitoring-types" element={<MonitoringTypes />} />
+          <Route path="/reference-values" element={<ReferenceValues />} />
+          {/* ⭐ NOVAS ROTAS DINÂMICAS - v2.0 (2025-11-13) */}
+          <Route path="/monitoring/network-probes" element={<DynamicMonitoringPage category="network-probes" />} />
+          <Route path="/monitoring/web-probes" element={<DynamicMonitoringPage category="web-probes" />} />
+          <Route path="/monitoring/system-exporters" element={<DynamicMonitoringPage category="system-exporters" />} />
+          <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
+          <Route path="/monitoring/rules" element={<MonitoringRules />} />
+          {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
+          {/* ⭐ SPRINT 2 (2025-11-15) - Observability & Cache */}
+          <Route path="/cache-management" element={<CacheManagement />} />
+        </Routes>
+      </ProLayout>
     </>
   );
 };
