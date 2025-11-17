@@ -1170,6 +1170,7 @@ function App() {
 
 #### **Framework de Desenvolvimento:**
 - **Refine.dev** ⭐⭐⭐⭐⭐ - Framework headless que fornece funcionalidades prontas (autenticação, CRUD, RBAC, etc) sem impor design visual
+- ⚠️ **Nota sobre Templates:** Refine.dev oferece templates prontos principalmente com Ant Design e Material UI. Para shadcn/ui, você precisa configurar manualmente (Refine é headless, então funciona com qualquer UI library, mas templates prontos focam em Ant Design/MUI)
 
 #### **Biblioteca de Componentes UI (Escolha uma):**
 - **Ant Design Pro** - Componentes prontos para dashboards corporativos (ProTable, ProForm) - **Ideal para produtividade**
@@ -1194,13 +1195,13 @@ function App() {
 - **FastAPI** - Framework Python moderno e rápido para criar APIs REST
 - **Python 3.12+** - Linguagem de programação com excelente performance e ecossistema
 
-#### **Banco de Dados:**
-- **PostgreSQL 16+** - Banco de dados relacional robusto e confiável
-- **SQLAlchemy 2.0** - ORM (Object-Relational Mapping) que facilita interação com banco de dados
+#### **Banco de Dados do Sistema:**
+- **PostgreSQL 16+** - Banco de dados relacional principal (armazena dados da aplicação)
+- **SQLAlchemy 2.0** - ORM (Object-Relational Mapping) - ferramenta para interagir com PostgreSQL
 - **Alembic** - Ferramenta para gerenciar migrações de banco de dados
 
 #### **Cache e Filas:**
-- **Redis** - Banco de dados em memória para cache rápido e sessões
+- **Redis** - Banco de dados em memória para cache rápido e sessões (não armazena dados principais)
 - **Celery** - Sistema de filas para processar tarefas em background (emails, relatórios, etc)
 
 #### **HTTP Client:**
@@ -1339,8 +1340,14 @@ function App() {
 
 2. **Setup Inicial:**
    ```bash
+   # Opção 1: Template pronto (Ant Design ou Material UI)
    pnpm create refine-app@latest my-project
-   # Escolher: Vite + (Ant Design OU shadcn/ui) + REST API
+   # Escolher: Vite + Ant Design + REST API
+   
+   # Opção 2: shadcn/ui (configuração manual)
+   pnpm create vite@latest my-project --template react-ts
+   pnpm add @refinedev/core @refinedev/react-router-v6
+   # Depois adicionar shadcn/ui manualmente
    ```
 
 3. **Seguir Checklist:**
