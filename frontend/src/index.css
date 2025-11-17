@@ -24,9 +24,16 @@ a:hover {
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
+  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
+}
+
+/* ✅ CORREÇÃO LAYOUT SHIFT: Garantir que #root ocupe toda a tela desde o início */
+#root {
+  width: 100%;
+  height: 100vh;
   min-height: 100vh;
 }
 

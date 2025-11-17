@@ -2044,7 +2044,7 @@ const MetadataFieldsPage: React.FC = () => {
     },
     {
       title: 'Ações',
-      width: 300,
+      width: 180, // ✅ CORREÇÃO: Ajustado de 300 para 180 para consistência com outras páginas
       fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -2393,7 +2393,12 @@ const MetadataFieldsPage: React.FC = () => {
             pageSizeOptions: ['10', '20', '30', '50', '100'],
             showTotal: (total) => `Total: ${total} campos`,
           }}
-          scroll={{ x: 1600 }}
+          scroll={{ x: 2000 }} // ✅ CORREÇÃO: Aumentado para 2000 para consistência com DynamicMonitoringPage
+          headerTitle={false}
+          cardProps={{
+            bodyStyle: { padding: '0' }, // ✅ CORREÇÃO: Remove padding do card para consistência
+          }}
+          tableStyle={{ padding: '0 16px' }} // ✅ CORREÇÃO: Adiciona padding apenas na tabela
           toolBarRender={() => {
             const toolbarItems = [] as React.ReactNode[];
 
@@ -2798,7 +2803,12 @@ const MetadataFieldsPage: React.FC = () => {
                     search={false}
                     pagination={false}
                     toolBarRender={false}
-                    scroll={{ x: 1600 }}
+                    scroll={{ x: 2000 }} // ✅ CORREÇÃO: Aumentado para 2000 para consistência
+                    headerTitle={false}
+                    cardProps={{
+                      bodyStyle: { padding: '0' }, // ✅ CORREÇÃO: Remove padding do card
+                    }}
+                    tableStyle={{ padding: '0 16px' }} // ✅ CORREÇÃO: Adiciona padding apenas na tabela
                     components={{
                       header: {
                         cell: ResizableTitle,

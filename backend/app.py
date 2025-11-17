@@ -120,9 +120,22 @@ async def _prewarm_metadata_fields_cache():
             f"{successful_servers}/{total_servers} servidores"
         )
 
-        # PASSO 4: VERIFICAR SE KV JÁ TEM CAMPOS
+        # PASSO 4: VERIFICAR SE KV JÁ TEM CAMPOS (ou restaurar do backup)
         kv_manager = KVManager()
         existing_config = await kv_manager.get_json('skills/eye/metadata/fields')
+        
+        # ✅ NOVO: Se KV está vazio, tentar restaurar do backup
+        if not existing_config or not existing_config.get('fields'):
+            logger.info("[PRE-WARM] ⚠️ KV vazio - tentando restaurar do backup...")
+            from core.metadata_fields_backup import get_backup_manager
+            backup_manager = get_backup_manager()
+            restored_data = await backup_manager.restore_from_backup()
+            
+            if restored_data:
+                logger.info("[PRE-WARM] ✅ Dados restaurados do backup - usando dados restaurados")
+                existing_config = restored_data
+            else:
+                logger.info("[PRE-WARM] ℹ️ Nenhum backup disponível - continuando com extração...")
 
         # LÓGICA CORRETA: EXTRAIR ≠ SINCRONIZAR
         # - Se KV VAZIO (primeira vez): Popular KV com campos extraídos
@@ -130,18 +143,36 @@ async def _prewarm_metadata_fields_cache():
         #   (campos novos devem ser adicionados via "Sincronizar Campos" no frontend)
 
         if existing_config and 'fields' in existing_config and len(existing_config['fields']) > 0:
-            # KV JÁ TEM CAMPOS: ATUALIZAR APENAS extraction_status
+            # KV JÁ TEM CAMPOS: FAZER MERGE para preservar customizações e atualizar estrutura
             logger.info(
                 f"[PRE-WARM] ✓ KV já possui {len(existing_config['fields'])} campos. "
-                f"Atualizando extraction_status..."
+                f"Fazendo merge para preservar customizações e atualizar extraction_status..."
             )
             logger.info(
                 f"[PRE-WARM] ℹ️ {len(fields)} campos extraídos do Prometheus. "
                 f"Novos campos devem ser adicionados via 'Sincronizar Campos' no frontend."
             )
             
-            # CRITICAL FIX: Atualizar extraction_status mesmo sem adicionar campos novos
-            # Isso é ESSENCIAL para que discovered_in funcione corretamente
+            # ✅ CORREÇÃO CRÍTICA: Fazer merge antes de salvar para preservar customizações
+            # Isso evita race conditions e garante que customizações não sejam perdidas
+            from api.metadata_fields_manager import merge_fields_preserving_customizations
+            from core.metadata_fields_backup import get_backup_manager
+            
+            # Converter campos extraídos para dict
+            extracted_fields_dicts = [f.to_dict() for f in fields]
+            
+            # Fazer merge preservando customizações do KV
+            merged_fields = merge_fields_preserving_customizations(
+                extracted_fields=extracted_fields_dicts,
+                existing_kv_fields=existing_config['fields']
+            )
+            
+            logger.info(
+                f"[PRE-WARM MERGE] ✓ Merge concluído: {len(merged_fields)} campos finais "
+                f"(preservou {len(existing_config['fields'])} customizações existentes)"
+            )
+            
+            # Atualizar extraction_status
             existing_config['extraction_status'] = {
                 'total_servers': total_servers,
                 'successful_servers': successful_servers,
@@ -150,16 +181,29 @@ async def _prewarm_metadata_fields_cache():
                 'extracted_at': datetime.now().isoformat(),
             }
             existing_config['last_updated'] = datetime.now().isoformat()
-            existing_config['source'] = 'prewarm_update_extraction_status'
+            existing_config['source'] = 'prewarm_update_with_merge'
+            existing_config['fields'] = merged_fields  # ✅ Usar campos merged (não sobrescrever!)
             
-            # Salvar de volta no KV preservando todos os campos existentes
+            # ✅ NOVO: Criar backup antes de salvar
+            backup_manager = get_backup_manager()
+            backup_success = await backup_manager.create_backup(existing_config)
+            if not backup_success:
+                logger.warning("[PRE-WARM] ⚠️ Falha ao criar backup, mas continuando...")
+            
+            # Salvar campos merged no KV (preserva customizações + atualiza estrutura)
             await kv_manager.put_json(
                 key='skills/eye/metadata/fields',
                 value=existing_config,
-                metadata={'auto_updated': True, 'source': 'prewarm_extraction_status_update'}
+                metadata={'auto_updated': True, 'source': 'prewarm_update_with_merge'}
             )
             
-            print(f"[PRE-WARM] ✓ extraction_status atualizado com dados de {successful_servers}/{total_servers} servidores")
+            # ✅ CORREÇÃO: Invalidar cache para garantir que mudanças apareçam imediatamente
+            from core.consul_kv_config_manager import ConsulKVConfigManager
+            _kv_manager = ConsulKVConfigManager()
+            _kv_manager.invalidate('metadata/fields')
+            logger.info(f"[PRE-WARM] ✓ Cache invalidado após merge")
+            
+            print(f"[PRE-WARM] ✓ Merge concluído e extraction_status atualizado com dados de {successful_servers}/{total_servers} servidores")
             # Marcar como concluído
             _prewarm_status['completed'] = True
             _prewarm_status['running'] = False

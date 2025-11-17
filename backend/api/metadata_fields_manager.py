@@ -319,6 +319,20 @@ async def load_fields_config() -> Dict[str, Any]:
         if fields_data:
             logger.debug(f"[METADATA-FIELDS] ✓ Dados carregados do KV (via cache unificado)")
             return fields_data
+        
+        # ✅ NOVO: Se KV está vazio, tentar restaurar do backup antes de fazer fallback
+        logger.warning("[METADATA-FIELDS] ⚠️ KV vazio detectado - tentando restaurar do backup...")
+        from core.metadata_fields_backup import get_backup_manager
+        backup_manager = get_backup_manager()
+        restored_data = await backup_manager.restore_from_backup()
+        
+        if restored_data:
+            logger.info("[METADATA-FIELDS] ✅ Dados restaurados do backup com sucesso!")
+            # Invalidar cache para forçar reload
+            _kv_manager.invalidate('metadata/fields')
+            return restored_data
+        else:
+            logger.info("[METADATA-FIELDS] ℹ️ Nenhum backup disponível - disparando fallback (extração SSH)...")
 
         # PASSO 2: Se KV vazio, disparar fallback
         if not fields_data:
@@ -390,6 +404,13 @@ async def load_fields_config() -> Dict[str, Any]:
                         },
                     }
 
+                    # ✅ NOVO: Criar backup antes de salvar
+                    from core.metadata_fields_backup import get_backup_manager
+                    backup_manager = get_backup_manager()
+                    backup_success = await backup_manager.create_backup(fields_data)
+                    if not backup_success:
+                        logger.warning("[FALLBACK] ⚠️ Falha ao criar backup, mas continuando...")
+                    
                     await kv.put_json(
                         key='skills/eye/metadata/fields',
                         value=fields_data,
@@ -444,11 +465,21 @@ async def save_fields_config(config: Dict[str, Any]) -> bool:
     Esta função é chamada quando usuário EDITA campos via PATCH.
     As customizações são preservadas automaticamente pelo merge inteligente
     que ocorre durante force-extract e fallback.
+    
+    ✅ NOVO: Faz backup automático antes de salvar para garantir resiliência.
     """
     try:
         from core.kv_manager import KVManager
+        from core.metadata_fields_backup import get_backup_manager
 
         kv = KVManager()
+        backup_manager = get_backup_manager()
+
+        # ✅ CORREÇÃO: Criar backup ANTES de salvar
+        # Isso garante que customizações não sejam perdidas mesmo se KV for apagado
+        backup_success = await backup_manager.create_backup(config)
+        if not backup_success:
+            logger.warning("[SAVE] ⚠️ Falha ao criar backup, mas continuando com salvamento...")
 
         # Atualizar timestamp
         config['last_updated'] = datetime.utcnow().isoformat() + 'Z'

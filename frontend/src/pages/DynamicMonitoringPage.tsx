@@ -1094,6 +1094,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       title={CATEGORY_DISPLAY_NAMES[category] || category}
       subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
       loading={tableFieldsLoading || filterFieldsLoading}
+      style={{ minHeight: 'calc(100vh - 64px)' }}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Dashboard com métricas - altura mínima para evitar layout shift */}
@@ -1346,8 +1347,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
 
         {/* ✅ COMPLETO: Tabela com TODAS as features */}
-        {/* ✅ CORREÇÃO LAYOUT SHIFT: Container com altura mínima para evitar CLS */}
-        <div style={{ minHeight: '600px', position: 'relative' }}>
+        {/* ✅ CORREÇÃO LAYOUT SHIFT: Container com altura fixa para evitar mudanças de layout */}
+        <div style={{ minHeight: '600px', height: '600px', position: 'relative' }}>
           <ProTable<MonitoringDataItem>
             actionRef={actionRef}
             rowKey="ID"
@@ -1423,7 +1424,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           }}
           locale={{
             emptyText: (
-              <div style={{ padding: '60px 0', textAlign: 'center', minHeight: '400px' }}>
+              <div style={{ padding: '60px 0', textAlign: 'center', minHeight: '400px', height: '400px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
                 <div style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: 16 }}>📊</div>
                 <div style={{ fontSize: '16px', color: '#8c8c8c', marginBottom: 8 }}>
                   Não há dados disponíveis
