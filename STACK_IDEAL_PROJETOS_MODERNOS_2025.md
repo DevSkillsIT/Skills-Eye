@@ -108,12 +108,19 @@
 
 **Por quê:**
 - ✅✅✅ **Headless Architecture** - Máxima flexibilidade
-- ✅✅✅ **Pode usar Ant Design Pro** - ProTable, ProForm
+- ✅✅✅ **Pode usar QUALQUER UI library** - Ant Design, shadcn/ui, Mantine, Material UI, Chakra UI
 - ✅✅✅ **React Query integrado** - Cache automático
 - ✅✅✅ **Data Providers plugáveis** - REST, GraphQL, etc
 - ✅✅✅ **Auth Providers plugáveis** - JWT, OAuth, etc
 - ✅✅✅ **Perfeito para sistemas dinâmicos**
 - ✅✅✅ **React 19 + Vite oficialmente suportado**
+
+**UI Libraries Suportadas:**
+- ✅ Ant Design (via `@refinedev/antd`)
+- ✅ shadcn/ui (via `@refinedev/shadcn-ui` ou custom)
+- ✅ Mantine (via `@refinedev/mantine`)
+- ✅ Material UI (via `@refinedev/mui`)
+- ✅ Chakra UI (via `@refinedev/chakra-ui`)
 
 **Estrutura:**
 ```
@@ -452,7 +459,7 @@ export const useUIStore = create<UIState>((set) => ({
 
 **Frontend:**
 - React 19 + Vite 7 + TypeScript
-- Refine.dev + Ant Design Pro
+- Refine.dev + shadcn/ui + TanStack Table (ou Mantine)
 - Zustand + React Query
 - React Router DOM 7
 
@@ -468,10 +475,12 @@ export const useUIStore = create<UIState>((set) => ({
 - ✅✅✅ Flexibilidade máxima
 - ✅✅✅ Type safety completo
 - ✅✅✅ Stack moderna
+- ✅✅✅ UI library moderna (shadcn/ui)
 
 **Desvantagens:**
 - ⚠️ Curva de aprendizado (Refine.dev)
 - ⚠️ Duas linguagens (JS/TS + Python)
+- ⚠️ shadcn/ui requer mais trabalho manual (mas mais flexível)
 
 **Score:** 9.5/10
 
@@ -561,22 +570,28 @@ export const useUIStore = create<UIState>((set) => ({
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.4",
     "@refinedev/core": "^4.50.0",
-    "@refinedev/antd": "^5.50.0",
     "@refinedev/react-router-v6": "^4.50.0",
-    "@ant-design/pro-components": "^2.8.10",
-    "@ant-design/pro-layout": "^7.22.7",
-    "antd": "^5.28.0",
-    "zustand": "^4.5.0",
     "@tanstack/react-query": "^5.50.0",
-    "axios": "^1.12.2"
+    "@tanstack/react-table": "^8.20.0",
+    "zustand": "^4.5.0",
+    "axios": "^1.12.2",
+    "@radix-ui/react-*": "^1.0.0",
+    "tailwindcss": "^3.4.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0"
   },
   "devDependencies": {
     "vite": "^7.1.14",
     "typescript": "^5.9.3",
-    "@vitejs/plugin-react": "^5.0.4"
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0"
   }
 }
 ```
+
+**Nota:** shadcn/ui não é instalado via npm, você copia os componentes para seu projeto usando `npx shadcn-ui@latest add [component]`
 
 ### **BACKEND:**
 
@@ -767,7 +782,7 @@ function App() {
 
 **Frontend:**
 - ✅ React 19 + Vite 7 + TypeScript
-- ✅ Refine.dev + Ant Design Pro
+- ✅ Refine.dev + shadcn/ui + TanStack Table (ou Mantine)
 - ✅ Zustand + React Query
 - ✅ React Router DOM 7
 
