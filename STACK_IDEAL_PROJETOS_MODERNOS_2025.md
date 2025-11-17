@@ -827,12 +827,22 @@ export const useUIStore = create<UIState>((set) => ({
     "typescript": "^5.9.3",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0"
+    "postcss": "^8.4.0",
+    "@biomejs/biome": "^1.9.0",
+    "vitest": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "lefthook": "^0.9.0"
   }
 }
 ```
 
 **Nota:** shadcn/ui não é instalado via npm, você copia os componentes para seu projeto usando `npx shadcn-ui@latest add [component]`
+
+**Ferramentas Modernas (2025):**
+- ✅ **Biome** - Lint/format (25x faster que ESLint+Prettier)
+- ✅ **Vitest** - Tests (25x faster que Jest)
+- ✅ **pnpm** - Package manager (mais rápido que npm/yarn)
+- ✅ **Lefthook** - Git hooks (mais rápido que Husky)
 
 ### **FRONTEND (Opção 2: Ant Design Pro - Enterprise/Produtividade):**
 
