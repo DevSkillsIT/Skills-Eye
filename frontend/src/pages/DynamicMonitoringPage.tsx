@@ -620,7 +620,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       return baseColumn;
     });
-  }, [columnConfig, columnWidths, tableFields, metadataOptions, handleResize, getFieldValue]);
+  }, [columnConfig, columnWidths, tableFields, metadataOptions, metadataOptionsLoaded, handleResize, getFieldValue]);
 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
