@@ -1,8 +1,27 @@
 # 📊 Análise Completa: Arquitetura CRUD para Páginas Monitoring/*
 
 **Data:** 2025-11-17  
-**Autor:** Análise Profissional - Skills Eye  
+**Autores:** Análise Profissional (Cursor) + Claude Code (Sonnet 4.5) - Documento Unificado  
+**Versão:** 2.0 - Análise Completa e Detalhada  
 **Status:** ✅ Análise Completa - Pronto para Implementação
+
+---
+
+## 📝 Nota sobre este Documento
+
+Este documento unifica as análises realizadas por duas IAs independentes:
+- **Análise Cursor (Auto):** Foco em arquitetura, diagramas e estrutura
+- **Análise Claude Code:** Foco em código detalhado, exemplos práticos e roadmap
+
+**Objetivo:** Criar um documento único e completo que sirva como base definitiva para implementação do CRUD dinâmico nas páginas `monitoring/*`.
+
+**⚠️ ATUALIZAÇÃO CRÍTICA (2025-11-17):**
+Este documento foi atualizado com base em feedback do usuário e análise detalhada do código atual. Principais mudanças:
+- **Seleção de nó Consul primeiro** no fluxo de criação
+- **Cache KV para monitoring-types** (similar ao metadata-fields)
+- **Geração de ID 100% dinâmica** baseada em campos obrigatórios do KV
+- **Verificação de hardcodes** nos endpoints existentes
+- **Correções necessárias** antes de implementar novos endpoints
 
 ---
 
@@ -49,7 +68,34 @@ Analisar a arquitetura completa do sistema de monitoramento para implementar CRU
    - **Atualmente:** Apenas metadata genéricos são tratados
    - **Solução proposta:** Estender `categorization/rules` com `form_schema`
 
-4. **Componentes compartilhados identificados**
+5. **⚠️ CRÍTICO: Monitoring-types precisa de cache KV + prewarm (PRIORIDADE #1)**
+   - **Problema atual:** `monitoring-types-dynamic/from-prometheus` sempre faz SSH
+   - **Problema:** Tipos variam por servidor Prometheus (Palmas pode ter HTTP_2xx, Rio pode não ter)
+   - **Solução:** Implementar cache KV seguindo padrão existente (`metadata-fields`, `metadata/sites`):
+     - **KV único:** `skills/eye/monitoring-types` (NÃO separado por nó, igual `metadata/fields`)
+     - **Prewarm no startup:** Extrai tipos de TODOS os servidores Prometheus e salva no KV
+     - **Menos resiliente:** Não precisa backup/restore (é só cópia do prometheus.yml)
+     - **Frontend pode forçar refresh:** Botão "Atualizar" na página monitoring-types
+     - **Fallback rígido:** Se KV vazio, extrai do Prometheus + salva no KV (com mensagem clara no frontend)
+   - **⚠️ BLOQUEADOR:** Sem este KV implementado, não é possível avançar com CRUD
+
+6. **⚠️ CRÍTICO: Hardcodes encontrados no backend CRUD**
+   - **`validate_service_data()`:** Usa `Config.REQUIRED_FIELDS` (hardcoded)
+   - **`check_duplicate_service()`:** Valida `module, company, project, env, name` (hardcoded)
+   - **`create_service()`:** Gera ID baseado em `module/company/project/env@name` (hardcoded)
+   - **Solução:** Tornar tudo dinâmico baseado em `metadata-fields` KV:
+     - Campos obrigatórios vêm do KV (`required: true`)
+     - Validação de duplicatas usa campos obrigatórios do KV
+     - Geração de ID usa campos obrigatórios do KV (ordem do KV)
+
+7. **⚠️ CRÍTICO: Geração de ID deve ser 100% dinâmica**
+   - **Problema atual:** ID usa `module/company/project/env@name` (hardcoded)
+   - **Realidade Consul:** ID usa `module/company/grupo_monitoramento/tipo_monitoramento@name`
+   - **Solução:** ID = todos os campos obrigatórios (ordem do KV) + `@name`
+   - **Exemplo:** Se obrigatórios são `["module", "company", "grupo_monitoramento", "tipo_monitoramento"]`
+     - ID: `icmp/Agro Xingu/Servidores/Status_Server@AX_DTC_AXMTGVM001-SISTEMA`
+
+8. **Componentes compartilhados identificados**
    - `NodeSelector`, `ServerSelector`, `ColumnSelector`
    - `MetadataFilterBar`, `AdvancedSearchPanel`
    - `useMetadataFields`, `useServersContext`
@@ -667,7 +713,7 @@ Estender `categorization/rules` (já usado para categorização) para incluir `f
 - ❌ Campos específicos do exporter não têm lugar definido
 - ❌ JSONs estáticos em `backend/schemas/monitoring-types/` (serão removidos)
 
-#### 7.2. Solução Proposta: Estender `categorization/rules`
+#### 7.2. Solução Proposta: Estender `categorization/rules` com `form_schema` Completo
 
 **Arquitetura:**
 ```
@@ -717,11 +763,174 @@ Estender `categorization/rules` (já usado para categorização) para incluir `f
 - ✅ **Editável via UI** - Página `monitoring/rules`
 - ✅ **Extensível** - Adicionar novos tipos sem código
 
+#### 7.3. Estrutura JSON Completa do `form_schema` (Exemplos Detalhados)
+
+**Exemplo 1: Blackbox Exporter (ICMP)**
+```json
+{
+  "id": "blackbox_icmp",
+  "priority": 100,
+  "category": "network-probes",
+  "display_name": "ICMP (Ping)",
+  "exporter_type": "blackbox",
+  "conditions": {
+    "job_name_pattern": "^(icmp|ping).*",
+    "metrics_path": "/probe",
+    "module_pattern": "^(icmp|ping)$"
+  },
+  "form_schema": {
+    "required_fields": ["target", "module"],
+    "fields": [
+      {
+        "name": "target",
+        "label": "Alvo (IP ou Hostname)",
+        "type": "text",
+        "required": true,
+        "validation": "ip_or_hostname",
+        "placeholder": "192.168.1.1 ou exemplo.com",
+        "help": "Endereço IP ou hostname a ser monitorado"
+      },
+      {
+        "name": "module",
+        "label": "Módulo Blackbox",
+        "type": "select",
+        "required": true,
+        "default": "icmp",
+        "options": [
+          { "value": "icmp", "label": "ICMP (Ping)" },
+          { "value": "tcp_connect", "label": "TCP Connect" },
+          { "value": "http_2xx", "label": "HTTP 2xx" },
+          { "value": "dns", "label": "DNS" }
+        ],
+        "help": "Módulo definido no blackbox.yml"
+      }
+    ]
+  }
+}
+```
+
+**Exemplo 2: SNMP Exporter (Switch)**
+```json
+{
+  "id": "snmp_switch",
+  "priority": 80,
+  "category": "network-devices",
+  "display_name": "SNMP Switch",
+  "exporter_type": "snmp_exporter",
+  "conditions": {
+    "job_name_pattern": "^snmp.*",
+    "metrics_path": "/snmp"
+  },
+  "form_schema": {
+    "required_fields": ["target", "snmp_community", "snmp_module"],
+    "fields": [
+      {
+        "name": "target",
+        "label": "IP do Dispositivo",
+        "type": "text",
+        "required": true,
+        "validation": "ipv4",
+        "placeholder": "192.168.1.10"
+      },
+      {
+        "name": "snmp_community",
+        "label": "Community String",
+        "type": "password",
+        "required": true,
+        "default": "public",
+        "help": "Community SNMP (ex: public, private)"
+      },
+      {
+        "name": "snmp_module",
+        "label": "Módulo SNMP",
+        "type": "select",
+        "required": true,
+        "options": [
+          { "value": "if_mib", "label": "IF-MIB (Interfaces)" },
+          { "value": "cisco_ios", "label": "Cisco IOS" },
+          { "value": "juniper", "label": "Juniper" },
+          { "value": "hp_procurve", "label": "HP Procurve" }
+        ],
+        "help": "Módulo definido no snmp.yml"
+      },
+      {
+        "name": "snmp_version",
+        "label": "Versão SNMP",
+        "type": "select",
+        "required": false,
+        "default": "v2c",
+        "options": [
+          { "value": "v1", "label": "v1" },
+          { "value": "v2c", "label": "v2c (recomendado)" },
+          { "value": "v3", "label": "v3 (mais seguro)" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Exemplo 3: Windows Exporter**
+```json
+{
+  "id": "windows_exporter",
+  "priority": 80,
+  "category": "system-exporters",
+  "display_name": "Windows Exporter",
+  "exporter_type": "windows_exporter",
+  "conditions": {
+    "job_name_pattern": "^(windows|wmi).*",
+    "metrics_path": "/metrics"
+  },
+  "form_schema": {
+    "required_fields": ["target"],
+    "fields": [
+      {
+        "name": "target",
+        "label": "IP do Servidor Windows",
+        "type": "text",
+        "required": true,
+        "validation": "ipv4"
+      },
+      {
+        "name": "port",
+        "label": "Porta",
+        "type": "number",
+        "required": false,
+        "default": 9182,
+        "help": "Porta do windows_exporter (padrão: 9182)"
+      }
+    ]
+  }
+}
+```
+
+**Tipos de Campo Suportados:**
+- `text` - Campo de texto simples
+- `number` - Campo numérico
+- `select` - Dropdown com opções
+- `password` - Campo de senha (oculto)
+- `textarea` - Área de texto multilinha
+
+**Validações Suportadas:**
+- `ipv4` - Validação de IPv4
+- `ip_or_hostname` - IP ou hostname válido
+- `url` - URL válida
+- `hostname` - Hostname válido
+
 ---
 
 ### 8. Documentações Técnicas Estudadas
 
-#### 6.1. Consul (Service Discovery)
+**⚠️ IMPORTANTE:** Ao reutilizar componentes e funções existentes de editar, deletar, criar, será necessário buscar mais informações na **documentação oficial da API do Consul**:
+- **Fonte:** https://developer.hashicorp.com/consul/api-docs
+- **Endpoints relevantes:** 
+  - `/v1/agent/service/register` - Registrar serviço
+  - `/v1/agent/service/deregister/{id}` - Remover serviço
+  - `/v1/catalog/service/{name}` - Buscar serviço
+  - `/v1/agent/service/{id}` - Atualizar serviço
+
+#### 8.1. Consul (Service Discovery)
 
 **Conceitos Principais:**
 - **Service Discovery**: Registro automático de serviços
@@ -827,6 +1036,455 @@ scrape_configs:
 ---
 
 ## 🎯 Proposta de Implementação CRUD
+
+### Fluxo Completo: Criar Novo Serviço (Passo a Passo)
+
+**⚠️ ATUALIZAÇÃO CRÍTICA (2025-11-17):** Este fluxo foi revisado com base em feedback do usuário e análise do código atual. Principais mudanças:
+
+1. **Seleção de nó Consul primeiro** - Tipos disponíveis variam por servidor Prometheus
+2. **Cache KV para monitoring-types** - KV único (`skills/eye/monitoring-types`), não separado por nó (igual `metadata-fields`)
+3. **ID dinâmico baseado em campos obrigatórios** - Não mais hardcoded
+4. **Validação dinâmica** - Campos obrigatórios vêm do KV metadata-fields
+5. **Tooltips e informações relevantes** - Máximo de informações no frontend
+6. **Fallbacks rígidos com mensagens claras** - Frontend intuitivo e moderno
+7. **Metadata fields controlam visibilidade** - Campos aparecem/ocultam baseado em `show_in_*` configurado em `metadata-fields`
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 1: Usuário clica "Criar Novo" em DynamicMonitoringPage  │
+│  (Ex: category=network-probes)                                  │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Abre modal
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 1.5: Selecionar Nó Consul (OBRIGATÓRIO PRIMEIRO)        │
+│  ┌──────────────────────────────────────────────────────┐     │
+│  │ Nó Consul: [Palmas (172.16.1.26) ▼          ]       │     │
+│  └──────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  ⚠️ IMPORTANTE: Tipos disponíveis variam por servidor Prometheus!│
+│  - Palmas pode ter HTTP_2xx                                     │
+│  - Rio pode NÃO ter HTTP_2xx                                    │
+│  - Tipos vêm do KV cache único (skills/eye/monitoring-types)   │
+│  - KV contém tipos de TODOS os servidores (agregado)            │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Nó selecionado
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 2: DynamicCRUDModal carrega tipos disponíveis            │
+│  GET /api/v1/monitoring-types-dynamic/from-prometheus?category=network│
+│                                                                  │
+│  ⚠️ MUDANÇA: Busca do KV cache (não mais SSH direto)            │
+│  - KV: skills/eye/monitoring-types (único, não separado por nó) │
+│  - Se vazio: força extração do Prometheus + salva no KV          │
+│  - Frontend pode forçar refresh (botão "Atualizar")             │
+│  - Mensagens claras no frontend se falhar                        │
+│                                                                  │
+│  Retorna (do KV cache):                                         │
+│  - blackbox-icmp (ICMP Ping)                                    │
+│  - blackbox-tcp (TCP Connect)                                   │
+│  - blackbox-http (HTTP)                                         │
+│  - blackbox-https (HTTPS)                                       │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Usuário seleciona tipo
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 3: Buscar form_schema do tipo selecionado                │
+│  GET /api/v1/monitoring-types/form-schema?                     │
+│    exporter_type=blackbox&                                      │
+│    job_name=blackbox-icmp&                                      │
+│    node=172.16.1.26                                             │
+│                                                                  │
+│  ⚠️ MUDANÇA: form_schema vem de categorization/rules             │
+│  KV: skills/eye/monitoring-types/categorization/rules          │
+│                                                                  │
+│  Retorna:                                                        │
+│  {                                                               │
+│    "form_schema": {                                              │
+│      "required_fields": ["target", "module"],                    │
+│      "fields": [                                                 │
+│        { "name": "target", "type": "text", ... },                │
+│        { "name": "module", "type": "select", ... }               │
+│      ]                                                           │
+│    }                                                             │
+│  }                                                               │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Renderiza form
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 4: Form dinâmico renderizado                             │
+│                                                                  │
+│  SEÇÃO 1: Campos Específicos do Exporter (form_schema)          │
+│    ┌──────────────────────────────────────────────────────┐     │
+│    │ Alvo (IP ou Hostname): [192.168.1.1           ]     │     │
+│    │ Módulo Blackbox:       [icmp ▼                ]     │     │
+│    └──────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  SEÇÃO 2: Metadata Genéricos (metadata-fields)                  │
+│    ┌──────────────────────────────────────────────────────┐     │
+│    │ Empresa:   [Ramada ▼           ]                     │     │
+│    │ Site:      [palmas ▼           ]                     │     │
+│    │ Ambiente:  [prod ▼             ]                     │     │
+│    │ Nome:      [Gateway Principal  ]                     │     │
+│    │ Grupo:     [Monitora_VPN ▼     ]                     │     │
+│    │ Tipo:      [VPN_Link_Ativo ▼  ]                     │     │
+│    └──────────────────────────────────────────────────────┘     │
+│                                                                  │
+│  ⚠️ Campos obrigatórios vêm do KV metadata-fields               │
+│  - Se "required": true → campo obrigatório                      │
+│  - Se "required": false → campo opcional                        │
+│                                                                  │
+│  [Cancelar]  [Criar Serviço]                                    │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Submit
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 5: Validação no Frontend                                 │
+│  - target: IP ou hostname válido?                                │
+│  - module: Selecionado?                                          │
+│  - Campos obrigatórios (do KV metadata-fields): Validados?       │
+│  - name: Sempre obrigatório (não pode ser vazio)                │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ POST para backend
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 6: Backend - POST /api/v1/services                       │
+│  {                                                               │
+│    "name": "Gateway Principal",     // Campo obrigatório         │
+│    "service": "blackbox_exporter",   // Do exporter_type         │
+│    "address": "",                    // Vazio (Consul resolve)   │
+│    "port": 9115,                     // Padrão blackbox          │
+│    "node_addr": "172.16.1.26",      // Nó selecionado           │
+│    "meta": {                                                     │
+│      "module": "icmp",                                           │
+│      "target": "192.168.1.1",        // Campo específico        │
+│      "company": "Ramada",                                        │
+│      "site": "palmas",                                           │
+│      "env": "prod",                                              │
+│      "name": "Gateway Principal",                                │
+│      "grupo_monitoramento": "Monitora_VPN",                      │
+│      "tipo_monitoramento": "VPN_Link_Ativo"                      │
+│    },                                                            │
+│    "tags": ["icmp", "network", "prod"]                           │
+│  }                                                               │
+│                                                                  │
+│  ⚠️ MUDANÇA: ID será gerado dinamicamente                        │
+│  - Buscar campos obrigatórios do KV metadata-fields             │
+│  - Ordem: module + campos obrigatórios (ordem do KV) + @name     │
+│  - Exemplo: icmp/Ramada/Monitora_VPN/VPN_Link_Ativo@Gateway... │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ ConsulManager.register_service()
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 7: Geração de ID Dinâmico                                 │
+│                                                                  │
+│  ⚠️ NOVO: ID baseado em campos obrigatórios do KV               │
+│                                                                  │
+│  1. Buscar campos obrigatórios do KV:                            │
+│     GET /api/v1/metadata-fields → filtrar required=true         │
+│                                                                  │
+│  2. Ordenar campos obrigatórios (ordem do KV)                   │
+│     Ex: ["module", "company", "grupo_monitoramento",            │
+│          "tipo_monitoramento"]                                   │
+│                                                                  │
+│  3. Montar ID:                                                   │
+│     parts = [meta[field] for field in required_fields]          │
+│     service_id = "/".join(parts) + "@" + meta["name"]            │
+│                                                                  │
+│  4. Sanitizar ID:                                                │
+│     ConsulManager.sanitize_service_id(service_id)                │
+│                                                                  │
+│  Exemplo:                                                        │
+│  - Campos obrigatórios: module, company, grupo_monitoramento,    │
+│    tipo_monitoramento                                            │
+│  - Meta: {                                                       │
+│      module: "icmp",                                             │
+│      company: "Agro Xingu",                                      │
+│      grupo_monitoramento: "Servidores",                          │
+│      tipo_monitoramento: "Status_Server",                         │
+│      name: "AX_DTC_AXMTGVM001-SISTEMA"                          │
+│    }                                                             │
+│  - ID gerado:                                                    │
+│    "icmp/Agro Xingu/Servidores/Status_Server@AX_DTC_AXMTGVM001-SISTEMA"│
+│                                                                  │
+│  ⚠️ Isso corresponde ao formato real do Consul!                 │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ ID gerado
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  PASSO 8: Registro no Consul                                    │
+│  PUT /v1/agent/service/register                                  │
+│                                                                  │
+│  Serviço aparece imediatamente em:                               │
+│  - DynamicMonitoringPage (após refresh)                          │
+│  - Prometheus (após próximo scrape)                              │
+│  - Grafana (após dados chegarem)                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### ⚠️ Fase 0: Verificação e Correção de Hardcodes (CRÍTICO)
+
+**ANTES de implementar novos endpoints, é necessário corrigir hardcodes nos endpoints existentes:**
+
+#### 0.1. Endpoints Existentes que Precisam de Ajuste
+
+**Arquivo:** `backend/api/services.py`
+
+**1. `POST /api/v1/services` (linha 344)**
+- ❌ **Hardcode:** Valida `module, company, project, env, name` (linha 385-391)
+- ❌ **Hardcode:** `check_duplicate_service()` usa campos hardcoded
+- ✅ **Correção:** Buscar campos obrigatórios do KV `metadata-fields`
+- ✅ **Correção:** Usar `Config.get_required_fields()` (já dinâmico, mas precisa garantir uso)
+
+**2. `PUT /api/v1/services/{service_id}` (linha 519)**
+- ⚠️ **Verificar:** Se usa validação hardcoded
+- ✅ **Correção:** Mesma lógica do POST
+
+**3. `DELETE /api/v1/services/{service_id}` (linha 681)**
+- ✅ **OK:** Não precisa de ajuste (apenas deleta)
+
+**4. `DELETE /api/v1/services/bulk/deregister` (linha 640)**
+- ✅ **OK:** Não precisa de ajuste (apenas deleta)
+
+#### 0.2. Funções do ConsulManager que Precisam de Ajuste
+
+**Arquivo:** `backend/core/consul_manager.py`
+
+**1. `validate_service_data()` (linha 1349)**
+- ❌ **Hardcode:** Usa `Config.REQUIRED_FIELDS` (linha 1367)
+- ✅ **Correção:** Buscar campos obrigatórios do KV `metadata-fields` dinamicamente
+- ✅ **Correção:** Usar `Config.get_required_fields()` (já existe, mas precisa garantir uso)
+
+**2. `check_duplicate_service()` (linha 819)**
+- ❌ **Hardcode:** Valida `module, company, project, env, name` (linha 855-859)
+- ✅ **Correção:** Buscar campos obrigatórios do KV e usar para validação
+- ✅ **Correção:** Tornar função genérica baseada em campos obrigatórios
+
+**3. Geração de ID (não existe função dedicada)**
+- ❌ **Hardcode:** `BlackboxManager._compose_service_id()` usa `module/company/project/env@name`
+- ✅ **Correção:** Criar função `generate_dynamic_service_id()` em `ConsulManager`:
+  ```python
+  async def generate_dynamic_service_id(self, meta: Dict[str, Any]) -> str:
+      """
+      Gera ID dinamicamente baseado em campos obrigatórios do KV metadata-fields
+      
+      Ordem: campos obrigatórios (ordem do KV) + @name
+      """
+      # 1. Buscar campos obrigatórios do KV
+      required_fields = Config.get_required_fields()
+      
+      # 2. Montar partes do ID (ordem do KV)
+      parts = []
+      for field in required_fields:
+          if field in meta and meta[field]:
+              parts.append(str(meta[field]))
+      
+      # 3. Adicionar name (sempre obrigatório)
+      if 'name' not in meta or not meta['name']:
+          raise ValueError("Campo 'name' é obrigatório para gerar ID")
+      
+      # 4. Montar ID: parts + @name
+      raw_id = "/".join(parts) + "@" + meta['name']
+      
+      # 5. Sanitizar
+      return self.sanitize_service_id(raw_id)
+  ```
+
+#### 0.3. Implementação de Cache KV para Monitoring-Types (PRIORIDADE #1 - BLOQUEADOR)
+
+**⚠️ CRÍTICO:** Esta implementação é **BLOQUEADORA** para avançar com CRUD. Deve ser feita PRIMEIRO.
+
+**Arquivo:** `backend/api/monitoring_types_dynamic.py`
+
+**Padrão a seguir:** Igual `metadata-fields` e `metadata/sites` (KV único, não separado por nó)
+
+**Problema atual:**
+- ❌ Sempre faz SSH para extrair tipos do Prometheus
+- ❌ Não cacheia em KV
+- ❌ Tipos variam por servidor Prometheus (Palmas pode ter HTTP_2xx, Rio pode não ter)
+
+**Solução (seguindo padrão existente):**
+
+1. **KV único:** `skills/eye/monitoring-types` (igual `skills/eye/metadata/fields`)
+   ```json
+   {
+     "version": "1.0.0",
+     "last_updated": "2025-11-17T10:00:00",
+     "source": "prewarm_startup",
+     "total_types": 45,
+     "servers": {
+       "172.16.1.26": {
+         "types": [...],
+         "total": 20
+       },
+       "172.16.200.14": {
+         "types": [...],
+         "total": 25
+       }
+     },
+     "all_types": [...],  // União de todos os tipos (sem duplicatas)
+     "categories": {...}  // Agrupado por categoria
+   }
+   ```
+
+2. **Endpoint com cache KV (seguindo padrão `metadata-fields`):**
+   ```python
+   @router.get("/from-prometheus")
+   async def get_types_from_prometheus(
+       server: Optional[str] = Query(None, description="Filtrar por servidor"),
+       force_refresh: bool = Query(False, description="Forçar re-extração via SSH")
+   ):
+       """
+       Extrai tipos de monitoramento com cache KV
+       
+       Fluxo (igual metadata-fields):
+       1. Se force_refresh=False: Buscar do KV primeiro (skills/eye/monitoring-types)
+       2. Se KV vazio OU force_refresh=True: Extrair do Prometheus + salvar no KV
+       3. Retornar dados do KV (rápido) ou recém-extraídos
+       
+       ⚠️ DIFERENÇA vs metadata-fields:
+       - Não precisa backup/restore (é só cópia do prometheus.yml)
+       - Se não tem no Prometheus, não tem no KV (simples)
+       - Menos resiliente (não é editável via frontend)
+       """
+       # 1. Tentar ler do KV primeiro (se não forçar refresh)
+       if not force_refresh:
+           kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
+           if kv_data and kv_data.get('all_types'):
+               logger.info(f"[MONITORING-TYPES] Retornando {len(kv_data['all_types'])} tipos do KV (cache)")
+               return {
+                   "success": True,
+                   "from_cache": True,
+                   "categories": kv_data.get('categories', {}),
+                   "all_types": kv_data.get('all_types', []),
+                   "servers": kv_data.get('servers', {}),
+                   "last_updated": kv_data.get('last_updated')
+               }
+       
+       # 2. KV vazio ou force_refresh: Extrair do Prometheus
+       logger.info("[MONITORING-TYPES] Extraindo tipos do Prometheus via SSH...")
+       # ... código de extração existente ...
+       
+       # 3. Salvar no KV (sobrescrever - não precisa merge como metadata-fields)
+       await kv_manager.put_json(
+           key='skills/eye/monitoring-types',
+           value={
+               'version': '1.0.0',
+               'last_updated': datetime.now().isoformat(),
+               'source': 'force_refresh' if force_refresh else 'fallback_empty_kv',
+               'total_types': len(all_types),
+               'servers': result_servers,
+               'all_types': all_types,
+               'categories': categories
+           }
+       )
+       
+       return {
+           "success": True,
+           "from_cache": False,
+           "categories": categories,
+           "all_types": all_types,
+           "servers": result_servers
+       }
+   ```
+
+3. **Prewarm no startup (similar ao `_prewarm_metadata_fields_cache`):**
+   ```python
+   # backend/app.py
+   async def _prewarm_monitoring_types_cache():
+       """
+       Prewarm cache de monitoring-types
+       
+       ⚠️ DIFERENÇA vs metadata-fields:
+       - Não precisa verificar se KV já tem dados (sempre sobrescreve)
+       - Não precisa merge (é só cópia do prometheus.yml)
+       - Não precisa backup (não é editável)
+       
+       FLUXO:
+       1. Aguardar servidor inicializar (1-2s)
+       2. Extrair tipos de TODOS os servidores Prometheus via SSH
+       3. Salvar no KV: skills/eye/monitoring-types
+       4. Tipos ficam disponíveis instantaneamente
+       """
+       global _prewarm_status
+       _prewarm_status['monitoring_types'] = {'running': True}
+       
+       try:
+           # Aguardar servidor inicializar
+           await asyncio.sleep(2)
+           
+           logger.info("[PRE-WARM] Iniciando prewarm de monitoring-types...")
+           
+           # Extrair tipos de TODOS os servidores
+           from api.monitoring_types_dynamic import extract_types_from_all_servers
+           result = await extract_types_from_all_servers()
+           
+           # Salvar no KV (sempre sobrescreve - não precisa verificar existência)
+           await kv_manager.put_json(
+               key='skills/eye/monitoring-types',
+               value={
+                   'version': '1.0.0',
+                   'last_updated': datetime.now().isoformat(),
+                   'source': 'prewarm_startup',
+                   'total_types': len(result['all_types']),
+                   'servers': result['servers'],
+                   'all_types': result['all_types'],
+                   'categories': result['categories']
+               }
+           )
+           
+           logger.info(f"[PRE-WARM] ✓ Monitoring-types cache populado: {len(result['all_types'])} tipos")
+           _prewarm_status['monitoring_types'] = {'completed': True, 'running': False}
+           
+       except Exception as e:
+           logger.error(f"[PRE-WARM] ❌ Erro ao prewarm monitoring-types: {e}", exc_info=True)
+           _prewarm_status['monitoring_types'] = {'failed': True, 'error': str(e), 'running': False}
+   ```
+
+4. **Frontend pode forçar refresh:**
+   ```typescript
+   // Botão "Atualizar" na página monitoring-types
+   const handleForceRefresh = async () => {
+     setLoading(true);
+     try {
+       const response = await axios.get('/api/v1/monitoring-types-dynamic/from-prometheus', {
+         params: { force_refresh: true }
+       });
+       message.success('Tipos atualizados com sucesso!');
+       // Recarregar dados
+       loadTypes();
+     } catch (error) {
+       message.error('Erro ao atualizar tipos. Verifique logs do backend.');
+     } finally {
+       setLoading(false);
+     }
+   };
+   ```
+
+5. **Fallback rígido com mensagem clara no frontend:**
+   ```typescript
+   // Se KV vazio e extração falhar
+   if (!data.success && data.error === 'KV_EMPTY_AND_EXTRACTION_FAILED') {
+     // Mostrar mensagem clara
+     notification.error({
+       message: 'Tipos de Monitoramento Indisponíveis',
+       description: 'Não foi possível carregar tipos do Prometheus. Verifique: 1) Conexão SSH com servidores, 2) Arquivo prometheus.yml existe, 3) Logs do backend.',
+       duration: 10
+     });
+   }
+   ```
+
+---
 
 ### Fase 1: Backend - Endpoints CRUD
 
@@ -943,11 +1601,253 @@ async def get_form_schema(exporter_type: str):
 
 ### Fase 2: Frontend - Componentes CRUD
 
+#### 2.0. Sistema de Auto-Cadastro (CRÍTICO - Já Implementado)
+
+**⚠️ IMPORTANTE:** O sistema de auto-cadastro já está implementado e funcionando em `Services.tsx`. Deve ser **reutilizado** no CRUD dinâmico.
+
+**Como Funciona:**
+
+1. **Configuração em `metadata-fields`:**
+   - Cada campo tem propriedade `available_for_registration` (boolean)
+   - Se `true`, campo aparece na página `ReferenceValues` e suporta auto-cadastro
+   - Valores pré-cadastrados aparecem como opções no formulário
+
+2. **Componente `FormFieldRenderer`:**
+   - Se `field.available_for_registration === true` E `field.field_type === 'string'` → Usa `ReferenceValueInput`
+   - Caso contrário → Usa componentes padrão (ProFormText, ProFormSelect, etc)
+
+3. **Componente `ReferenceValueInput`:**
+   ```typescript
+   // frontend/src/components/ReferenceValueInput.tsx
+   
+   // Carrega valores existentes do backend
+   const { values, ensureValue } = useReferenceValues({ fieldName: 'cidade' });
+   
+   // Mostra autocomplete com valores existentes
+   <AutoComplete
+     value={internalValue}
+     options={values.map(v => ({ value: v, label: v }))}
+     onChange={handleChange}
+     notFoundContent={
+       <div>
+         <PlusOutlined />
+         Digite para criar novo valor
+       </div>
+     }
+   />
+   
+   // ⚡ INDICADOR VISUAL: Tag verde quando valor novo é digitado
+   {internalValue && !values.includes(internalValue) && (
+     <Tag color="green" icon={<PlusOutlined />}>
+       Novo valor será criado: "{internalValue}"
+     </Tag>
+   )}
+   ```
+
+4. **Auto-cadastro no `handleSubmit` (Services.tsx):**
+   ```typescript
+   // frontend/src/pages/Services.tsx (linhas 790-832)
+   
+   const handleSubmit = async (values: ServiceFormValues) => {
+     // PASSO 1: AUTO-CADASTRO DE VALORES (Retroalimentação)
+     
+     // 1A) Auto-cadastrar TAGS (se houver)
+     if (values.tags && values.tags.length > 0) {
+       await ensureTags(values.tags);
+     }
+     
+     // 1B) Auto-cadastrar METADATA FIELDS (campos com available_for_registration=true)
+     const metadataValues: Array<{ fieldName: string; value: string }> = [];
+     
+     formFields.forEach((field) => {
+       if (field.available_for_registration) {  // ← Verifica flag
+         const fieldValue = (values as any)[field.name];
+         
+         if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+           metadataValues.push({
+             fieldName: field.name,
+             value: fieldValue.trim()
+           });
+         }
+       }
+     });
+     
+     // Executar batch ensure (cadastra todos de uma vez)
+     if (metadataValues.length > 0) {
+       await batchEnsure(metadataValues);  // ← POST /reference-values/batch-ensure
+     }
+     
+     // PASSO 2: SALVAR SERVIÇO (após auto-cadastro)
+     await consulAPI.createService(payload);
+   };
+   ```
+
+5. **Hook `useBatchEnsure`:**
+   ```typescript
+   // frontend/src/hooks/useReferenceValues.ts
+   
+   export function useBatchEnsure() {
+     const batchEnsure = useCallback(
+       async (values: Array<{ fieldName: string; value: string }>) => {
+         const response = await axios.post(
+           `${API_URL}/reference-values/batch-ensure`,
+           values.map(v => ({
+             field_name: v.fieldName,
+             value: v.value
+           }))
+         );
+         return response.data;
+       },
+       []
+     );
+     return { batchEnsure };
+   }
+   ```
+
+**Fluxo Completo de Auto-Cadastro:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  1. USUÁRIO ABRE FORMULÁRIO                                     │
+│     Campo "Cidade" tem available_for_registration=true          │
+│     FormFieldRenderer detecta → Usa ReferenceValueInput         │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Carrega valores existentes
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  2. ReferenceValueInput carrega valores do backend              │
+│     GET /api/v1/reference-values/cidade                        │
+│     Retorna: ["Palmas", "Rio de Janeiro", "São Paulo", ...]    │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Usuário digita valor novo
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  3. USUÁRIO DIGITA "Balsas" (valor novo)                       │
+│     AutoComplete mostra: "Digite para criar novo valor"         │
+│     Tag verde aparece: "Novo valor será criado: Balsas"        │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Usuário clica "Salvar"
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  4. handleSubmit executa                                        │
+│     a) batchEnsure([{ fieldName: "cidade", value: "Balsas" }]) │
+│     b) POST /reference-values/batch-ensure                     │
+│     c) Backend normaliza e cadastra "Balsas"                   │
+│     d) Depois salva serviço no Consul                          │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       │ Próximo formulário
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  5. PRÓXIMO FORMULÁRIO                                          │
+│     Campo "Cidade" agora mostra:                               │
+│     ["Palmas", "Rio", "São Paulo", "Balsas" ← NOVO!]          │
+│     "Balsas" aparece na página ReferenceValues                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Exemplo Real (Campo "Cidade"):**
+
+1. **Estado Inicial:**
+   - Campo "Cidade" tem `available_for_registration: true`
+   - Valores cadastrados: `["Palmas", "Rio de Janeiro", "São Paulo"]`
+   - Usuário vê dropdown com essas 3 opções
+
+2. **Usuário Digita Valor Novo:**
+   - Usuário digita "Balsas" (não está na lista)
+   - `ReferenceValueInput` detecta que valor não existe
+   - Mostra tag verde: **"Novo valor será criado: Balsas"**
+
+3. **Ao Salvar Formulário:**
+   - `handleSubmit` detecta que "cidade" tem `available_for_registration: true`
+   - Chama `batchEnsure([{ fieldName: "cidade", value: "Balsas" }])`
+   - Backend cadastra "Balsas" em `reference-values`
+   - Serviço é salvo no Consul
+
+4. **Próximo Uso:**
+   - Campo "Cidade" agora mostra: `["Palmas", "Rio", "São Paulo", "Balsas"]`
+   - "Balsas" aparece na página `ReferenceValues` (aba "Cidade")
+
+**Integração no CRUD Dinâmico:**
+
+O `DynamicCRUDModal` deve seguir **exatamente o mesmo padrão**:
+
+```typescript
+// frontend/src/components/MonitoringServiceFormModal.tsx
+
+import { useBatchEnsure } from '../hooks/useReferenceValues';
+import FormFieldRenderer from './FormFieldRenderer';
+
+const MonitoringServiceFormModal: React.FC<Props> = ({ ... }) => {
+  const { batchEnsure } = useBatchEnsure();
+  const { formFields } = useFormFields(category);
+  
+  const handleSubmit = async (values: any) => {
+    // PASSO 1: AUTO-CADASTRO (igual Services.tsx)
+    const metadataValues: Array<{ fieldName: string; value: string }> = [];
+    
+    formFields.forEach((field) => {
+      if (field.available_for_registration) {  // ← Verifica flag
+        const fieldValue = values[field.name];
+        if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+          metadataValues.push({
+            fieldName: field.name,
+            value: fieldValue.trim()
+          });
+        }
+      }
+    });
+    
+    if (metadataValues.length > 0) {
+      await batchEnsure(metadataValues);  // ← Auto-cadastra antes de salvar
+    }
+    
+    // PASSO 2: SALVAR SERVIÇO
+    await consulAPI.createService(payload);
+  };
+  
+  return (
+    <Form onFinish={handleSubmit}>
+      {/* Campos específicos do exporter (form_schema) */}
+      {exporterFields.map(field => (
+        <Form.Item name={field.name} label={field.label}>
+          {/* Renderização baseada em field.type */}
+        </Form.Item>
+      ))}
+      
+      {/* Metadata genéricos (usa FormFieldRenderer - já tem auto-cadastro) */}
+      {formFields.map(field => (
+        <FormFieldRenderer key={field.name} field={field} />
+        // ↑ Se available_for_registration=true → ReferenceValueInput
+        // ↑ Se false → ProFormText/Select padrão
+      ))}
+    </Form>
+  );
+};
+```
+
+**⚠️ IMPORTANTE:**
+- ✅ **Reutilizar `FormFieldRenderer`** - Já implementa auto-cadastro automaticamente
+- ✅ **Reutilizar `useBatchEnsure`** - Hook já testado e funcional
+- ✅ **Seguir padrão de `Services.tsx`** - Não reinventar a roda
+- ✅ **Auto-cadastro acontece ANTES de salvar serviço** - Garante valores existem
+- ✅ **Valores novos aparecem imediatamente** - Próximo formulário já mostra
+
+---
+
 #### 2.1. Modal de Criação
 
 **Componente Novo (não misturar com código antigo):**
 ```typescript
 // frontend/src/components/MonitoringServiceFormModal.tsx
+import { Tooltip, QuestionCircleOutlined } from 'antd';
+import { notification } from 'antd';
+import { useBatchEnsure } from '../hooks/useReferenceValues';
+import { useServiceTags } from '../hooks/useServiceTags';
+import FormFieldRenderer from './FormFieldRenderer';
 
 interface MonitoringServiceFormModalProps {
   mode: 'create' | 'edit';
@@ -972,6 +1872,10 @@ export const MonitoringServiceFormModal: React.FC<MonitoringServiceFormModalProp
   const [exporterFields, setExporterFields] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { filterFields } = useFilterFields(category);
+  
+  // ⚡ SISTEMA DE AUTO-CADASTRO: Hooks para retroalimentação de valores
+  const { batchEnsure } = useBatchEnsure();
+  const { ensureTags } = useServiceTags({ autoLoad: false });
   
   // Carregar form_schema quando exporter_type mudar
   useEffect(() => {
@@ -1015,6 +1919,49 @@ export const MonitoringServiceFormModal: React.FC<MonitoringServiceFormModalProp
   
   const handleSubmit = async (values: any) => {
     try {
+      // ⚡ PASSO 1: AUTO-CADASTRO DE VALORES (igual Services.tsx)
+      // Antes de salvar, garantir que valores novos sejam cadastrados automaticamente
+      
+      // 1A) Auto-cadastrar TAGS (se houver)
+      if (values.tags && Array.isArray(values.tags) && values.tags.length > 0) {
+        try {
+          await ensureTags(values.tags);
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar tags:', err);
+          // Não bloqueia o fluxo
+        }
+      }
+      
+      // 1B) Auto-cadastrar METADATA FIELDS (campos com available_for_registration=true)
+      const metadataValues: Array<{ fieldName: string; value: string }> = [];
+      
+      // Percorrer filterFields (metadata genéricos) para identificar campos com auto-cadastro
+      filterFields.forEach((field) => {
+        if (field.available_for_registration) {  // ← Verifica flag
+          const fieldValue = values[field.name];
+          
+          // Só cadastrar se valor não for vazio
+          if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+            metadataValues.push({
+              fieldName: field.name,
+              value: fieldValue.trim()
+            });
+          }
+        }
+      });
+      
+      // Executar batch ensure se houver valores
+      if (metadataValues.length > 0) {
+        try {
+          await batchEnsure(metadataValues);
+          console.log(`[Auto-Cadastro] ${metadataValues.length} valores auto-cadastrados`);
+        } catch (err) {
+          console.warn('Erro ao auto-cadastrar metadata fields:', err);
+          // Não bloqueia o fluxo
+        }
+      }
+      
+      // ⚡ PASSO 2: SALVAR SERVIÇO (após auto-cadastro)
       if (mode === 'create') {
         await consulAPI.createService({
           ...values,
@@ -1089,24 +2036,23 @@ export const MonitoringServiceFormModal: React.FC<MonitoringServiceFormModalProp
           </Form.Item>
         ))}
         
-        {/* Metadata dinâmico (campos genéricos) */}
+        {/* Metadata dinâmico (campos genéricos) - USA FormFieldRenderer (já tem auto-cadastro) */}
         {filterFields.map(field => (
-          <Form.Item
+          <FormFieldRenderer
             key={field.name}
-            name={field.name}
-            label={field.display_name}
-            rules={field.required ? [{ required: true }] : []}
-          >
-            {field.type === 'select' ? (
-              <Select>
-                {field.options?.map(opt => (
-                  <Select.Option key={opt} value={opt}>{opt}</Select.Option>
-                ))}
-              </Select>
-            ) : (
-              <Input />
-            )}
-          </Form.Item>
+            field={field}
+            mode={mode}
+          />
+          {/* 
+            ⚡ FormFieldRenderer detecta automaticamente:
+            - Se field.available_for_registration === true → ReferenceValueInput (autocomplete + auto-cadastro)
+            - Se false → ProFormText/Select padrão
+            
+            ⚡ ReferenceValueInput mostra:
+            - Valores existentes como opções
+            - Tag verde "Novo valor será criado: {valor}" quando valor não existe
+            - Auto-cadastro acontece no handleSubmit via batchEnsure()
+          */}
         ))}
       </Form>
     </Modal>
@@ -1290,92 +2236,583 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
 ---
 
-## ✅ Checklist de Implementação
+## ✅ Checklist de Implementação Detalhado
 
 ### Backend
-- [x] Endpoint `POST /api/v1/services` já existe (reutilizar)
-- [x] Endpoint `PUT /api/v1/services/{service_id}` já existe (reutilizar)
-- [x] Endpoint `DELETE /api/v1/services/{service_id}` já existe (reutilizar)
-- [x] Endpoint `DELETE /api/v1/services/bulk/deregister` já existe (reutilizar)
-- [ ] **NOVO:** Criar endpoint `GET /api/v1/monitoring/form-schema/{exporter_type}`
+- [x] Endpoint `POST /api/v1/services` já existe (reutilizar) - `backend/api/services.py:344`
+- [x] Endpoint `PUT /api/v1/services/{service_id}` já existe (reutilizar) - `backend/api/services.py:519`
+- [x] Endpoint `DELETE /api/v1/services/{service_id}` já existe (reutilizar) - `backend/api/services.py:681`
+- [x] Endpoint `DELETE /api/v1/services/bulk/deregister` já existe (reutilizar) - `backend/api/services.py:640`
+- [ ] **NOVO:** Criar endpoint `GET /api/v1/monitoring-types/form-schema?exporter_type={type}&category={cat}`
 - [ ] Estender `categorization/rules` com `form_schema` (via `monitoring/rules` UI)
-- [ ] Implementar validação de tipos (monitoring-types)
+- [ ] Implementar validação de tipos (monitoring-types) no CREATE
+- [ ] Implementar validação de campos obrigatórios do `form_schema`
 - [ ] Implementar validação de metadata obrigatórios
-- [ ] Implementar integração com Consul Agent API
-- [ ] Implementar invalidação de cache
-- [ ] Adicionar testes unitários
-- [ ] Adicionar testes de integração
+- [ ] Implementar integração com Consul Agent API (já existe, apenas reutilizar)
+- [ ] Implementar invalidação de cache após CRUD
+- [ ] Adicionar testes unitários para `form_schema` parsing
+- [ ] Adicionar testes de integração end-to-end
 
 ### Frontend
-- [ ] Criar componente `ServiceFormModal.tsx`
-- [ ] Criar componente `BatchDeleteModal.tsx`
-- [ ] Integrar modais no `DynamicMonitoringPage`
-- [ ] Adicionar botão "Criar Serviço"
-- [ ] Adicionar ações "Editar" e "Excluir" na tabela
-- [ ] Implementar batch delete (seleção múltipla)
-- [ ] Adicionar validação de formulários
-- [ ] Adicionar feedback visual (success/error)
-- [ ] Adicionar loading states
-- [ ] Testar fluxo completo
+- [ ] **BLOQUEADOR:** Adicionar botão "Atualizar" em `MonitoringTypes.tsx` para forçar refresh
+- [ ] **BLOQUEADOR:** Implementar mensagens claras de erro (tooltips, notifications)
+- [ ] **BLOQUEADOR:** Testes frontend para carregamento, refresh e tratamento de erros
+- [ ] **BLOQUEADOR:** Validar que metadata fields controlam visibilidade por página (já funciona)
+- [ ] Criar componente `DynamicCRUDModal.tsx` (ou `MonitoringServiceFormModal.tsx`)
+- [ ] Estender `FormFieldRenderer.tsx` para suportar campos do `form_schema`
+- [ ] Adicionar tooltips e informações relevantes em TODOS os campos do formulário
+- [ ] Criar componente `BatchDeleteModal.tsx` (opcional, pode usar Popconfirm)
+- [ ] Integrar modais no `DynamicMonitoringPage.tsx`
+- [ ] Adicionar botão "Criar Serviço" no header do `DynamicMonitoringPage`
+- [ ] Adicionar coluna "Ações" com botões "Editar" e "Excluir" na tabela
+- [ ] Implementar batch delete (seleção múltipla com `rowSelection` do ProTable)
+- [ ] Adicionar validação de formulários (frontend + backend)
+- [ ] Adicionar feedback visual (success/error messages)
+- [ ] Adicionar loading states durante carregamento de `form_schema`
+- [ ] Manter padrão visual atual (não fugir do design existente)
+- [ ] Testar fluxo completo de criação (blackbox, SNMP, windows)
+- [ ] Testar fluxo completo de edição
+- [ ] Testar fluxo completo de exclusão (single + batch)
 
 ### Integração
-- [ ] Testar criação de serviço
-- [ ] Testar edição de metadata
-- [ ] Testar exclusão de serviço
-- [ ] Testar batch delete
-- [ ] Validar sincronização com Consul
-- [ ] Validar cache invalidation
-- [ ] Validar que Prometheus descobre novos serviços
+- [ ] Testar criação de serviço blackbox (ICMP) end-to-end
+- [ ] Testar criação de serviço SNMP end-to-end
+- [ ] Testar criação de serviço Windows Exporter end-to-end
+- [ ] Testar edição de metadata (campos genéricos)
+- [ ] Testar edição de campos específicos do exporter
+- [ ] Testar exclusão de serviço (single)
+- [ ] Testar batch delete (múltiplos serviços)
+- [ ] Validar sincronização com Consul (serviço aparece imediatamente)
+- [ ] Validar cache invalidation (dados atualizados após CRUD)
+- [ ] Validar que Prometheus descobre novos serviços (após próximo scrape)
+- [ ] Validar categorização automática (serviço aparece na categoria correta)
 
 ### Documentação
 - [ ] Atualizar README com endpoints CRUD
-- [ ] Documentar fluxo de criação
-- [ ] Documentar validações
-- [ ] Adicionar exemplos de uso
+- [ ] Documentar estrutura `form_schema` completa
+- [ ] Documentar fluxo de criação passo a passo
+- [ ] Documentar validações (frontend + backend)
+- [ ] Adicionar exemplos de uso para cada exporter type
 - [ ] Atualizar diagramas de arquitetura
+- [ ] Criar guia de adição de novos exporters
+- [ ] Adicionar screenshots do CRUD em ação
 
 ---
 
-## 🎯 Próximos Passos
+## 🎯 Roadmap de Implementação Estruturado por Sprints
+
+### 🎯 SPRINT 0 (BLOQUEADOR - 1-2 dias): Cache KV para Monitoring-Types
+
+**⚠️ CRÍTICO:** Este sprint é **BLOQUEADOR** para todos os outros. Deve ser feito PRIMEIRO.
+
+**Objetivo:** Implementar cache KV para monitoring-types seguindo padrão existente (`metadata-fields`)
+
+**Tarefas:**
+1. ✅ Criar função `_prewarm_monitoring_types_cache()` em `backend/app.py`
+2. ✅ Modificar endpoint `GET /monitoring-types-dynamic/from-prometheus` para usar KV
+3. ✅ Estrutura KV: `skills/eye/monitoring-types` (único, não separado por nó)
+4. ✅ Implementar fallback rígido (se KV vazio, extrai + salva)
+5. ✅ Adicionar botão "Atualizar" no frontend (`MonitoringTypes.tsx`)
+6. ✅ Mensagens claras de erro no frontend (tooltips, notifications)
+7. ✅ **Testes backend:** Validar prewarm, cache, fallback
+8. ✅ **Testes frontend:** Validar carregamento, refresh, mensagens de erro
+
+**Arquivos a Modificar:**
+- `backend/app.py` - Adicionar `_prewarm_monitoring_types_cache()`
+- `backend/api/monitoring_types_dynamic.py` - Modificar endpoint para usar KV
+- `frontend/src/pages/MonitoringTypes.tsx` - Adicionar botão "Atualizar" e mensagens
+
+**Estimativa:** 1-2 dias (8-16 horas)
+
+**Critério de Sucesso:**
+- ✅ Prewarm popula KV no startup
+- ✅ Endpoint retorna dados do KV (rápido)
+- ✅ Fallback funciona se KV vazio
+- ✅ Frontend mostra mensagens claras em caso de erro
+- ✅ Botão "Atualizar" força re-extração
+- ✅ Testes backend e frontend passam
+
+**⚠️ IMPORTANTE:** Sem este sprint completo, não é possível avançar para CRUD.
+
+---
+
+### 🎯 SPRINT 1 (1 semana): Backend - Extensão de Rules
+
+**Objetivo:** Preparar backend para suportar `form_schema` nas regras de categorização
+
+**Tarefas:**
+1. ✅ Adicionar `form_schema` em 3-5 regras principais (blackbox, snmp, windows, node)
+2. ✅ Criar endpoint `GET /api/v1/monitoring-types/form-schema?exporter_type={type}&category={cat}`
+3. ✅ Validar estrutura JSON de `form_schema` (schema validation)
+4. ✅ Atualizar `MonitoringRules.tsx` para permitir edição de `form_schema` via UI
+5. ✅ Testar endpoint com Postman/curl
+
+**Arquivos a Modificar:**
+- `backend/core/categorization_rule_engine.py` - Adicionar parsing de `form_schema`
+- `backend/api/monitoring_types_dynamic.py` - Criar endpoint `get_form_schema`
+- `skills/eye/monitoring-types/categorization/rules` (JSON no KV) - Adicionar `form_schema`
+- `frontend/src/pages/MonitoringRules.tsx` - Adicionar editor de `form_schema`
+
+**Estimativa:** 2-4 horas
+
+**Critério de Sucesso:**
+- Endpoint retorna `form_schema` correto para cada exporter_type
+- Validação de schema funciona
+- UI permite editar `form_schema` nas regras
+
+---
+
+### 🎯 SPRINT 2 (1 semana): Frontend - Componente DynamicCRUDModal
+
+**Objetivo:** Criar modal dinâmico de criação/edição de serviços
+
+**Tarefas:**
+1. ✅ Criar `DynamicCRUDModal.tsx` básico
+2. ✅ Estender `FormFieldRenderer.tsx` para suportar campos do `form_schema`
+3. ✅ Integrar com APIs (`getFormSchema`, `getMetadataFields`, `getMonitoringTypesDynamic`)
+4. ✅ Renderizar form dinâmico com tabs (Exporter Config + Metadata)
+5. ✅ Validação de campos obrigatórios (frontend)
+6. ✅ Testar com 1 tipo (ex: blackbox-icmp)
+7. ✅ Validar criação end-to-end (frontend → backend → Consul → Prometheus)
+
+**Arquivos a Criar/Modificar:**
+- `frontend/src/components/DynamicCRUDModal.tsx` - **NOVO**
+- `frontend/src/components/FormFieldRenderer.tsx` - **ESTENDER**
+- `frontend/src/services/api.ts` - Adicionar `getFormSchema()`
+
+**Estimativa:** 4-6 horas
+
+**Critério de Sucesso:**
+- Modal carrega tipos disponíveis
+- Modal carrega `form_schema` ao selecionar tipo
+- Form renderiza campos dinâmicos corretamente
+- Validação funciona
+- Serviço é criado no Consul e aparece no Prometheus
+
+---
+
+### 🎯 SPRINT 3 (1 semana): Integração com DynamicMonitoringPage
+
+**Objetivo:** Integrar CRUD completo no `DynamicMonitoringPage`
+
+**Tarefas:**
+1. ✅ Integrar modal com `DynamicMonitoringPage`
+2. ✅ Adicionar botão "Criar Novo" no header
+3. ✅ Adicionar ação "Editar" na linha da tabela
+4. ✅ Adicionar ação "Deletar" (usa `useConsulDelete` existente)
+5. ✅ Implementar batch delete (seleção múltipla)
+6. ✅ Testar com múltiplos tipos de exporters
+
+**Arquivos a Modificar:**
+- `frontend/src/pages/DynamicMonitoringPage.tsx` - **INTEGRAR CRUD**
+
+**Estimativa:** 3-4 horas
+
+**Critério de Sucesso:**
+- Botão "Criar" abre modal
+- Botão "Editar" preenche modal com dados do serviço
+- Botão "Excluir" remove serviço do Consul
+- Batch delete remove múltiplos serviços
+- Tabela atualiza automaticamente após CRUD
+
+---
+
+### 🎯 SPRINT 4 (1 semana): Testes e Documentação
+
+**Objetivo:** Validar funcionalidade completa e documentar
+
+**Tarefas:**
+1. ✅ Testes completos em todas as categorias
+2. ✅ Testar criação de serviço blackbox (ICMP) end-to-end
+3. ✅ Testar criação de serviço SNMP end-to-end
+4. ✅ Testar criação de serviço Windows Exporter end-to-end
+5. ✅ Testar edição de metadata e campos específicos
+6. ✅ Testar exclusão (single + batch)
+7. ✅ Validar sincronização com Consul e Prometheus
+8. ✅ Documentação completa
+9. ✅ Desativar páginas legadas (Services, Exporters, BlackboxTargets)
+
+**Estimativa:** 2-3 horas (testes) + 1-2 horas (documentação)
+
+**Critério de Sucesso:**
+- Todos os testes passam
+- Documentação completa e atualizada
+- Páginas legadas desativadas
+- Sistema 100% funcional
+
+---
+
+## 🎯 Próximos Passos Imediatos
 
 1. **Revisar esta análise** com o time
 2. **Aprovar arquitetura proposta** (especialmente extensão de `categorization/rules`)
-3. **Priorizar funcionalidades:**
-   - Fase 1: Estender `categorization/rules` com `form_schema`
-   - Fase 2: Criar endpoint `GET /monitoring/form-schema/{exporter_type}`
-   - Fase 3: Criar componente `MonitoringServiceFormModal.tsx`
-   - Fase 4: Integrar CRUD no `DynamicMonitoringPage`
-4. **Migrar campos de JSONs estáticos** para `categorization/rules`
-5. **Implementar frontend** (backend já está pronto)
-6. **Testes completos** antes de deploy
+3. **Iniciar SPRINT 1:**
+   - Adicionar `form_schema` em 3-5 regras principais
+   - Criar endpoint `GET /monitoring-types/form-schema`
+   - Testar endpoint com Postman
+4. **Seguir roadmap estruturado** por sprints
+5. **Migrar campos de JSONs estáticos** para `categorization/rules` (durante Sprint 1)
+6. **Testes completos** antes de deploy (Sprint 4)
+
+---
+
+## 📚 Páginas Legadas - Snippets de Código Reutilizável
+
+### Services.tsx (SERÁ DESATIVADA) - Padrões para Reutilizar
+
+**⚠️ IMPORTANTE:** Não copiar código direto. Usar como referência para criar componentes novos.
+
+#### ✅ Padrão 1: Modal de Criação com FormFieldRenderer
+
+```typescript
+// services.tsx:450-550
+// Padrão de renderização dinâmica de campos
+
+<ModalForm
+  title="Criar Novo Serviço"
+  open={createModalVisible}
+  onFinish={handleCreate}
+>
+  {/* Renderização dinâmica de campos via FormFieldRenderer */}
+  {formFields.map((field) => (
+    <FormFieldRenderer key={field.name} field={field} />
+  ))}
+</ModalForm>
+```
+
+**Aplicação:** Usar no `DynamicCRUDModal` para renderizar campos metadata genéricos.
+
+---
+
+#### ✅ Padrão 2: Validação de Duplicatas
+
+```typescript
+// services.tsx:120
+// Verificar se já existe serviço antes de criar
+
+const handleCreate = async (values: any) => {
+  // Verificar se já existe serviço com mesmo nome
+  const existingService = data.find(
+    (s) => s.Service === values.service && s.Meta.name === values.meta.name
+  );
+
+  if (existingService) {
+    message.warning('Já existe um serviço com esse nome');
+    return false;
+  }
+
+  await consulAPI.createService(values);
+  message.success('Serviço criado!');
+  actionRef.current?.reload();
+};
+```
+
+**Aplicação:** Adicionar validação no `handleSubmit` do `DynamicCRUDModal` antes de chamar `consulAPI.createService()`.
+
+---
+
+#### ✅ Padrão 3: Auto-Cadastro de Valores em Reference-Values (CRÍTICO - Já Implementado)
+
+**⚠️ IMPORTANTE:** Este padrão é **CRÍTICO** e já está implementado. Deve ser **reutilizado** no CRUD dinâmico.
+
+**Como Funciona:**
+
+1. **Configuração em `metadata-fields`:**
+   - Campo tem propriedade `available_for_registration: true`
+   - Campo aparece na página `ReferenceValues`
+   - Valores pré-cadastrados aparecem como opções
+
+2. **FormFieldRenderer detecta automaticamente:**
+   ```typescript
+   // frontend/src/components/FormFieldRenderer.tsx (linhas 144-167)
+   
+   // Se campo tem available_for_registration=true → ReferenceValueInput
+   const shouldUseAutocomplete =
+     field.available_for_registration &&
+     field.field_type === 'string' &&
+     !EXCLUDE_FROM_AUTOCOMPLETE.includes(field.name);
+   
+   if (shouldUseAutocomplete) {
+     return (
+       <Form.Item name={field.name} label={field.display_name}>
+         <ReferenceValueInput
+           fieldName={field.name}
+           placeholder={`Selecione ou digite ${field.display_name.toLowerCase()}`}
+           required={field.required}
+         />
+       </Form.Item>
+     );
+   }
+   ```
+
+3. **ReferenceValueInput mostra indicador visual:**
+   ```typescript
+   // frontend/src/components/ReferenceValueInput.tsx (linhas 205-211)
+   
+   // Tag verde quando valor novo é digitado
+   {internalValue && !loading && !values.includes(internalValue) && (
+     <Tag color="green" icon={<PlusOutlined />} style={{ fontSize: '11px' }}>
+       Novo valor será criado: "{internalValue}"
+     </Tag>
+   )}
+   ```
+
+4. **Auto-cadastro no handleSubmit:**
+   ```typescript
+   // frontend/src/pages/Services.tsx (linhas 806-832)
+   
+   // 1B) Auto-cadastrar METADATA FIELDS
+   const metadataValues: Array<{ fieldName: string; value: string }> = [];
+   
+   formFields.forEach((field) => {
+     if (field.available_for_registration) {  // ← Verifica flag
+       const fieldValue = (values as any)[field.name];
+       if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
+         metadataValues.push({
+           fieldName: field.name,
+           value: fieldValue.trim()
+         });
+       }
+     }
+   });
+   
+   // Executar batch ensure
+   if (metadataValues.length > 0) {
+     await batchEnsure(metadataValues);  // ← POST /reference-values/batch-ensure
+   }
+   ```
+
+**Aplicação no CRUD Dinâmico:**
+- ✅ **Reutilizar `FormFieldRenderer`** - Já implementa auto-cadastro
+- ✅ **Reutilizar `useBatchEnsure`** - Hook já testado
+- ✅ **Seguir padrão de `Services.tsx`** - Não reinventar
+- ✅ **Auto-cadastro ANTES de salvar serviço** - Garante valores existem
+- ✅ **Tag verde "Novo valor será criado"** - Feedback visual imediato
+
+---
+
+#### ✅ Padrão 4: Batch Delete com Seleção Múltipla
+
+```typescript
+// services.tsx:250
+// Seleção múltipla e exclusão em lote
+
+const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+
+const handleBatchDelete = async () => {
+  await consulAPI.bulkDeregisterServices(selectedRowKeys);
+  message.success(`${selectedRowKeys.length} serviços removidos`);
+  setSelectedRowKeys([]);
+  actionRef.current?.reload();
+};
+
+// No ProTable:
+<ProTable
+  rowSelection={{
+    selectedRowKeys,
+    onChange: setSelectedRowKeys,
+  }}
+/>
+```
+
+**Aplicação:** Adicionar `rowSelection` no `ProTable` do `DynamicMonitoringPage` e usar `useConsulDelete` hook para batch delete.
+
+---
+
+#### ✅ Padrão 5: Uso do Hook useConsulDelete
+
+```typescript
+// Padrão de uso do hook compartilhado (já testado e funcional)
+
+const { deleteResource, deleteBatch } = useConsulDelete({
+  deleteFn: async (payload: any) => {
+    return consulAPI.deleteService(payload.service_id, {
+      node_addr: payload.node_addr
+    });
+  },
+  clearCacheFn: consulAPI.clearCache,
+  cacheKey: 'monitoring-services',
+  successMessage: 'Serviço removido com sucesso',
+  errorMessage: 'Falha ao remover serviço',
+  onSuccess: () => {
+    actionRef.current?.reload();
+  },
+});
+
+// Uso:
+await deleteResource({
+  service_id: record.ID,
+  node_addr: record.node_ip || record.Node
+});
+```
+
+**Aplicação:** Reutilizar exatamente este padrão no `DynamicMonitoringPage` para exclusão.
+
+---
+
+### Exporters.tsx e BlackboxTargets.tsx (SERÃO DESATIVADAS) - Padrões para Aprender
+
+#### ✅ Padrão de Colunas Dinâmicas
+
+```typescript
+// Similar ao que já temos em DynamicMonitoringPage
+const columns = useMemo(() => {
+  return [
+    { title: 'Nome', dataIndex: 'name', fixed: 'left' },
+    // Colunas dinâmicas baseadas em metadados
+    ...dynamicColumns,
+  ];
+}, [dynamicColumns]);
+```
+
+**Aplicação:** Já implementado no `DynamicMonitoringPage`. Manter padrão.
+
+---
+
+#### ✅ Padrão de Exportação CSV
+
+```typescript
+// exporters.tsx:300
+// Exportar dados da tabela para CSV
+
+const handleExportCSV = () => {
+  const csv = data.map((item) => ({
+    ID: item.ID,
+    Service: item.Service,
+    Address: item.Address,
+    Port: item.Port,
+    ...item.Meta,
+  }));
+
+  downloadCSV(csv, `exporters-${Date.now()}.csv`);
+};
+```
+
+**Aplicação:** Adicionar botão "Exportar CSV" no `DynamicMonitoringPage` (opcional, mas útil).
+
+---
+
+**⚠️ ATENÇÃO:**
+- Não copiar código legado diretamente
+- Usar padrões já estabelecidos em `DynamicMonitoringPage`
+- Criar componentes novos baseados nestes padrões
+- DRY: Extrair para `DynamicCRUDModal` e hooks compartilhados
 
 ---
 
 ## 📝 Notas Importantes
 
 ### ✅ O que JÁ existe e pode ser reutilizado:
-- Backend CRUD completo (`backend/api/services.py`)
-- `ConsulManager` com métodos funcionais
-- `Services.tsx` como referência (não misturar código)
-- `useConsulDelete` hook compartilhado
-- `FormFieldRenderer` para metadata fields
-- `NodeSelector`, `ColumnSelector` componentes compartilhados
+
+**Backend:**
+- ✅ Backend CRUD completo (`backend/api/services.py`)
+  - `POST /api/v1/services` (linha 344) - Criar serviço
+  - `PUT /api/v1/services/{service_id}` (linha 519) - Editar serviço
+  - `DELETE /api/v1/services/{service_id}` (linha 681) - Deletar serviço
+  - `DELETE /api/v1/services/bulk/deregister` (linha 640) - Batch delete
+- ✅ `ConsulManager` com métodos funcionais
+  - `register_service()` - Funcional
+  - `update_service()` - Funcional (re-registro automático)
+  - `deregister_service()` - Funcional
+- ✅ Validação de duplicatas
+- ✅ Sanitização de service IDs
+- ✅ Suporte multi-site (tags automáticas, sufixos)
+- ✅ Auto-cadastro de valores em `reference-values`
+
+**Frontend:**
+- ✅ `Services.tsx` como referência (não misturar código, mas usar padrões)
+- ✅ `useConsulDelete` hook compartilhado (`hooks/useConsulDelete.ts`)
+- ✅ `FormFieldRenderer` para metadata fields (`components/FormFieldRenderer.tsx`)
+- ✅ `NodeSelector`, `ServerSelector`, `ColumnSelector` componentes compartilhados
+- ✅ `MetadataFilterBar`, `AdvancedSearchPanel` componentes de filtro
+- ✅ `useMetadataFields`, `useServersContext`, `useNodesContext` hooks compartilhados
+
+**Padrões de Código Reutilizáveis (de Services.tsx):**
+- ✅ Validação de duplicatas antes de criar
+- ✅ Auto-cadastro de valores em `reference-values`
+- ✅ Batch delete com seleção múltipla
+- ✅ Feedback visual (success/error messages)
 
 ### ⚠️ O que NÃO fazer:
-- ❌ Não misturar código de `Services.tsx` com `DynamicMonitoringPage`
-- ❌ Não usar JSONs estáticos (`backend/schemas/monitoring-types/`)
-- ❌ Não hardcodar campos por exporter_type
-- ❌ Não criar componentes duplicados
+- ❌ **NÃO misturar código** de `Services.tsx` com `DynamicMonitoringPage`
+- ❌ **NÃO usar JSONs estáticos** (`backend/schemas/monitoring-types/`) - serão removidos
+- ❌ **NÃO hardcodar campos** por exporter_type - usar `form_schema`
+- ❌ **NÃO criar componentes duplicados** - reutilizar existentes
+- ❌ **NÃO copiar código direto** de páginas legadas - criar novos baseados nos padrões
 
 ### ✅ O que fazer:
-- ✅ Criar componentes novos baseados nos antigos
-- ✅ Usar `categorization/rules` como fonte única de verdade
-- ✅ Manter 100% dinâmico
+- ✅ Criar componentes novos baseados nos antigos (DRY)
+- ✅ Usar `categorization/rules` como fonte única de verdade para `form_schema`
+- ✅ Manter 100% dinâmico - nada hardcoded
 - ✅ Reutilizar hooks e componentes compartilhados
+- ✅ Estender `FormFieldRenderer` para suportar campos do `form_schema`
+- ✅ Usar `useConsulDelete` para exclusão (já testado e funcional)
+- ✅ Seguir padrões estabelecidos em `Services.tsx` (mas criar código novo)
+
+---
+
+## 🔄 Comparação: Análise Cursor vs Claude Code
+
+### Pontos em Comum ✅
+
+1. ✅ **monitoring-types e DynamicMonitoringPage não estão integrados** - Confirmado por ambos
+2. ✅ **Backend CRUD já existe em services.py** - Confirmado por ambos
+3. ✅ **Problema de campos customizados por exporter** - Identificado por ambos
+4. ✅ **service-groups mostra apenas serviços com instâncias (comportamento natural Consul)** - Confirmado por ambos
+5. ✅ **Solução: Estender `categorization/rules` com `form_schema`** - Proposta por ambos
+
+---
+
+### Diferenças e Complementos
+
+| Aspecto | Análise Cursor | Análise Claude Code | Documento Unificado |
+|---------|----------------|---------------------|---------------------|
+| **Solução para campos dinâmicos** | Menciona problema | ✅ Proposta completa com `form_schema` | ✅ **JSON completo com validações** |
+| **Estrutura JSON form_schema** | ❌ Não detalha | ✅ JSON completo com validações | ✅ **Exemplos detalhados (3 exporters)** |
+| **Componente Modal** | `MonitoringServiceFormModal` | `DynamicCRUDModal` | ✅ **Ambas opções documentadas** |
+| **Código skeleton** | Parcial | ✅ Código completo | ✅ **Código completo incluído** |
+| **Integração DynamicMonitoringPage** | Menciona necessidade | ✅ Código de integração detalhado | ✅ **Código completo incluído** |
+| **API form-schema** | Endpoint básico | ✅ Endpoint completo com código Python | ✅ **Endpoint completo documentado** |
+| **Docs oficiais** | Menciona | ✅ Resumo técnico com links e exemplos | ✅ **Resumo técnico completo** |
+| **Roadmap** | Não estruturado | ✅ Fases detalhadas com horas estimadas | ✅ **Roadmap por sprints completo** |
+| **Código reutilizável** | Menciona existência | ✅ Snippets específicos | ✅ **Snippets completos incluídos** |
+| **Fluxo passo a passo** | Diagramas | ✅ Fluxo detalhado com 7 passos | ✅ **Fluxo completo documentado** |
+
+**Conclusão:** O documento unificado combina o melhor de ambos, com arquitetura clara (Cursor) + código detalhado (Claude Code).
+
+---
+
+## 🎉 Conclusão Final
+
+Este documento unificado fornece uma **análise completa e detalhada** da arquitetura CRUD dinâmico do Skills Eye, combinando:
+
+✅ **Diagnóstico preciso** dos componentes atuais (ambas análises)
+✅ **Solução concreta** para campos dinâmicos (`form_schema` completo)
+✅ **Código de exemplo** pronto para implementar (skeleton completo)
+✅ **Roadmap claro** com estimativas de tempo por sprints
+✅ **Reutilização inteligente** de código existente (snippets específicos)
+✅ **Documentação técnica** de Consul, Prometheus, Blackbox, SNMP (resumo completo)
+✅ **Fluxo passo a passo** detalhado de criação de serviço
+✅ **Comparação entre análises** para garantir completude
+
+**Diferenciais deste Documento Unificado:**
+- ⚡ Proposta estruturada de `form_schema` com JSON completo e 3 exemplos detalhados
+- ⚡ Código skeleton completo de `DynamicCRUDModal` e endpoint backend
+- ⚡ Integração detalhada com `DynamicMonitoringPage` (código completo)
+- ⚡ Resumo técnico de documentações oficiais com exemplos práticos
+- ⚡ Roadmap por sprints com horas estimadas e tarefas específicas
+- ⚡ Snippets de código reutilizável de `Services.tsx` documentados
+- ⚡ Extensão do `FormFieldRenderer` para suportar `form_schema`
+- ⚡ Checklist completo de implementação
+
+**Próximo Passo:** Iniciar **SPRINT 0 (BLOQUEADOR)** - Cache KV para monitoring-types
+
+**⚠️ CRÍTICO:** Sem o Sprint 0 completo, não é possível avançar para CRUD. O cache KV é bloqueador.
 
 ---
 
 **Documento criado em:** 2025-11-17  
-**Última atualização:** 2025-11-17 (Revisão completa)  
-**Status:** ✅ Análise Completa e Corrigida - Aguardando Aprovação
+**Última atualização:** 2025-11-17 (Documento Unificado - Versão 2.0)  
+**Autores:** Análise Profissional (Cursor) + Claude Code (Sonnet 4.5)  
+**Status:** ✅ Análise Completa e Detalhada - Pronto para Implementação
 

@@ -300,36 +300,70 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
         # Converter para dict
         fields_dict = [field.to_dict() for field in fields]
 
-        # SALVAR AUTOMATICAMENTE NO CONSUL KV
-        # O KV é a fonte de verdade - campos vêm do Prometheus e são salvos no KV
+        # ⚠️ CORREÇÃO CRÍTICA: Fazer merge com campos existentes antes de salvar
+        # Isso preserva customizações do usuário (display_name, show_in_*, required, etc)
         kv_saved = False
         kv_save_error = None
         try:
             from core.kv_manager import KVManager
+            from api.metadata_fields_manager import merge_fields_preserving_customizations
+            from core.metadata_fields_backup import get_backup_manager
+            
             kv_manager = KVManager()
-
-            # Salvar no KV: skills/eye/metadata/fields
+            
+            # PASSO 1: Buscar campos existentes do KV (se houver)
+            existing_kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
+            existing_fields = existing_kv_data.get('fields', []) if existing_kv_data else []
+            
+            # PASSO 2: Fazer merge preservando customizações
+            if existing_fields and len(existing_fields) > 0:
+                logger.info(f"[KV-SAVE] Fazendo merge com {len(existing_fields)} campos existentes no KV (preservando customizações)")
+                merged_fields = merge_fields_preserving_customizations(
+                    extracted_fields=fields_dict,
+                    existing_kv_fields=existing_fields
+                )
+                logger.info(f"[KV-SAVE] ✓ Merge concluído: {len(merged_fields)} campos finais (preservou customizações)")
+                fields_to_save = merged_fields
+            else:
+                logger.info("[KV-SAVE] KV vazio - usando campos extraídos diretamente")
+                fields_to_save = fields_dict
+            
+            # PASSO 3: Criar backup ANTES de salvar
+            backup_manager = get_backup_manager()
+            fields_data = {
+                'version': '2.0.0',
+                'last_updated': datetime.now().isoformat(),
+                'source': 'prometheus_config_api_with_merge' if existing_fields else 'prometheus_config_api_initial',
+                'total_fields': len(fields_to_save),
+                'fields': fields_to_save,
+                'extraction_status': {
+                    'total_servers': extraction_result.get('total_servers'),
+                    'successful_servers': extraction_result.get('successful_servers'),
+                    'server_status': extraction_result.get('server_status'),
+                }
+            }
+            
+            backup_success = await backup_manager.create_backup(fields_data)
+            if not backup_success:
+                logger.warning("[KV-SAVE] ⚠️ Falha ao criar backup, mas continuando com salvamento...")
+            
+            # PASSO 4: Salvar campos merged no KV
             await kv_manager.put_json(
                 key='skills/eye/metadata/fields',
-                value={
-                    'version': '2.0.0',
-                    'last_updated': datetime.now().isoformat(),
-                    'source': 'prometheus_yml_dynamic_extraction',
-                    'total_fields': len(fields_dict),
-                    'fields': fields_dict,
-                    'extraction_status': {
-                        'total_servers': extraction_result.get('total_servers'),
-                        'successful_servers': extraction_result.get('successful_servers'),
-                        'server_status': extraction_result.get('server_status'),
-                    }
-                },
-                metadata={'auto_updated': True, 'source': 'prometheus_config_api'}
+                value=fields_data,
+                metadata={'auto_updated': True, 'source': 'prometheus_config_api_with_merge' if existing_fields else 'prometheus_config_api_initial'}
             )
+            
+            # PASSO 5: Invalidar cache
+            from core.consul_kv_config_manager import ConsulKVConfigManager
+            _kv_manager = ConsulKVConfigManager()
+            _kv_manager.invalidate('metadata/fields')
+            
             kv_saved = True
-            logger.info(f"[KV-SAVE] Campos salvos automaticamente no Consul KV: {len(fields_dict)} campos")
+            logger.info(f"[KV-SAVE] ✓ Campos salvos no KV: {len(fields_to_save)} campos (merge preservou customizações)")
         except Exception as e:
             kv_save_error = str(e)
-            logger.warning(f"[KV-SAVE] Não foi possível salvar campos no KV: {e}")
+            logger.error(f"[KV-SAVE] ❌ Erro ao salvar campos no KV: {e}", exc_info=True)
             # Não bloqueia a resposta se falhar o salvamento
 
         return FieldsResponse(
