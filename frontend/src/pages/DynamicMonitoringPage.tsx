@@ -396,6 +396,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
   // SISTEMA DINÂMICO: Gerar colunas do ProTable com TODAS as features
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
+    // ✅ CORREÇÃO: Debug para entender problema de colunas não aparecendo
+    if (import.meta.env.DEV) {
+      console.log('[DynamicMonitoringPage] proTableColumns:', {
+        columnConfigLength: columnConfig.length,
+        tableFieldsLength: tableFields.length,
+        visibleConfigsCount: columnConfig.filter(c => c.visible).length,
+        metadataColumnsInConfig: columnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
+        columnConfigKeys: columnConfig.map(c => c.key).slice(0, 15),
+        tableFieldsNames: tableFields.map(f => f.name).slice(0, 15),
+      });
+    }
+    
     const visibleConfigs = columnConfig.filter(c => c.visible);
 
     return visibleConfigs.map((colConfig) => {
