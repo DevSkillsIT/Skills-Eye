@@ -527,12 +527,12 @@ const MetadataFieldsPage: React.FC = () => {
     setProgressModalVisible(true);
     setLoading(true);
 
-    // PASSO 1: Buscar lista de servidores para inicializar Timeline pré-populada
+    // PASSO 1: Usar servidores do ServersContext para inicializar Timeline pré-populada
+    // ✅ OTIMIZAÇÃO: Usar Context ao invés de fazer request próprio
     // (igual PrometheusConfig - isso garante que SEMPRE mostra 3 servidores no modal)
     try {
-      const serversResponse = await axios.get(`${API_URL}/metadata-fields/servers`);
-      if (serversResponse.data.success && serversResponse.data.servers) {
-        const serversList = serversResponse.data.servers as Array<{ id: string; name: string }>;
+      if (servers && servers.length > 0) {
+        const serversList = servers as Array<{ id: string; name?: string; display_name?: string }>;
 
         // Inicializar Timeline com TODOS os servidores em "Processando..."
         const initialStatus = serversList.map((srv) => ({

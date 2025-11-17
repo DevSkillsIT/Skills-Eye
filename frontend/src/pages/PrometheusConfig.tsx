@@ -468,11 +468,11 @@ const PrometheusConfig: React.FC = () => {
     // Agora sim abrir modal com estados limpos
     setProgressModalVisible(true);
 
-    // PASSO 1: Buscar lista de servidores para mostrar Timeline pré-populada
+    // PASSO 1: Usar servidores do ServersContext para mostrar Timeline pré-populada
+    // ✅ OTIMIZAÇÃO: Usar Context ao invés de fazer request próprio
     try {
-      const serversResponse = await axios.get(`${API_URL}/metadata-fields/servers`);
-      if (serversResponse.data.success && serversResponse.data.servers) {
-        const serversList = serversResponse.data.servers as Array<{ id: string; name: string }>;
+      if (servers && servers.length > 0) {
+        const serversList = servers as Array<{ id: string; name?: string; display_name?: string }>;
 
         // Inicializar Timeline com todos os servidores em "Processando..."
         const initialStatus: ServerStatus[] = serversList.map((srv) => ({
@@ -579,11 +579,11 @@ const PrometheusConfig: React.FC = () => {
         console.log('[PrometheusConfig] ⚠ KV não existe ou já foi deletado (OK)');
       }
 
-      // PASSO 3: Buscar lista de servidores para Timeline
-      console.log('[PrometheusConfig] PASSO 3/4: Carregando lista de servidores...');
-      const serversResponse = await axios.get(`${API_URL}/metadata-fields/servers`);
-      if (serversResponse.data.success && serversResponse.data.servers) {
-        const serversList = serversResponse.data.servers as Array<{ id: string; name: string }>;
+      // PASSO 3: Usar servidores do ServersContext para Timeline
+      // ✅ OTIMIZAÇÃO: Usar Context ao invés de fazer request próprio
+      console.log('[PrometheusConfig] PASSO 3/4: Usando servidores do Context...');
+      if (servers && servers.length > 0) {
+        const serversList = servers as Array<{ id: string; name?: string; display_name?: string }>;
         const initialStatus: ServerStatus[] = serversList.map((srv) => ({
           hostname: srv.id.split(':')[0],
           success: false,
