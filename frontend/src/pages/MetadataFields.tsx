@@ -1263,11 +1263,11 @@ const MetadataFieldsPage: React.FC = () => {
   useEffect(() => {
     const initializeData = async () => {
       // ✅ OTIMIZAÇÃO: Servidores vêm do ServersContext (não precisa mais fetchServers)
-      // PASSO 1: Carregar categorias, config e prometheus servers em paralelo
+      // ✅ CORREÇÃO: fetchPrometheusServers agora é chamado via useEffect quando ServersContext terminar
+      // PASSO 1: Carregar categorias e config em paralelo
       await Promise.all([
         fetchCategories(),
         loadConfig(),
-        fetchPrometheusServers(), // Necessário para aba "External Labels (Todos Servidores)"
       ]);
 
       // PASSO 2: Carregar campos COM modal (depende de servidores estarem carregados)
