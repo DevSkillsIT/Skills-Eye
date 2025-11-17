@@ -228,12 +228,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   useEffect(() => {
     // DEBUG: Log para entender o problema
     if (import.meta.env.DEV) {
+      const defaultKeys = defaultColumnConfig.map(c => c.key).sort();
+      const currentKeys = columnConfig.map(c => c.key).sort();
       console.log('[DynamicMonitoringPage] columnConfig sync:', {
         defaultColumnConfigLength: defaultColumnConfig.length,
         columnConfigLength: columnConfig.length,
         tableFieldsCount: tableFields.length,
-        defaultColumnConfigKeys: defaultColumnConfig.map(c => c.key).slice(0, 10),
-        columnConfigKeys: columnConfig.map(c => c.key).slice(0, 10),
+        defaultColumnConfigKeys: defaultKeys.slice(0, 15),
+        columnConfigKeys: currentKeys.slice(0, 15),
+        keysMatch: defaultKeys.join(',') === currentKeys.join(','),
+        metadataColumnsInDefault: defaultColumnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
+        metadataColumnsInCurrent: columnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
       });
     }
     
@@ -398,12 +403,15 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
     // ✅ CORREÇÃO: Debug para entender problema de colunas não aparecendo
     if (import.meta.env.DEV) {
+      const visibleConfigs = columnConfig.filter(c => c.visible);
+      const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
       console.log('[DynamicMonitoringPage] proTableColumns:', {
         columnConfigLength: columnConfig.length,
         tableFieldsLength: tableFields.length,
-        visibleConfigsCount: columnConfig.filter(c => c.visible).length,
-        metadataColumnsInConfig: columnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
-        columnConfigKeys: columnConfig.map(c => c.key).slice(0, 15),
+        visibleConfigsCount: visibleConfigs.length,
+        metadataColumnsCount: metadataColumns.length,
+        metadataColumnsKeys: metadataColumns.map(c => c.key).slice(0, 15),
+        allColumnConfigKeys: columnConfig.map(c => c.key).slice(0, 20),
         tableFieldsNames: tableFields.map(f => f.name).slice(0, 15),
       });
     }
