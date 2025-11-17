@@ -222,21 +222,43 @@ export function useTableFields(context?: string): {
     // Filtrar por contexto e show_in_table
     const filtered = allFields
       .filter((f: MetadataFieldDynamic) => {
-        // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+        // ✅ CORREÇÃO CRÍTICA: Usar campos específicos para cada categoria
         // Categories: network-probes, web-probes, system-exporters, etc
-        // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
+        // Backend fields: show_in_network_probes, show_in_web_probes, show_in_system_exporters, etc
 
+        // Contextos genéricos (fallback)
         if (context === 'services') return f.show_in_services !== false;
         if (context === 'exporters') return f.show_in_exporters !== false;
         if (context === 'blackbox') return f.show_in_blackbox !== false;
 
-        // Mapear categorias dinâmicas para campos base
+        // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+        if (context === 'network-probes') {
+          return f.show_in_network_probes !== false;
+        }
+        if (context === 'web-probes') {
+          return f.show_in_web_probes !== false;
+        }
+        if (context === 'system-exporters') {
+          return f.show_in_system_exporters !== false;
+        }
+        if (context === 'database-exporters') {
+          return f.show_in_database_exporters !== false;
+        }
+        if (context === 'infrastructure-exporters') {
+          return f.show_in_infrastructure_exporters !== false;
+        }
+        if (context === 'hardware-exporters') {
+          return f.show_in_hardware_exporters !== false;
+        }
+
+        // Fallback: se não houver campo específico, usar genérico
+        // Isso mantém compatibilidade com campos antigos
         if (context === 'network-probes' || context === 'web-probes') {
-          return f.show_in_blackbox !== false;  // ← probes = blackbox
+          return f.show_in_blackbox !== false;  // ← fallback para probes
         }
         if (context === 'system-exporters' || context === 'database-exporters' ||
             context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-          return f.show_in_exporters !== false;  // ← exporters categories
+          return f.show_in_exporters !== false;  // ← fallback para exporters
         }
 
         return true;  // Sem filtro específico
@@ -270,12 +292,33 @@ export function useFormFields(context?: string): {
 
   const formFields = allFields
     .filter((f: MetadataFieldDynamic) => {
-      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+      // ✅ CORREÇÃO CRÍTICA: Usar campos específicos para cada categoria
+      // Contextos genéricos (fallback)
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
       
-      // Mapear categorias dinâmicas
+      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+      if (context === 'network-probes') {
+        return f.show_in_network_probes !== false;
+      }
+      if (context === 'web-probes') {
+        return f.show_in_web_probes !== false;
+      }
+      if (context === 'system-exporters') {
+        return f.show_in_system_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        return f.show_in_database_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        return f.show_in_infrastructure_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        return f.show_in_hardware_exporters !== false;
+      }
+      
+      // Fallback: se não houver campo específico, usar genérico
       if (context === 'network-probes' || context === 'web-probes') {
         return f.show_in_blackbox !== false;
       }
@@ -305,12 +348,33 @@ export function useFilterFields(context?: string): {
 
   const filterFields = allFields
     .filter((f: MetadataFieldDynamic) => {
-      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+      // ✅ CORREÇÃO CRÍTICA: Usar campos específicos para cada categoria
+      // Contextos genéricos (fallback)
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
       
-      // Mapear categorias dinâmicas
+      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+      if (context === 'network-probes') {
+        return f.show_in_network_probes !== false;
+      }
+      if (context === 'web-probes') {
+        return f.show_in_web_probes !== false;
+      }
+      if (context === 'system-exporters') {
+        return f.show_in_system_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        return f.show_in_database_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        return f.show_in_infrastructure_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        return f.show_in_hardware_exporters !== false;
+      }
+      
+      // Fallback: se não houver campo específico, usar genérico
       if (context === 'network-probes' || context === 'web-probes') {
         return f.show_in_blackbox !== false;
       }
