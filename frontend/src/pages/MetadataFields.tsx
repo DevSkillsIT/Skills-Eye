@@ -1067,15 +1067,27 @@ const MetadataFieldsPage: React.FC = () => {
   };
 
   const fetchPrometheusServers = async () => {
+    // ✅ CORREÇÃO: Aguardar carregamento do ServersContext antes de verificar
+    if (serversLoading) {
+      console.log('[External Labels] Aguardando carregamento de servidores...');
+      return;
+    }
+
     setLoadingServers(true);
     try {
       // ✅ OTIMIZAÇÃO: Usar servidores do ServersContext ao invés de fazer request próprio
       // ServersContext já carrega servidores com external_labels do KV
       const serverList = servers || [];
 
-      if (serverList.length === 0) {
+      // ✅ CORREÇÃO: Só mostrar warning se realmente não houver servidores após carregamento
+      if (serverList.length === 0 && !serversLoading) {
         message.warning('Nenhum servidor Prometheus configurado no .env');
         setPrometheusServers([]);
+        return;
+      }
+
+      // Se ainda está carregando, não fazer nada (aguardar próxima execução)
+      if (serversLoading) {
         return;
       }
 
@@ -1281,6 +1293,13 @@ const MetadataFieldsPage: React.FC = () => {
 
     initializeData();
   }, []); // Array vazio = executa apenas no mount
+
+  // ✅ CORREÇÃO: Carregar servidores quando ServersContext terminar de carregar
+  useEffect(() => {
+    if (!serversLoading && servers.length > 0) {
+      fetchPrometheusServers();
+    }
+  }, [serversLoading, servers.length]);
 
   // Quando trocar de servidor: APENAS atualizar sync status (não recarrega campos)
   // ✅ OTIMIZAÇÃO: Proteção robusta contra StrictMode duplicando execução
