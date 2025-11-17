@@ -649,6 +649,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     columnWidths,
     tableFields,
     metadataOptionsLoaded,
+    metadataOptions,  // ✅ CORREÇÃO: Adicionado para filteredValue
+    filters,  // ✅ CORREÇÃO: Adicionado para filteredValue
+    sortField,  // ✅ CORREÇÃO: Adicionado para sortOrder
+    sortOrder,  // ✅ CORREÇÃO: Adicionado para sortOrder
     handleResize,
     getFieldValue,
   ]);
