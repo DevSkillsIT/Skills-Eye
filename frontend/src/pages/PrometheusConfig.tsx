@@ -5,7 +5,7 @@
  * com extração dinâmica de campos metadata e edição de jobs/relabel_configs
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   PageContainer,
   ProDescriptions,
@@ -356,6 +356,8 @@ const PrometheusConfig: React.FC = () => {
   const [selectedServer, setSelectedServer] = useState<string>('');
   const [previousServer, setPreviousServer] = useState<string>(''); // Para detectar mudança real
   const [serverJustChanged, setServerJustChanged] = useState(false); // Para animação ao trocar servidor
+  // ✅ OTIMIZAÇÃO: useRef para prevenir execução duplicada em StrictMode
+  const serverChangeProcessingRef = useRef<string | null>(null);
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [alertViewMode, setAlertViewMode] = useState<'group' | 'individual'>('group'); // Toggle para visões de alertas
@@ -709,7 +711,9 @@ const PrometheusConfig: React.FC = () => {
         setJobs(response.data.items);
         setFileType(response.data.type); // NOVO: guardar tipo
         setItemKey(response.data.item_key || 'name'); // NOVO: guardar chave
-        message.success(`Carregados ${response.data.total_items} items (${response.data.type})`);
+        // ✅ OTIMIZAÇÃO: Usar useRef para evitar mensagens duplicadas em StrictMode
+        // A mensagem só será exibida uma vez por carregamento
+        message.success(`Carregados ${response.data.total_items} items (${response.data.type})`, 2);
       } else {
         message.error('Falha ao carregar configurações');
       }
@@ -843,59 +847,78 @@ const PrometheusConfig: React.FC = () => {
   }, [selectedServer]); // Executar quando selectedServer estiver disponível
 
   // Recarregar arquivos quando trocar de servidor (inicial ou manual)
+  // ✅ OTIMIZAÇÃO: Proteção robusta contra StrictMode duplicando execução
   useEffect(() => {
-    if (selectedServer) {
-      // Só mostrar feedback se houve MUDANÇA (não no carregamento inicial)
-      const serverWasChanged = previousServer !== '' && previousServer !== selectedServer;
-
-      if (serverWasChanged) {
-        // Buscar informações do servidor selecionado
-        const serverInfo = servers.find(s => s.id === selectedServer);
-
-        if (serverInfo) {
-          // FEEDBACK VISUAL: Mostrar mensagem de sucesso com destaque
-          message.success({
-            content: (
-              <div>
-                <strong>🔄 Servidor alterado com sucesso!</strong>
-                <br />
-                Conectado em: <strong>{serverInfo.display_name}</strong>
-                <br />
-                Tipo: <Tag color={serverInfo.type === 'master' ? 'green' : 'blue'} style={{ marginTop: 4 }}>
-                  {serverInfo.type === 'master' ? 'Master' : 'Slave'}
-                </Tag>
-              </div>
-            ),
-            duration: 3,
-            icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
-          });
-
-          // Ativar animação no Alert por 3 segundos
-          setServerJustChanged(true);
-          setTimeout(() => setServerJustChanged(false), 3000);
-        }
-      }
-
-      // Atualizar previousServer
-      setPreviousServer(selectedServer);
-
-      // CRÍTICO: Limpar TODOS os dados do servidor anterior IMEDIATAMENTE
-      setSelectedFile(null);
-      setJobs([]);
-
-      // CORREÇÃO: Limpar também dados do Alertmanager quando muda servidor
-      setAlertmanagerRoutes([]);
-      setAlertmanagerReceivers([]);
-      setAlertmanagerInhibitRules([]);
-
-      // CRÍTICO: Resetar fileType para forçar re-renderização da tabela
-      setFileType('prometheus');
-
-      // CORREÇÃO: fetchFiles() agora limpa allFiles internamente (evita flash de lista vazia)
-      fetchFiles();
+    if (!selectedServer) return;
+    
+    // ✅ PROTEÇÃO ROBUSTA: useRef previne execução duplicada em StrictMode
+    // Se já estamos processando este servidor, ignorar segunda execução
+    if (serverChangeProcessingRef.current === selectedServer) {
+      console.log('[PrometheusConfig] ⚠️ Ignorando execução duplicada do StrictMode para servidor:', selectedServer);
+      return;
     }
+    
+    // Marcar que estamos processando este servidor
+    serverChangeProcessingRef.current = selectedServer;
+    
+    // Só mostrar feedback se houve MUDANÇA (não no carregamento inicial)
+    const serverWasChanged = previousServer !== '' && previousServer !== selectedServer;
+
+    if (serverWasChanged) {
+      // Buscar informações do servidor selecionado
+      const serverInfo = servers.find(s => s.id === selectedServer);
+
+      if (serverInfo) {
+        // FEEDBACK VISUAL: Mostrar mensagem de sucesso com destaque
+        message.success({
+          content: (
+            <div>
+              <strong>🔄 Servidor alterado com sucesso!</strong>
+              <br />
+              Conectado em: <strong>{serverInfo.display_name}</strong>
+              <br />
+              Tipo: <Tag color={serverInfo.type === 'master' ? 'green' : 'blue'} style={{ marginTop: 4 }}>
+                {serverInfo.type === 'master' ? 'Master' : 'Slave'}
+              </Tag>
+            </div>
+          ),
+          duration: 3,
+          icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />,
+        });
+
+        // Ativar animação no Alert por 3 segundos
+        setServerJustChanged(true);
+        setTimeout(() => setServerJustChanged(false), 3000);
+      }
+    }
+
+    // Atualizar previousServer ANTES de fazer outras operações
+    setPreviousServer(selectedServer);
+
+    // CRÍTICO: Limpar TODOS os dados do servidor anterior IMEDIATAMENTE
+    setSelectedFile(null);
+    setJobs([]);
+
+    // CORREÇÃO: Limpar também dados do Alertmanager quando muda servidor
+    setAlertmanagerRoutes([]);
+    setAlertmanagerReceivers([]);
+    setAlertmanagerInhibitRules([]);
+
+    // CRÍTICO: Resetar fileType para forçar re-renderização da tabela
+    setFileType('prometheus');
+
+    // CORREÇÃO: fetchFiles() agora limpa allFiles internamente (evita flash de lista vazia)
+    fetchFiles();
+    
+    // Limpar ref após um pequeno delay para permitir próxima mudança
+    setTimeout(() => {
+      if (serverChangeProcessingRef.current === selectedServer) {
+        serverChangeProcessingRef.current = null;
+      }
+    }, 100);
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedServer, fetchFiles]);
+  }, [selectedServer]); // Removido fetchFiles das dependências para evitar loops
 
   // Carregar dados quando arquivo OU servidor mudar
   useEffect(() => {
