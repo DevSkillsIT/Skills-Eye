@@ -226,39 +226,51 @@ export function useTableFields(context?: string): {
         // Categories: network-probes, web-probes, system-exporters, etc
         // Backend fields: show_in_network_probes, show_in_web_probes, show_in_system_exporters, etc
 
-        // Contextos genéricos (fallback)
+        // Contextos genéricos
         if (context === 'services') return f.show_in_services !== false;
         if (context === 'exporters') return f.show_in_exporters !== false;
         if (context === 'blackbox') return f.show_in_blackbox !== false;
 
         // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+        // Se o campo específico existe (não é undefined), usar ele
+        // Se não existe, usar fallback genérico para compatibilidade
         if (context === 'network-probes') {
-          return f.show_in_network_probes !== false;
+          // Se show_in_network_probes está definido, usar ele
+          if (f.show_in_network_probes !== undefined) {
+            return f.show_in_network_probes !== false;
+          }
+          // Fallback: usar show_in_blackbox se campo específico não existe
+          return f.show_in_blackbox !== false;
         }
         if (context === 'web-probes') {
-          return f.show_in_web_probes !== false;
+          if (f.show_in_web_probes !== undefined) {
+            return f.show_in_web_probes !== false;
+          }
+          return f.show_in_blackbox !== false;
         }
         if (context === 'system-exporters') {
-          return f.show_in_system_exporters !== false;
+          if (f.show_in_system_exporters !== undefined) {
+            return f.show_in_system_exporters !== false;
+          }
+          return f.show_in_exporters !== false;
         }
         if (context === 'database-exporters') {
-          return f.show_in_database_exporters !== false;
+          if (f.show_in_database_exporters !== undefined) {
+            return f.show_in_database_exporters !== false;
+          }
+          return f.show_in_exporters !== false;
         }
         if (context === 'infrastructure-exporters') {
-          return f.show_in_infrastructure_exporters !== false;
+          if (f.show_in_infrastructure_exporters !== undefined) {
+            return f.show_in_infrastructure_exporters !== false;
+          }
+          return f.show_in_exporters !== false;
         }
         if (context === 'hardware-exporters') {
-          return f.show_in_hardware_exporters !== false;
-        }
-
-        // Fallback: se não houver campo específico, usar genérico
-        // Isso mantém compatibilidade com campos antigos
-        if (context === 'network-probes' || context === 'web-probes') {
-          return f.show_in_blackbox !== false;  // ← fallback para probes
-        }
-        if (context === 'system-exporters' || context === 'database-exporters' ||
-            context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-          return f.show_in_exporters !== false;  // ← fallback para exporters
+          if (f.show_in_hardware_exporters !== undefined) {
+            return f.show_in_hardware_exporters !== false;
+          }
+          return f.show_in_exporters !== false;
         }
 
         return true;  // Sem filtro específico
@@ -293,37 +305,46 @@ export function useFormFields(context?: string): {
   const formFields = allFields
     .filter((f: MetadataFieldDynamic) => {
       // ✅ CORREÇÃO CRÍTICA: Usar campos específicos para cada categoria
-      // Contextos genéricos (fallback)
+      // Contextos genéricos
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
       
-      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas com fallback
       if (context === 'network-probes') {
-        return f.show_in_network_probes !== false;
-      }
-      if (context === 'web-probes') {
-        return f.show_in_web_probes !== false;
-      }
-      if (context === 'system-exporters') {
-        return f.show_in_system_exporters !== false;
-      }
-      if (context === 'database-exporters') {
-        return f.show_in_database_exporters !== false;
-      }
-      if (context === 'infrastructure-exporters') {
-        return f.show_in_infrastructure_exporters !== false;
-      }
-      if (context === 'hardware-exporters') {
-        return f.show_in_hardware_exporters !== false;
-      }
-      
-      // Fallback: se não houver campo específico, usar genérico
-      if (context === 'network-probes' || context === 'web-probes') {
+        if (f.show_in_network_probes !== undefined) {
+          return f.show_in_network_probes !== false;
+        }
         return f.show_in_blackbox !== false;
       }
-      if (context === 'system-exporters' || context === 'database-exporters' || 
-          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+      if (context === 'web-probes') {
+        if (f.show_in_web_probes !== undefined) {
+          return f.show_in_web_probes !== false;
+        }
+        return f.show_in_blackbox !== false;
+      }
+      if (context === 'system-exporters') {
+        if (f.show_in_system_exporters !== undefined) {
+          return f.show_in_system_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        if (f.show_in_database_exporters !== undefined) {
+          return f.show_in_database_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        if (f.show_in_infrastructure_exporters !== undefined) {
+          return f.show_in_infrastructure_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        if (f.show_in_hardware_exporters !== undefined) {
+          return f.show_in_hardware_exporters !== false;
+        }
         return f.show_in_exporters !== false;
       }
       
@@ -349,37 +370,46 @@ export function useFilterFields(context?: string): {
   const filterFields = allFields
     .filter((f: MetadataFieldDynamic) => {
       // ✅ CORREÇÃO CRÍTICA: Usar campos específicos para cada categoria
-      // Contextos genéricos (fallback)
+      // Contextos genéricos
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
       
-      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas
+      // ✅ CORREÇÃO: Usar campos específicos para categorias dinâmicas com fallback
       if (context === 'network-probes') {
-        return f.show_in_network_probes !== false;
-      }
-      if (context === 'web-probes') {
-        return f.show_in_web_probes !== false;
-      }
-      if (context === 'system-exporters') {
-        return f.show_in_system_exporters !== false;
-      }
-      if (context === 'database-exporters') {
-        return f.show_in_database_exporters !== false;
-      }
-      if (context === 'infrastructure-exporters') {
-        return f.show_in_infrastructure_exporters !== false;
-      }
-      if (context === 'hardware-exporters') {
-        return f.show_in_hardware_exporters !== false;
-      }
-      
-      // Fallback: se não houver campo específico, usar genérico
-      if (context === 'network-probes' || context === 'web-probes') {
+        if (f.show_in_network_probes !== undefined) {
+          return f.show_in_network_probes !== false;
+        }
         return f.show_in_blackbox !== false;
       }
-      if (context === 'system-exporters' || context === 'database-exporters' || 
-          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
+      if (context === 'web-probes') {
+        if (f.show_in_web_probes !== undefined) {
+          return f.show_in_web_probes !== false;
+        }
+        return f.show_in_blackbox !== false;
+      }
+      if (context === 'system-exporters') {
+        if (f.show_in_system_exporters !== undefined) {
+          return f.show_in_system_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        if (f.show_in_database_exporters !== undefined) {
+          return f.show_in_database_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        if (f.show_in_infrastructure_exporters !== undefined) {
+          return f.show_in_infrastructure_exporters !== false;
+        }
+        return f.show_in_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        if (f.show_in_hardware_exporters !== undefined) {
+          return f.show_in_hardware_exporters !== false;
+        }
         return f.show_in_exporters !== false;
       }
       
