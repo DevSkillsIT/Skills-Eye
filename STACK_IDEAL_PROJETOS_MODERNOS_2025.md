@@ -1844,7 +1844,8 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 
 #### **Framework de Desenvolvimento:**
 - **Refine.dev** ⭐⭐⭐⭐⭐ - Framework headless que fornece funcionalidades prontas (autenticação, CRUD, RBAC, etc) sem impor design visual
-- ⚠️ **Nota sobre Templates:** Refine.dev oferece templates prontos principalmente com Ant Design e Material UI. Para shadcn/ui, você precisa configurar manualmente (Refine é headless, então funciona com qualquer UI library, mas templates prontos focam em Ant Design/MUI)
+- **ThemedLayout** - Componente oficial do Refine.dev para layout completo (sidebar, header, dark mode, responsivo) - **Incluído no preset vite-shadcn**
+- ⚠️ **Nota sobre Templates:** Refine.dev oferece templates prontos principalmente com Ant Design e Material UI. Para shadcn/ui, use o preset oficial `vite-shadcn` que inclui ThemedLayout e componentes prontos
 
 #### **Biblioteca de Componentes UI (Escolha uma):**
 - **Ant Design Pro** - Componentes prontos para dashboards corporativos (ProTable, ProForm) - **Ideal para produtividade**
@@ -1891,7 +1892,8 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 - **Playwright** - Testes end-to-end (E2E) automatizados em múltiplos navegadores
 
 #### **Gerenciamento de Pacotes:**
-- **pnpm** - Gerenciador de pacotes mais rápido e eficiente que npm/yarn
+- **npm** - Gerenciador de pacotes padrão (documentação oficial do Refine.dev)
+- **pnpm/yarn** - Alternativas mais rápidas (opcionais, mas npm é o padrão)
 
 #### **Automação:**
 - **Lefthook** - Git hooks automatizados (executa testes, lint antes de commits)
@@ -2455,14 +2457,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-          - uses: actions/setup-node@v4
-            with:
-              node-version: '20'
-          - run: npm install
-          - run: npm run biome check
-          - run: npm run test
-          - run: npm run test:e2e
-          - run: npm run build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm run biome check
+      - run: npm run test
+      - run: npm run test:e2e
+      - run: npm run build
 
   security:
     runs-on: ubuntu-latest
