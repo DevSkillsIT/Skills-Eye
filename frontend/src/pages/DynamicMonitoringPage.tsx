@@ -222,41 +222,26 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   }, [tableFields]);
 
   // ✅ CORREÇÃO CRÍTICA: Atualizar columnConfig quando tableFields carregar
-  // PROBLEMA: useEffect só atualizava se comprimento mudasse, mas se columnConfig já tinha
-  // o mesmo número de colunas (ex: de uma execução anterior), não atualizava mesmo que
-  // os campos dinâmicos mudassem
+  // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos e recálculos desnecessários
+  const lastColumnConfigRef = useRef<string>('');
+  
   useEffect(() => {
-    // DEBUG: Log para entender o problema
-    if (import.meta.env.DEV) {
-      const defaultKeys = defaultColumnConfig.map(c => c.key).sort();
-      const currentKeys = columnConfig.map(c => c.key).sort();
-      console.log('[DynamicMonitoringPage] columnConfig sync:', {
-        defaultColumnConfigLength: defaultColumnConfig.length,
-        columnConfigLength: columnConfig.length,
-        tableFieldsCount: tableFields.length,
-        defaultColumnConfigKeys: defaultKeys.slice(0, 15),
-        columnConfigKeys: currentKeys.slice(0, 15),
-        keysMatch: defaultKeys.join(',') === currentKeys.join(','),
-        metadataColumnsInDefault: defaultColumnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
-        metadataColumnsInCurrent: columnConfig.filter(c => tableFields.some(f => f.name === c.key)).length,
-      });
-    }
-    
-    // ✅ CORREÇÃO: Sempre atualizar quando defaultColumnConfig mudar E tableFields estiver carregado
-    // Verificar se tableFields tem campos (não está vazio) antes de atualizar
+    // ✅ OTIMIZAÇÃO: Só atualizar quando realmente necessário (tableFields carregou E há diferença)
     if (defaultColumnConfig.length > 0 && tableFields.length > 0) {
       // Verificar se há diferença real (não apenas comprimento, mas também conteúdo)
       const defaultKeys = defaultColumnConfig.map(c => c.key).sort().join(',');
       const currentKeys = columnConfig.map(c => c.key).sort().join(',');
       
-      // Se as chaves são diferentes OU o comprimento é diferente, atualizar
+      // ✅ OTIMIZAÇÃO: Só atualizar se realmente mudou (evita loops)
       if (defaultKeys !== currentKeys || defaultColumnConfig.length !== columnConfig.length) {
-        if (import.meta.env.DEV) {
+        // ✅ OTIMIZAÇÃO: Só logar se realmente mudou (evita logs duplicados)
+        if (import.meta.env.DEV && lastColumnConfigRef.current !== defaultKeys) {
           console.log('[DynamicMonitoringPage] ✅ Atualizando columnConfig:', {
             from: columnConfig.length,
             to: defaultColumnConfig.length,
             metadataColumns: defaultColumnConfig.length - 7, // 7 colunas fixas
           });
+          lastColumnConfigRef.current = defaultKeys;
         }
         setColumnConfig(defaultColumnConfig);
       }
@@ -400,23 +385,26 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // SISTEMA DINÂMICO: Gerar colunas do ProTable com TODAS as features
+  // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos
+  const lastProTableColumnsRef = useRef<string>('');
+  
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
-    // ✅ CORREÇÃO: Debug para entender problema de colunas não aparecendo
-    if (import.meta.env.DEV) {
-      const visibleConfigs = columnConfig.filter(c => c.visible);
-      const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
-      console.log('[DynamicMonitoringPage] proTableColumns:', {
-        columnConfigLength: columnConfig.length,
-        tableFieldsLength: tableFields.length,
-        visibleConfigsCount: visibleConfigs.length,
-        metadataColumnsCount: metadataColumns.length,
-        metadataColumnsKeys: metadataColumns.map(c => c.key).slice(0, 15),
-        allColumnConfigKeys: columnConfig.map(c => c.key).slice(0, 20),
-        tableFieldsNames: tableFields.map(f => f.name).slice(0, 15),
-      });
-    }
-    
     const visibleConfigs = columnConfig.filter(c => c.visible);
+    
+    // ✅ OTIMIZAÇÃO: Só logar quando realmente mudou (evita logs duplicados em StrictMode)
+    if (import.meta.env.DEV) {
+      const configKey = `${columnConfig.length}-${visibleConfigs.length}-${tableFields.length}`;
+      if (lastProTableColumnsRef.current !== configKey) {
+        const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
+        console.log('[DynamicMonitoringPage] proTableColumns:', {
+          columnConfigLength: columnConfig.length,
+          tableFieldsLength: tableFields.length,
+          visibleConfigsCount: visibleConfigs.length,
+          metadataColumnsCount: metadataColumns.length,
+        });
+        lastProTableColumnsRef.current = configKey;
+      }
+    }
 
     return visibleConfigs.map((colConfig) => {
       // Definir larguras específicas para colunas especiais
