@@ -1893,7 +1893,7 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 
 #### **Gerenciamento de Pacotes:**
 - **npm** - Gerenciador de pacotes padrão (documentação oficial do Refine.dev)
-- **pnpm/yarn** - Alternativas mais rápidas (opcionais, mas npm é o padrão)
+- **pnpm/yarn** - Alternativas mais rápidas (opcionais, mas npm é o padrão do Refine)
 
 #### **Automação:**
 - **Lefthook** - Git hooks automatizados (executa testes, lint antes de commits)

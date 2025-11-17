@@ -882,9 +882,40 @@ class ConsulManager:
                     'is_default': True
                 }]
 
-            # SPRINT 2 - FIX: Validar tipo de dados antes de usar
-            if not isinstance(sites_data, list):
-                logger.error(f"❌ KV metadata/sites tem tipo inválido: {type(sites_data).__name__} (esperado: list)")
+            # ✅ CORREÇÃO: Tratar diferentes estruturas do KV (como em config.py)
+            # ESTRUTURA DO KV pode ser:
+            # 1. {"data": {"sites": [...]}} (estrutura dupla após auto_sync)
+            # 2. {"sites": [...]} (estrutura simples)
+            # 3. [...] (array direto)
+            sites_list = []
+            
+            if isinstance(sites_data, list):
+                # Estrutura array direto: [...]
+                sites_list = sites_data
+            elif isinstance(sites_data, dict):
+                if 'data' in sites_data and isinstance(sites_data['data'], dict):
+                    # Estrutura dupla: {"data": {"sites": [...]}}
+                    sites_list = sites_data['data'].get('sites', [])
+                elif 'sites' in sites_data:
+                    # Estrutura simples: {"sites": [...]}
+                    sites_list = sites_data.get('sites', [])
+                else:
+                    logger.error(f"❌ KV metadata/sites tem estrutura desconhecida: {list(sites_data.keys())}")
+                    return [{
+                        'name': 'fallback',
+                        'prometheus_instance': Config.get_main_server(),
+                        'is_default': True
+                    }]
+            else:
+                logger.error(f"❌ KV metadata/sites tem tipo inválido: {type(sites_data).__name__} (esperado: list ou dict)")
+                return [{
+                    'name': 'fallback',
+                    'prometheus_instance': Config.get_main_server(),
+                    'is_default': True
+                }]
+
+            if not isinstance(sites_list, list) or len(sites_list) == 0:
+                logger.warning("⚠️ KV metadata/sites não contém lista válida - usando fallback")
                 return [{
                     'name': 'fallback',
                     'prometheus_instance': Config.get_main_server(),
@@ -893,7 +924,7 @@ class ConsulManager:
 
             # Ordenar: master (is_default=True) primeiro
             sites = sorted(
-                sites_data,
+                sites_list,
                 key=lambda s: (not s.get('is_default', False), s.get('name', ''))
             )
 
@@ -902,6 +933,8 @@ class ConsulManager:
 
         except Exception as e:
             logger.error(f"❌ Erro ao carregar sites do KV: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             # Fallback: usar CONSUL_HOST da env
             return [{
                 'name': 'fallback',

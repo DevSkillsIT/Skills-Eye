@@ -467,6 +467,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           return aValue.localeCompare(bValue);
         };
         baseColumn.sortDirections = ['ascend', 'descend'];
+        // ✅ CORREÇÃO: Usar sortOrder do estado para controlar ordenação visual
+        baseColumn.sortOrder = sortField === colConfig.key ? sortOrder : null;
       }
 
       // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
@@ -1217,11 +1219,15 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
+                  // ✅ CORREÇÃO: Limpar filtros internos do ProTable primeiro
+                  actionRef.current?.clearFilters?.();
+                  
                   // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
-                  // Manter selectedNode e advancedConditions
+                  // Manter selectedNode, advancedConditions e ordenação
+                  
                   // Reload para aplicar mudanças
                   actionRef.current?.reload();
                 }}
@@ -1234,17 +1240,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // Limpar estados customizados ANTES de resetar tabela
+                  // ✅ CORREÇÃO: Usar reset() do ProTable para limpar TUDO (filtros + ordenação)
+                  actionRef.current?.reset?.();
+                  
+                  // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   setSortField(null);
                   setSortOrder(null);
                   // Manter selectedNode e advancedConditions
-
-                  // CRÍTICO: reloadAndRest() reseta filtros E ordenação corretamente
-                  // Ao contrário de reset() + reload() que não limpa ordenação visual
-                  actionRef.current?.reloadAndRest?.();
+                  
+                  // Reload para aplicar mudanças
+                  actionRef.current?.reload();
                 }}
               >
                 Limpar Filtros e Ordem
