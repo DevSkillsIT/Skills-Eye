@@ -616,7 +616,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       return baseColumn;
     });
-  }, [columnConfig, columnWidths, tableFields, metadataOptions, metadataOptionsLoaded, handleResize, getFieldValue]);
+  }, [
+    // ✅ OTIMIZAÇÃO: Usar serialização para comparação ao invés de arrays completos
+    columnConfig.length,
+    columnConfig.map(c => `${c.key}:${c.visible}`).join(','),
+    JSON.stringify(columnWidths),
+    tableFields.length,
+    tableFields.map(f => f.name).join(','),
+    metadataOptionsLoaded,
+    handleResize,
+    getFieldValue,
+  ]);
 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
