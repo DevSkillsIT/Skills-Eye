@@ -246,32 +246,43 @@ export const useUIStore = create<UIState>((set) => ({
 
 ---
 
-#### 9. **Styling: Ant Design CSS + CSS Modules** ✅
+#### 9. **Styling: Tailwind CSS (com shadcn/ui) ou CSS Modules** ✅
 
-**Por quê:**
-- ✅ Ant Design já tem CSS completo
-- ✅ CSS Modules para customizações
-- ✅ Menos overhead que styled-components
-- ✅ Performance melhor
+**Opção 1: Tailwind CSS (Recomendado com shadcn/ui)**
+- ✅ Utility-first - Desenvolvimento rápido
+- ✅ Customização fácil - Classes utilitárias
+- ✅ Performance excelente - PurgeCSS automático
+- ✅ Design system consistente
+- ✅ Integração perfeita com shadcn/ui
 
-**Alternativas consideradas:**
-- ⚠️ Tailwind - Bom, mas Ant Design já tem CSS
-- ⚠️ styled-components - Overhead desnecessário
-- ⚠️ Emotion - Similar ao styled-components
+**Opção 2: CSS Modules (com Mantine ou Ant Design)**
+- ✅ Scoped styles - Sem conflitos
+- ✅ TypeScript support
+- ✅ Performance boa
 
-**Veredito:** Ant Design CSS + CSS Modules é suficiente ✅
+**Veredito:** Tailwind CSS com shadcn/ui, ou CSS Modules com outras libs ✅
 
 ---
 
-#### 10. **Formulários: Ant Design ProForm + React Hook Form** ✅
+#### 10. **Formulários: React Hook Form + Zod** ✅
 
 **Por quê:**
-- ✅ ProForm já integra React Hook Form
-- ✅ Validação poderosa
-- ✅ Performance excelente
-- ✅ TypeScript support
+- ✅ Performance excelente - Re-renders mínimos
+- ✅ Validação com Zod - Type-safe
+- ✅ Integração com qualquer UI library
+- ✅ TypeScript support nativo
+- ✅ Menos boilerplate
 
-**Veredito:** ProForm é ideal ✅
+**Com shadcn/ui:**
+- ✅ React Hook Form + Zod + shadcn/ui Form components
+
+**Com Mantine:**
+- ✅ Mantine Form (usa React Hook Form internamente)
+
+**Com Ant Design:**
+- ✅ ProForm (usa React Hook Form internamente)
+
+**Veredito:** React Hook Form + Zod é ideal (independente da UI library) ✅
 
 ---
 
