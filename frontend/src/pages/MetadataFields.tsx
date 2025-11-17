@@ -1067,15 +1067,9 @@ const MetadataFieldsPage: React.FC = () => {
   const fetchPrometheusServers = async () => {
     setLoadingServers(true);
     try {
-      // Busca servidores com external_labels do KV (já extraídos via SSH)
-      const serversResponse = await fetch('/api/v1/metadata-fields/servers');
-
-      if (!serversResponse.ok) {
-        throw new Error(`Erro ao buscar servidores: ${serversResponse.statusText}`);
-      }
-
-      const serversData = await serversResponse.json();
-      const serverList = serversData.servers || [];
+      // ✅ OTIMIZAÇÃO: Usar servidores do ServersContext ao invés de fazer request próprio
+      // ServersContext já carrega servidores com external_labels do KV
+      const serverList = servers || [];
 
       if (serverList.length === 0) {
         message.warning('Nenhum servidor Prometheus configurado no .env');
@@ -1083,8 +1077,8 @@ const MetadataFieldsPage: React.FC = () => {
         return;
       }
 
-      // Mapear servidores com external_labels do endpoint
-      // O endpoint /servers JÁ retorna external_labels extraídos do KV
+      // Mapear servidores com external_labels do Context
+      // ServersContext já retorna external_labels extraídos do KV
       setPrometheusServers(serverList.map((server: any) => ({
         hostname: server.hostname,
         port: server.port || 22,
