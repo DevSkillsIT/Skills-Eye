@@ -1,0 +1,114 @@
+{
+  "url": "http://localhost:8081/monitoring/network-probes",
+  "iterations": 5,
+  "timestamp": "2025-11-16T23:00:53.727143",
+  "metrics": [
+    {
+      "iteration": 1,
+      "navigation_time_ms": 1949.16,
+      "table_visible_time_ms": 3117.44,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 13131.35,
+      "total_time_ms": 13131.35,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": []
+    },
+    {
+      "iteration": 1,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 2,
+      "navigation_time_ms": 4210.22,
+      "table_visible_time_ms": 4235.22,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 14241.03,
+      "total_time_ms": 14241.03,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": []
+    },
+    {
+      "iteration": 2,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 3,
+      "navigation_time_ms": 1302.96,
+      "table_visible_time_ms": 1324.23,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11329.1,
+      "total_time_ms": 11329.1,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": []
+    },
+    {
+      "iteration": 3,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 4,
+      "navigation_time_ms": 1688.64,
+      "table_visible_time_ms": 1711.02,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 14879.42,
+      "total_time_ms": 14879.42,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": []
+    },
+    {
+      "iteration": 4,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 5,
+      "navigation_time_ms": 1340.79,
+      "table_visible_time_ms": 1370.4,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11383.15,
+      "total_time_ms": 11383.15,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": []
+    },
+    {
+      "iteration": 5,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    }
+  ],
+  "statistics": {
+    "navigation_time": {
+      "mean": 2098.35,
+      "min": 1302.96,
+      "max": 4210.22
+    },
+    "table_visible_time": {
+      "mean": 2351.66,
+      "min": 1324.23,
+      "max": 4235.22
+    },
+    "data_loaded_time": {
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "total_time": {
+      "mean": 12992.81,
+      "min": 11329.1,
+      "max": 14879.42
+    },
+    "api_requests": {
+      "mean": 8.0,
+      "min": 8,
+      "max": 8
+    }
+  }
+}

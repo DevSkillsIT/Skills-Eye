@@ -1,0 +1,279 @@
+{
+  "url": "http://localhost:8081/monitoring/network-probes",
+  "iterations": 5,
+  "timestamp": "2025-11-16T23:03:40.599269",
+  "metrics": [
+    {
+      "iteration": 1,
+      "navigation_time_ms": 1886.85,
+      "table_visible_time_ms": 1914.67,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11929.99,
+      "total_time_ms": 11930.0,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": [
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 1,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 2,
+      "navigation_time_ms": 1297.28,
+      "table_visible_time_ms": 1319.2,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11327.47,
+      "total_time_ms": 11327.47,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": [
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 3,
+      "navigation_time_ms": 1314.45,
+      "table_visible_time_ms": 1338.09,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11351.51,
+      "total_time_ms": 11351.51,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": [
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 4,
+      "navigation_time_ms": 1704.12,
+      "table_visible_time_ms": 1730.89,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 11737.86,
+      "total_time_ms": 11737.86,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": [
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    },
+    {
+      "iteration": 5,
+      "navigation_time_ms": 1287.31,
+      "table_visible_time_ms": 1306.7,
+      "data_loaded_time_ms": null,
+      "filters_visible_time_ms": 14298.25,
+      "total_time_ms": 14298.25,
+      "table_rows": 51,
+      "api_requests": 8,
+      "network_requests_count": 105,
+      "performance_metrics": [
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/nodes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/metadata-fields/",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:5000/api/v1/settings/sites-config",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "error": "unsupported operand type(s) for *: 'NoneType' and 'int'"
+    }
+  ],
+  "statistics": {
+    "navigation_time": {
+      "mean": 1498.0,
+      "min": 1287.31,
+      "max": 1886.85
+    },
+    "table_visible_time": {
+      "mean": 1521.91,
+      "min": 1306.7,
+      "max": 1914.67
+    },
+    "data_loaded_time": {
+      "mean": null,
+      "min": null,
+      "max": null
+    },
+    "total_time": {
+      "mean": 12129.02,
+      "min": 11327.47,
+      "max": 14298.25
+    },
+    "api_requests": {
+      "mean": 8.0,
+      "min": 8,
+      "max": 8
+    }
+  }
+}

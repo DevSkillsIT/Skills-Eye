@@ -639,12 +639,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       return baseColumn;
     });
   }, [
-    // ✅ OTIMIZAÇÃO: Usar chaves serializadas memoizadas ao invés de recalcular a cada render
-    columnConfig.length,
-    columnConfigKey,
-    columnWidthsKey,
-    tableFields.length,
-    tableFieldsKey,
+    // ✅ OTIMIZAÇÃO: Usar apenas valores primitivos e funções estáveis
+    columnConfig,
+    columnWidths,
+    tableFields,
     metadataOptionsLoaded,
     handleResize,
     getFieldValue,
