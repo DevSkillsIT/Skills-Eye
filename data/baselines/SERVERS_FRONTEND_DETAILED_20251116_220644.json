@@ -1,0 +1,220 @@
+{
+  "timestamp": "2025-11-16T22:06:27.400248",
+  "test_type": "servers_frontend_detailed",
+  "pages": {
+    "PrometheusConfig": {
+      "page_name": "PrometheusConfig",
+      "page_path": "/prometheus-config",
+      "navigation_time_ms": 908.89,
+      "performance": {
+        "domContentLoaded": 732,
+        "loadComplete": 734,
+        "firstPaint": 1368,
+        "firstContentfulPaint": 1368,
+        "resourceCount": 107
+      },
+      "requests_analysis": {
+        "total_requests": 104,
+        "api_requests_count": 7,
+        "servers_requests_count": 1,
+        "servers_requests": [
+          {
+            "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+            "start_time": 1763341591.2936268,
+            "duration_ms": 1.84,
+            "status": 200,
+            "method": "GET"
+          }
+        ],
+        "duplicates": {},
+        "all_api_requests": [
+          {
+            "url": "/metadata-fields/",
+            "duration_ms": 0.34,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/settings/sites-config",
+            "duration_ms": 0.55,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/servers",
+            "duration_ms": 1.84,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/prometheus-config/files?hostname=172.16.1.26",
+            "duration_ms": 0.26,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/prometheus-config/file/structure?file_path=%2Fetc%2Fprometheus%2Fprometheus.yml&hostname=172.16.1.26",
+            "duration_ms": 0.09,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/nodes",
+            "duration_ms": 3.69,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/prometheus-config/fields",
+            "duration_ms": 0.92,
+            "status": 200,
+            "method": "GET"
+          }
+        ]
+      }
+    },
+    "MetadataFields": {
+      "page_name": "MetadataFields",
+      "page_path": "/metadata-fields",
+      "navigation_time_ms": 1824.07,
+      "performance": {
+        "domContentLoaded": 239,
+        "loadComplete": 240,
+        "firstPaint": 612,
+        "firstContentfulPaint": 612,
+        "resourceCount": 112
+      },
+      "requests_analysis": {
+        "total_requests": 106,
+        "api_requests_count": 8,
+        "servers_requests_count": 1,
+        "servers_requests": [
+          {
+            "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+            "start_time": 1763341592.7649395,
+            "duration_ms": 144.57,
+            "status": 200,
+            "method": "GET"
+          }
+        ],
+        "duplicates": {},
+        "all_api_requests": [
+          {
+            "url": "/nodes",
+            "duration_ms": 143.91,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/servers",
+            "duration_ms": 144.57,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/",
+            "duration_ms": 6.29,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/reference-values/categories",
+            "duration_ms": 146.66,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/settings/sites-config",
+            "duration_ms": 7.98,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/config/sites",
+            "duration_ms": 23.49,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/?_t=1763341592994",
+            "duration_ms": 50.47,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/?_t=1763341593045",
+            "duration_ms": 577.25,
+            "status": 200,
+            "method": "GET"
+          }
+        ]
+      }
+    },
+    "MonitoringTypes": {
+      "page_name": "MonitoringTypes",
+      "page_path": "/monitoring-types",
+      "navigation_time_ms": 4548.26,
+      "performance": {
+        "domContentLoaded": 280,
+        "loadComplete": 280,
+        "firstPaint": 532,
+        "firstContentfulPaint": 532,
+        "resourceCount": 106
+      },
+      "requests_analysis": {
+        "total_requests": 102,
+        "api_requests_count": 5,
+        "servers_requests_count": 1,
+        "servers_requests": [
+          {
+            "url": "http://localhost:5000/api/v1/metadata-fields/servers",
+            "start_time": 1763341600.8497431,
+            "duration_ms": 103.78,
+            "status": 200,
+            "method": "GET"
+          }
+        ],
+        "duplicates": {},
+        "all_api_requests": [
+          {
+            "url": "/monitoring-types-dynamic/from-prometheus?server=ALL",
+            "duration_ms": 102.99,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/nodes",
+            "duration_ms": 102.87,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/servers",
+            "duration_ms": 103.78,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/metadata-fields/",
+            "duration_ms": 21.81,
+            "status": 200,
+            "method": "GET"
+          },
+          {
+            "url": "/settings/sites-config",
+            "duration_ms": 23.5,
+            "status": 200,
+            "method": "GET"
+          }
+        ]
+      }
+    }
+  },
+  "summary": {
+    "total_pages_tested": 3,
+    "total_servers_requests": 3,
+    "total_duplicate_groups": 0,
+    "expected_after_optimization": 1,
+    "reduction_expected": 66.67
+  }
+}

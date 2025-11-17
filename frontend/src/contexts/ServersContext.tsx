@@ -69,7 +69,36 @@ export function ServersProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    loadServers();
+    // ✅ OTIMIZAÇÃO: Proteção contra StrictMode duplicando requests
+    // StrictMode monta componentes duas vezes em desenvolvimento para detectar side effects
+    // Usamos uma flag para evitar requests duplicados
+    let mounted = true;
+    let requestInFlight = false;
+    
+    const loadServersSafe = async () => {
+      // Se já há um request em andamento, não fazer outro
+      if (requestInFlight) {
+        console.log('[ServersContext] ⚠️ Request já em andamento, ignorando duplicado (StrictMode)');
+        return;
+      }
+      
+      requestInFlight = true;
+      
+      try {
+        await loadServers();
+      } finally {
+        if (mounted) {
+          requestInFlight = false;
+        }
+      }
+    };
+    
+    loadServersSafe();
+    
+    return () => {
+      mounted = false;
+      requestInFlight = false;
+    };
   }, []);
 
   return (
