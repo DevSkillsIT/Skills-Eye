@@ -1237,6 +1237,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               setFilters(newFilters);
               actionRef.current?.reload();
             }}
+            onReset={() => {
+              setFilters({});
+              actionRef.current?.reload();
+            }}
           />
         )}
 
