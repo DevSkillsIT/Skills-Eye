@@ -830,7 +830,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         total: 0
       };
     }
-  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue]);
+  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue, metadataOptionsLoaded]);
 
   // ✅ NOVO: Handler de edição
   const handleEdit = useCallback((record: MonitoringDataItem) => {
