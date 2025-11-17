@@ -1,0 +1,63 @@
+{
+  "timestamp": "2025-11-16T21:58:35.975579",
+  "test_type": "servers_baseline_antes",
+  "endpoint": "/metadata-fields/servers",
+  "tests": {
+    "functionality": {
+      "status": "SUCCESS",
+      "response_time_ms": 94.06,
+      "status_code": 200,
+      "success": true,
+      "servers_count": 3,
+      "has_master": true,
+      "servers_data": [
+        {
+          "id": "172.16.1.26:5522",
+          "hostname": "172.16.1.26",
+          "type": "master",
+          "display_name": "172.16.1.26 - glpi-grafana-prometheus.skillsit.com.br"
+        },
+        {
+          "id": "172.16.200.14:22",
+          "hostname": "172.16.200.14",
+          "type": "slave",
+          "display_name": "172.16.200.14 - consul-RMD-LDC-Rio"
+        },
+        {
+          "id": "11.144.0.21:22",
+          "hostname": "11.144.0.21",
+          "type": "slave",
+          "display_name": "11.144.0.21 - consul-DTC-Genesis-Skills"
+        }
+      ]
+    },
+    "duplicate_requests": {
+      "status": "SUCCESS",
+      "total_requests": 4,
+      "requests_times": [
+        6.05,
+        5.83,
+        6.42,
+        6.38
+      ],
+      "average_time_ms": 6.17,
+      "min_time_ms": 5.83,
+      "max_time_ms": 6.42,
+      "p95_time_ms": 6.45,
+      "all_successful": true
+    },
+    "cache_behavior": {
+      "status": "SUCCESS",
+      "first_request_ms": 2.28,
+      "second_request_ms": 3.88,
+      "cache_improvement_percent": -70.26,
+      "cache_working": false
+    }
+  },
+  "summary": {
+    "total_tests": 3,
+    "passed_tests": 3,
+    "failed_tests": 0,
+    "errors": []
+  }
+}
