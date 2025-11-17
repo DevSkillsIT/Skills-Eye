@@ -940,16 +940,19 @@ projeto/
 
 ## 🚀 SETUP INICIAL RECOMENDADO (2025)
 
-### 1. **Criar Projeto Frontend (Refine.dev):**
+### 1. **Criar Projeto Frontend (Refine.dev + shadcn/ui):**
 
 ```bash
 # ✅ USAR PNPM (mais rápido que npm/yarn)
-pnpm create refine-app@latest my-dashboard
+# ✅ USAR PRESET OFICIAL (vite-shadcn)
+pnpm create refine-app@latest my-dashboard -- --preset vite-shadcn
 
-# Escolher:
-# - Vite
-# - Ant Design (ou shadcn/ui se preferir)
-# - REST API
+# O que vem incluído:
+# - Vite configurado
+# - Refine.dev configurado
+# - shadcn/ui configurado
+# - ThemedLayout pronto
+# - Exemplos de componentes
 
 # Adicionar ferramentas modernas
 pnpm add -D @biomejs/biome vitest @testing-library/react
@@ -959,6 +962,8 @@ pnpm add -D lefthook  # Git hooks (Rust, mais rápido que Husky)
 pnpm biome init
 pnpm lefthook install
 ```
+
+**⚠️ IMPORTANTE:** Use o preset `vite-shadcn` para ter tudo configurado automaticamente!
 
 ### 2. **Criar Projeto Backend:**
 
@@ -973,12 +978,12 @@ venv\Scripts\activate  # Windows
 pip install fastapi uvicorn[standard] pydantic sqlalchemy alembic httpx redis celery
 ```
 
-### 3. **Configurar Refine.dev:**
+### 3. **Configurar Refine.dev (com shadcn/ui):**
 
 ```typescript
 // src/app.tsx
 import { Refine } from "@refinedev/core";
-import { AntdProvider } from "@refinedev/antd";
+import { ThemedLayout } from "@/components/refine-ui/themed-layout";
 import { dataProvider } from "./providers/dataProvider";
 import { authProvider } from "./providers/authProvider";
 
@@ -997,11 +1002,20 @@ function App() {
         }
       ]}
     >
-      {/* Suas rotas aqui */}
+      <ThemedLayout>
+        {/* Suas rotas aqui */}
+      </ThemedLayout>
     </Refine>
   );
 }
 ```
+
+**✅ ThemedLayout oficial fornece:**
+- ✅ Sidebar com navegação
+- ✅ Header com breadcrumbs
+- ✅ Dark mode toggle
+- ✅ Responsivo (mobile-first)
+- ✅ Tudo pronto e testado!
 
 **✅ Features automáticas do Refine.dev:**
 - ✅ List view com filtros, ordenação, paginação
@@ -1015,7 +1029,12 @@ function App() {
 - ✅ Dark Mode
 - ✅ Real-time (WebSocket, SSE)
 
-**⏱️ Tempo de Setup:** 2-4 horas (vs 40+ horas custom)
+**⏱️ Tempo de Setup:** 1-2 horas (com preset oficial `vite-shadcn`) vs 40+ horas custom
+
+**✅ COM PRESET OFICIAL:**
+- Setup inicial: 5-10 minutos (CLI)
+- Configuração: 30-60 minutos
+- Total: 1-2 horas (vs 2-4h sem preset)
 
 ---
 
@@ -1171,18 +1190,26 @@ function App() {
 
 **Resultados:**
 - ❌ **NÃO existe nenhum projeto** que combine Refine.dev + shadcn/ui + TailAdmin simultaneamente
-- ✅ **Refine.dev + shadcn/ui:** Existe integração oficial e pacotes prontos!
-  - Documentação oficial: [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
-  - Pacote: `@ferdiunal/refine-shadcn` (componentes prontos)
-  - Pacote: `@ferdiunal/refine-shadcn-auth` (autenticação)
-- ⚠️ **Refine.dev + TailAdmin:** NÃO existe integração, seria necessário fazer manualmente
+- ✅✅✅ **Refine.dev + shadcn/ui:** Integração OFICIAL completa!
+  - **CLI com preset:** `npm create refine-app@latest -- --preset vite-shadcn`
+  - **Documentação oficial:** [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
+  - **Registry system:** Componentes Refine via `npx shadcn@latest add https://ui.refine.dev/r/...`
+  - **Componentes oficiais:** ThemedLayout, DataTable, Views, Auth Forms, Buttons
+  - **Pacotes comunidade:** `@ferdiunal/refine-shadcn` (extras)
+- ⚠️ **Refine.dev + TailAdmin:** NÃO existe integração oficial
+
+**Descoberta CRÍTICA:**
+Refine.dev tem **suporte OFICIAL completo** para shadcn/ui, incluindo:
+- ✅ **ThemedLayout** - Layout completo com sidebar, header, dark mode, responsivo!
+- ✅ **DataTable** - Tabela avançada com sorting, filtering, pagination
+- ✅ **Views** - Create, Edit, List, Show pages prontas
+- ✅ **Auth Forms** - SignIn, SignUp, ForgotPassword
+- ✅ **Buttons** - Create, Edit, Delete, Show, List, Refresh, Clone
+- ✅ **Registry System** - Instala componentes via CLI
 
 **Conclusão da Pesquisa:**
-A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**, mas:
-- ⚠️ Não há exemplos reais
-- ⚠️ Integração TailAdmin seria 100% manual
-- ⚠️ Risco de conflitos e problemas não documentados
-- ✅ **Melhor alternativa:** Refine.dev + shadcn/ui (já tem integração oficial!)
+- ✅ **Refine.dev + shadcn/ui:** Integração oficial completa (não precisa TailAdmin!)
+- ⚠️ **Refine.dev + shadcn/ui + TailAdmin:** Experimental, sem necessidade real
 
 ---
 
@@ -1191,50 +1218,58 @@ A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**,
 #### **Opção 1: Refine.dev + shadcn/ui (RECOMENDADO!)** ⭐⭐⭐⭐⭐
 
 **Por quê:**
-- ✅ **Integração oficial** - Documentação e suporte
-- ✅ **Pacotes prontos** - `@ferdiunal/refine-shadcn`
+- ✅✅✅ **Integração OFICIAL completa** - Documentação oficial do Refine.dev
+- ✅✅✅ **CLI com preset:** `npm create refine-app@latest -- --preset vite-shadcn`
+- ✅✅✅ **ThemedLayout oficial** - Layout completo com sidebar, header, dark mode!
+- ✅✅✅ **Componentes oficiais** - DataTable, Views, Auth Forms, Buttons
+- ✅✅✅ **Registry system** - Instala componentes via `npx shadcn@latest add https://ui.refine.dev/r/...`
+- ✅ **Pacotes comunidade** - `@ferdiunal/refine-shadcn` (extras opcionais)
 - ✅ **Projetos reais** - Já testado pela comunidade
 - ✅ **Sem conflitos** - Integração nativa
-- ✅ **Templates disponíveis** - Exemplos oficiais
 
-**O que você ganha:**
-- ✅ Refine.dev para lógica (CRUD, auth, RBAC)
-- ✅ shadcn/ui para componentes (acessibilidade, modernidade)
-- ✅ Tailwind CSS para styling
-- ✅ Layout precisa ser construído (mas há exemplos)
+**O que você ganha (OFICIAL):**
+- ✅ **ThemedLayout** - Layout completo pronto (sidebar, header, navegação, dark mode, responsivo)
+- ✅ **DataTable** - Tabela avançada com sorting, filtering, pagination
+- ✅ **Views** - Create, Edit, List, Show pages prontas
+- ✅ **Auth Forms** - SignIn, SignUp, ForgotPassword prontos
+- ✅ **Buttons** - Create, Edit, Delete, Show, List, Refresh, Clone
+- ✅ **Refine.dev** - Lógica (CRUD, auth, RBAC)
+- ✅ **shadcn/ui** - Componentes (acessibilidade, modernidade)
+- ✅ **Tailwind CSS** - Styling
 
-**Tempo de Setup:** 2-4 horas (com pacote `@ferdiunal/refine-shadcn`)
+**Tempo de Setup:** 1-2 horas (com CLI preset oficial!)
 
 **Fonte:** [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
 
+**⚠️ ATUALIZAÇÃO:** Refine.dev tem **ThemedLayout oficial** - você NÃO precisa do TailAdmin para layout!
+
 ---
 
-#### **Opção 2: Refine.dev + shadcn/ui + TailAdmin (EXPERIMENTAL)** ⚠️
+#### **Opção 2: Refine.dev + shadcn/ui + TailAdmin (NÃO RECOMENDADO)** ❌
 
-**Por quê considerar:**
-- ✅ TailAdmin tem 500+ componentes prontos
-- ✅ Design profissional e responsivo
-- ✅ Layout completo (sidebar, header)
+**Por quê NÃO usar:**
+- ❌ **Refine.dev já tem ThemedLayout oficial** - Não precisa TailAdmin para layout!
+- ❌ **Nenhum projeto real** usando essa combinação
+- ❌ **Integração 100% manual** - Você será pioneiro
+- ❌ **Risco alto** - Problemas não documentados
+- ❌ **Tempo:** 8-16 horas (vs 1-2h da Opção 1)
+- ❌ **Conflitos potenciais** - Estrutura diferente
+- ❌ **Redundante** - ThemedLayout do Refine já fornece layout completo
 
-**Ressalvas CRÍTICAS:**
-- ⚠️ **Nenhum projeto real** usando essa combinação
-- ⚠️ **Integração 100% manual** - Você será pioneiro
-- ⚠️ **Risco alto** - Problemas não documentados
-- ⚠️ **Tempo estimado:** 8-16 horas (vs 2-4h da Opção 1)
-- ⚠️ **Conflitos potenciais** - Estrutura diferente
-
-**Quando usar:**
-- ✅ Se você tem tempo para experimentar
-- ✅ Se precisa ABSOLUTAMENTE do layout do TailAdmin
+**Quando considerar (raro):**
+- ✅ Se você precisa ABSOLUTAMENTE de componentes específicos do TailAdmin (charts, dashboards)
 - ✅ Se está disposto a resolver problemas sozinho
+- ✅ Se tem tempo para experimentar
 
-**Estratégia se escolher:**
-1. Usar TailAdmin APENAS para layout (sidebar, header)
-2. Integrar Refine.dev para lógica
-3. Usar shadcn/ui para componentes interativos
-4. NÃO misturar componentes TailAdmin com shadcn/ui (escolher um)
+**Estratégia se escolher (não recomendado):**
+1. Usar Refine.dev + shadcn/ui como base (ThemedLayout oficial)
+2. Adicionar componentes específicos do TailAdmin (charts, dashboards)
+3. NÃO substituir ThemedLayout (já é completo)
+4. NÃO misturar componentes (escolher: TailAdmin OU shadcn/ui para cada caso)
 
-**Tempo de Setup:** 8-16 horas (experimental)
+**Tempo de Setup:** 8-16 horas (experimental, não recomendado)
+
+**⚠️ RECOMENDAÇÃO:** Use apenas Refine.dev + shadcn/ui. ThemedLayout oficial já fornece tudo que TailAdmin ofereceria!
 
 ---
 
@@ -1259,24 +1294,31 @@ A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**,
 
 **Para shadcn/ui (sua escolha):**
 
-**🥇 MELHOR OPÇÃO: Refine.dev + shadcn/ui (sem TailAdmin)**
+**🥇 MELHOR OPÇÃO: Refine.dev + shadcn/ui (OFICIAL!)** ⭐⭐⭐⭐⭐
 
 **Por quê:**
-1. ✅ Integração oficial e documentada
-2. ✅ Pacotes prontos (`@ferdiunal/refine-shadcn`)
-3. ✅ Projetos reais já usando
-4. ✅ Sem conflitos conhecidos
-5. ✅ Setup rápido (2-4 horas)
+1. ✅✅✅ **Integração OFICIAL completa** - Documentação oficial do Refine.dev
+2. ✅✅✅ **CLI com preset:** `npm create refine-app@latest -- --preset vite-shadcn`
+3. ✅✅✅ **ThemedLayout oficial** - Layout completo (sidebar, header, dark mode, responsivo)
+4. ✅✅✅ **Componentes oficiais** - DataTable, Views, Auth Forms, Buttons
+5. ✅✅✅ **Registry system** - Instala componentes via CLI
+6. ✅ **Pacotes comunidade** - `@ferdiunal/refine-shadcn` (extras opcionais)
+7. ✅ **Projetos reais** - Já testado pela comunidade
+8. ✅ **Setup ultra-rápido** - 1-2 horas (com CLI preset)
 
-**O que você perde:**
-- ❌ Layout completo pronto (precisa construir)
-- ❌ 500+ componentes do TailAdmin
-
-**O que você ganha:**
+**O que você ganha (OFICIAL):**
+- ✅✅✅ **ThemedLayout** - Layout completo pronto (não precisa TailAdmin!)
+- ✅✅✅ **DataTable** - Tabela avançada com sorting, filtering, pagination
+- ✅✅✅ **Views** - Create, Edit, List, Show pages prontas
+- ✅✅✅ **Auth Forms** - SignIn, SignUp, ForgotPassword prontos
+- ✅✅✅ **Buttons** - Todos botões CRUD prontos
 - ✅ Integração estável e testada
-- ✅ Sem problemas não documentados
-- ✅ Suporte da comunidade
-- ✅ Documentação oficial
+- ✅ Suporte oficial
+- ✅ Documentação completa
+
+**O que você NÃO precisa:**
+- ❌ TailAdmin (ThemedLayout oficial já fornece layout completo)
+- ❌ Templates externos (Refine tem tudo oficial)
 
 **🥈 ALTERNATIVA: Refine.dev + shadcn/ui + TailAdmin (experimental)**
 
@@ -1287,43 +1329,132 @@ A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**,
 
 ---
 
-### **📦 PACOTES ÚTEIS PARA REFINE.DEV + SHADCN/UI**
+### **📦 INSTALAÇÃO OFICIAL REFINE.DEV + SHADCN/UI**
 
-**Pacotes Oficiais/Comunidade:**
+#### **Método 1: CLI com Preset (RECOMENDADO!)** ⭐⭐⭐⭐⭐
+
+```bash
+# Criar projeto com preset oficial
+npm create refine-app@latest my-app -- --preset vite-shadcn
+
+# Ou com pnpm
+pnpm create refine-app@latest my-app -- --preset vite-shadcn
+```
+
+**O que vem incluído:**
+- ✅ Vite configurado
+- ✅ Refine.dev configurado
+- ✅ shadcn/ui configurado
+- ✅ ThemedLayout pronto
+- ✅ Exemplos de componentes
+
+**Tempo:** 5-10 minutos! ⚡
+
+---
+
+#### **Método 2: Setup Manual**
+
+**1. Instalar shadcn/ui:**
+```bash
+npx shadcn@latest init
+```
+
+**2. Adicionar componentes Refine via Registry:**
+```bash
+# ThemedLayout (layout completo)
+npx shadcn@latest add https://ui.refine.dev/r/themed-layout.json
+
+# Views (Create, Edit, List, Show)
+npx shadcn@latest add https://ui.refine.dev/r/views.json
+
+# DataTable
+npx shadcn@latest add https://ui.refine.dev/r/data-table.json
+
+# Auth Forms
+npx shadcn@latest add https://ui.refine.dev/r/auth-forms.json
+
+# Buttons
+npx shadcn@latest add https://ui.refine.dev/r/buttons.json
+```
+
+**Fonte:** [refine.dev/docs/ui-integrations/shadcn/introduction](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
+
+---
+
+### **📦 COMPONENTES OFICIAIS DISPONÍVEIS**
+
+**Layout:**
+- ✅ **ThemedLayout** - Layout completo (sidebar, header, dark mode, responsivo)
+
+**Views:**
+- ✅ **CreateView** - Página de criação
+- ✅ **EditView** - Página de edição
+- ✅ **ListView** - Página de listagem
+- ✅ **ShowView** - Página de detalhes
+
+**Data:**
+- ✅ **DataTable** - Tabela avançada (sorting, filtering, pagination)
+
+**Auth:**
+- ✅ **SignInForm** - Formulário de login
+- ✅ **SignUpForm** - Formulário de registro
+- ✅ **ForgotPasswordForm** - Formulário de recuperação
+
+**Buttons:**
+- ✅ **CreateButton, EditButton, DeleteButton, ShowButton, ListButton**
+- ✅ **RefreshButton, CloneButton**
+
+**Utilities:**
+- ✅ **AutoSaveIndicator** - Indicador de auto-save
+- ✅ **ErrorComponent** - Componente de erro
+- ✅ **NotificationProvider** - Sistema de notificações
+
+**Fonte:** [refine.dev/docs/ui-integrations/shadcn/introduction](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
+
+---
+
+### **📦 PACOTES COMUNIDADE (OPCIONAIS)**
+
+**Pacotes Extras (não obrigatórios):**
 ```json
 {
   "dependencies": {
     "@refinedev/core": "^4.50.0",
     "@refinedev/react-router-v6": "^4.50.0",
-    "@ferdiunal/refine-shadcn": "^1.0.0",
-    "@ferdiunal/refine-shadcn-auth": "^1.0.0"
+    "@ferdiunal/refine-shadcn": "^1.0.0",  // Extras opcionais
+    "@ferdiunal/refine-shadcn-auth": "^1.0.0"  // Extras opcionais
   }
 }
 ```
 
-**O que esses pacotes fornecem:**
-- ✅ Componentes de Listagem (List)
-- ✅ Componentes de Detalhes (Show)
-- ✅ Componentes de Criação (Create)
-- ✅ Componentes de Edição (Edit)
-- ✅ Componentes de Autenticação (Login, Register)
-
-**Fonte:** [github.com/ferdiunal/refine-shadcn](https://github.com/ferdiunal/refine-shadcn)
+**Nota:** Esses pacotes são **extras opcionais**. Refine.dev já fornece componentes oficiais via registry system!
 
 ---
 
-### **⚠️ ATUALIZAÇÃO: Análise de Templates Revisada**
+### **⚠️ ATUALIZAÇÃO CRÍTICA: Descoberta na Documentação Oficial**
 
-**Baseado na pesquisa, a estratégia mudou:**
+**Baseado na análise completa da documentação oficial do Refine.dev:**
+
+**DESCOBERTA:**
+- ✅✅✅ **Refine.dev tem integração OFICIAL completa com shadcn/ui!**
+- ✅✅✅ **ThemedLayout oficial** - Layout completo (sidebar, header, dark mode, responsivo)
+- ✅✅✅ **CLI com preset:** `npm create refine-app@latest -- --preset vite-shadcn`
+- ✅✅✅ **Registry system** - Componentes oficiais via `npx shadcn@latest add https://ui.refine.dev/r/...`
+- ✅✅✅ **Componentes oficiais:** DataTable, Views, Auth Forms, Buttons
 
 **ANTES (teórico):**
 - TailAdmin + Refine.dev + shadcn/ui = Viável
 
-**AGORA (baseado em pesquisa real):**
-- Refine.dev + shadcn/ui = ✅ Viável e testado
-- Refine.dev + shadcn/ui + TailAdmin = ⚠️ Experimental (sem projetos reais)
+**AGORA (baseado em documentação oficial):**
+- Refine.dev + shadcn/ui = ✅✅✅ **OFICIAL e completo!**
+- Refine.dev + shadcn/ui + TailAdmin = ❌ **NÃO NECESSÁRIO** (ThemedLayout oficial já fornece layout completo)
 
-**Recomendação:** Começar com Refine.dev + shadcn/ui, depois avaliar se precisa do TailAdmin.
+**Recomendação FINAL:**
+- ✅ **Usar apenas Refine.dev + shadcn/ui** (integração oficial completa)
+- ❌ **NÃO usar TailAdmin** (ThemedLayout oficial já fornece tudo)
+- ✅ **Setup:** 1-2 horas (com CLI preset oficial)
+
+**Fonte:** [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
 
 ---
 
@@ -1543,12 +1674,13 @@ A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**,
 - ✅ **Setup rápido** - 2-4 horas
 
 **Estratégia:**
-1. Usar **Refine.dev** para lógica (CRUD, auth, RBAC)
-2. Usar **shadcn/ui** para todos componentes (formulários, modals, tabelas)
-3. Construir **layout próprio** (sidebar, header) - ou usar exemplos da comunidade
-4. Usar **pacote `@ferdiunal/refine-shadcn`** para componentes Refine prontos
+1. Usar **CLI preset oficial:** `npm create refine-app@latest -- --preset vite-shadcn`
+2. Usar **ThemedLayout oficial** - Layout completo (sidebar, header, dark mode)
+3. Usar **componentes oficiais** - DataTable, Views, Auth Forms via registry
+4. Usar **Refine.dev** para lógica (CRUD, auth, RBAC)
+5. Usar **shadcn/ui** para componentes customizados (se necessário)
 
-**Tempo Total:** 2-4 horas (com pacote oficial)
+**Tempo Total:** 1-2 horas (com preset oficial CLI!)
 
 **Fonte:** [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
 
@@ -1644,27 +1776,31 @@ A combinação Refine.dev + shadcn/ui + TailAdmin é **teoricamente possível**,
 
 ### **💡 ESTRATÉGIA RECOMENDADA (BASEADA EM PESQUISA)**
 
-#### **Estratégia 1: Refine.dev + shadcn/ui (RECOMENDADA!)** ✅
+#### **Estratégia 1: Refine.dev + shadcn/ui (OFICIAL!)** ✅✅✅
 
 **Stack:**
-1. **Lógica de Negócio:** Refine.dev (CRUD, auth, RBAC)
-2. **Componentes:** shadcn/ui (todos componentes)
-3. **Layout:** Construir próprio (ou usar exemplos da comunidade)
-4. **Pacote:** `@ferdiunal/refine-shadcn` (componentes Refine prontos)
+1. **Setup:** CLI preset `vite-shadcn` (tudo configurado automaticamente)
+2. **Layout:** ThemedLayout oficial (sidebar, header, dark mode, responsivo)
+3. **Componentes:** Registry system oficial (DataTable, Views, Auth Forms, Buttons)
+4. **Lógica de Negócio:** Refine.dev (CRUD, auth, RBAC)
+5. **Customização:** shadcn/ui para componentes adicionais (se necessário)
 
 **Resultado:**
-- ✅ Integração estável e testada
+- ✅✅✅ Integração OFICIAL completa
+- ✅✅✅ ThemedLayout pronto (não precisa TailAdmin!)
+- ✅✅✅ Componentes oficiais via registry
 - ✅ Acessibilidade excelente (shadcn/ui)
 - ✅ Funcionalidades enterprise (Refine.dev)
 - ✅ Performance otimizada (Vite)
-- ✅ Sem conflitos conhecidos
+- ✅ Zero conflitos
 
-**Tempo de Setup:** 2-4 horas (com pacote oficial)
+**Tempo de Setup:** 1-2 horas (com preset oficial CLI!)
 
-**Recursos:**
-- Documentação: [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
-- Pacote: `@ferdiunal/refine-shadcn`
-- Exemplos: GitHub da comunidade Refine
+**Recursos Oficiais:**
+- **CLI Preset:** `npm create refine-app@latest -- --preset vite-shadcn`
+- **Documentação:** [refine.dev/docs/ui-integrations/shadcn](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
+- **Registry:** `npx shadcn@latest add https://ui.refine.dev/r/...`
+- **Componentes:** ThemedLayout, DataTable, Views, Auth Forms, Buttons
 
 ---
 
