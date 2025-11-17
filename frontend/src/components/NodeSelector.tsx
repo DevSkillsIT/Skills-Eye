@@ -11,7 +11,7 @@
  * - Reduz latência de 1454ms para ~0ms (usa cache do Context)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Select, Badge, Spin, App } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import { useNodesContext } from '../contexts/NodesContext';
@@ -38,7 +38,7 @@ interface NodeSelectorProps {
   showAllNodesOption?: boolean; // Se true, mostra opção "Todos os nós"
 }
 
-export const NodeSelector: React.FC<NodeSelectorProps> = ({
+export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
   value,
   onChange,
   style = { width: 350 },
@@ -83,7 +83,8 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
     }
   }, [nodesError, message]);
 
-  const handleChange = (nodeAddr: string) => {
+  // ✅ OTIMIZAÇÃO: useCallback para evitar re-renders
+  const handleChange = useCallback((nodeAddr: string) => {
     setSelectedNode(nodeAddr);
 
     if (nodeAddr === 'all') {
@@ -96,7 +97,25 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
         onChange(nodeAddr, node);
       }
     }
-  };
+  }, [nodes, onChange]);
+
+  // ✅ OTIMIZAÇÃO: useMemo para processar nodes apenas quando necessário
+  const nodeOptions = useMemo(() => {
+    return nodes.map((node, index) => {
+      const isMaster = index === 0; // Primeiro nó é o Master
+      const siteName = node.site_name || node.name || 'unknown';
+      const displayName = `${siteName} (${node.addr})`;
+
+      return {
+        key: node.addr,
+        value: node.addr,
+        node,
+        isMaster,
+        siteName,
+        displayName,
+      };
+    });
+  }, [nodes]);
 
   return (
     <Select
@@ -123,31 +142,36 @@ export const NodeSelector: React.FC<NodeSelectorProps> = ({
         </Select.Option>
       )}
 
-      {/* Lista de nós */}
-      {nodes.map((node, index) => {
-        const isMaster = index === 0; // Primeiro nó é o Master
-        const siteName = node.site_name || node.name || 'unknown';
-        const displayName = `${siteName} (${node.addr})`;
-
-        return (
-          <Select.Option key={node.addr} value={node.addr}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CloudServerOutlined />
-                <strong>{siteName}</strong>
-                <span style={{ color: '#8c8c8c', fontSize: '12px' }}>• {node.addr}</span>
-              </div>
-              <Badge
-                status={isMaster ? 'success' : 'processing'}
-                text={isMaster ? 'Master' : 'Slave'}
-              />
+      {/* Lista de nós - usando nodeOptions memoizado */}
+      {nodeOptions.map((option) => (
+        <Select.Option key={option.key} value={option.value}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CloudServerOutlined />
+              <strong>{option.siteName}</strong>
+              <span style={{ color: '#8c8c8c', fontSize: '12px' }}>• {option.node.addr}</span>
             </div>
-          </Select.Option>
-        );
-      })}
+            <Badge
+              status={option.isMaster ? 'success' : 'processing'}
+              text={option.isMaster ? 'Master' : 'Slave'}
+            />
+          </div>
+        </Select.Option>
+      ))}
     </Select>
   );
-};
+}, (prevProps, nextProps) => {
+  // ✅ OTIMIZAÇÃO: Comparação customizada para React.memo
+  // Só re-renderiza se props relevantes mudarem
+  return (
+    prevProps.value === nextProps.value &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.showAllNodesOption === nextProps.showAllNodesOption &&
+    prevProps.placeholder === nextProps.placeholder
+  );
+});
+
+NodeSelector.displayName = 'NodeSelector';
 
 /**
  * Hook para usar nó selecionado
@@ -173,3 +197,4 @@ export const useSelectedNode = () => {
     selectNode,
   };
 };
+
