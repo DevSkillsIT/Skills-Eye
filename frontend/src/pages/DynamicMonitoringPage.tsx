@@ -221,14 +221,42 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedColumns, ...metadataColumns];
   }, [tableFields]);
 
-  // Atualizar columnConfig quando tableFields carregar
+  // ✅ CORREÇÃO CRÍTICA: Atualizar columnConfig quando tableFields carregar
+  // PROBLEMA: useEffect só atualizava se comprimento mudasse, mas se columnConfig já tinha
+  // o mesmo número de colunas (ex: de uma execução anterior), não atualizava mesmo que
+  // os campos dinâmicos mudassem
   useEffect(() => {
-    // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
-    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
-    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
-      setColumnConfig(defaultColumnConfig);
+    // DEBUG: Log para entender o problema
+    if (import.meta.env.DEV) {
+      console.log('[DynamicMonitoringPage] columnConfig sync:', {
+        defaultColumnConfigLength: defaultColumnConfig.length,
+        columnConfigLength: columnConfig.length,
+        tableFieldsCount: tableFields.length,
+        defaultColumnConfigKeys: defaultColumnConfig.map(c => c.key).slice(0, 10),
+        columnConfigKeys: columnConfig.map(c => c.key).slice(0, 10),
+      });
     }
-  }, [defaultColumnConfig, columnConfig.length]);
+    
+    // ✅ CORREÇÃO: Sempre atualizar quando defaultColumnConfig mudar E tableFields estiver carregado
+    // Verificar se tableFields tem campos (não está vazio) antes de atualizar
+    if (defaultColumnConfig.length > 0 && tableFields.length > 0) {
+      // Verificar se há diferença real (não apenas comprimento, mas também conteúdo)
+      const defaultKeys = defaultColumnConfig.map(c => c.key).sort().join(',');
+      const currentKeys = columnConfig.map(c => c.key).sort().join(',');
+      
+      // Se as chaves são diferentes OU o comprimento é diferente, atualizar
+      if (defaultKeys !== currentKeys || defaultColumnConfig.length !== columnConfig.length) {
+        if (import.meta.env.DEV) {
+          console.log('[DynamicMonitoringPage] ✅ Atualizando columnConfig:', {
+            from: columnConfig.length,
+            to: defaultColumnConfig.length,
+            metadataColumns: defaultColumnConfig.length - 7, // 7 colunas fixas
+          });
+        }
+        setColumnConfig(defaultColumnConfig);
+      }
+    }
+  }, [defaultColumnConfig, columnConfig, tableFields.length]);
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
@@ -378,9 +406,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       else if (colConfig.key === 'Service') defaultWidth = 180;
 
       const width = columnWidths[colConfig.key] || defaultWidth;
+      
+      // ✅ CORREÇÃO CRÍTICA: dataIndex para colunas de metadata deve ser ['Meta', fieldName]
+      // Colunas fixas usam o nome direto, mas colunas de metadata estão em record.Meta[fieldName]
+      const isMetadataColumn = tableFields.some(f => f.name === colConfig.key);
+      const dataIndex = colConfig.key === 'actions' 
+        ? undefined 
+        : isMetadataColumn 
+          ? ['Meta', colConfig.key]  // ✅ CORREÇÃO: Metadata está em Meta[fieldName]
+          : colConfig.key;  // Colunas fixas (ID, Service, Node, etc)
+      
       const baseColumn: ProColumns<MonitoringDataItem> = {
         title: colConfig.title,
-        dataIndex: colConfig.key === 'actions' ? undefined : colConfig.key,
+        dataIndex,
         key: colConfig.key,
         width,
         fixed: colConfig.key === 'actions' ? 'right' : undefined,
