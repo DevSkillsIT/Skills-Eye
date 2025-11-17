@@ -3,14 +3,18 @@
  *
  * Mostra dropdown com servidores (Master + Slaves) incluindo nomes do Consul
  * Pode ser reutilizado em qualquer página que precise selecionar servidor
+ *
+ * ✅ OTIMIZAÇÃO (2025-11-16):
+ * - Usa ServersContext ao invés de fazer request próprio
+ * - Não bloqueia renderização (loading state)
+ * - Reduz latência (usa cache do Context)
+ * - Elimina requests duplicados
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { Select, Badge, Spin, App } from 'antd';
-import { CloudServerOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import axios from 'axios';
-
-const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
+import { CloudServerOutlined } from '@ant-design/icons';
+import { useServersContext } from '../contexts/ServersContext';
 
 export interface Server {
   id: string;
@@ -30,7 +34,7 @@ interface ServerSelectorProps {
   disabled?: boolean;
 }
 
-export const ServerSelector: React.FC<ServerSelectorProps> = ({
+export const ServerSelector: React.FC<ServerSelectorProps> = memo(({
   value,
   onChange,
   style = { width: 350 },
@@ -38,52 +42,49 @@ export const ServerSelector: React.FC<ServerSelectorProps> = ({
   disabled = false,
 }) => {
   const { message } = App.useApp();
-  const [servers, setServers] = useState<Server[]>([]);
-  const [loading, setLoading] = useState(false);
+  // ✅ OTIMIZAÇÃO: Usar ServersContext ao invés de fazer request próprio
+  const { servers, master, loading, error: serversError } = useServersContext();
   const [selectedServer, setSelectedServer] = useState<string | undefined>(value);
 
   useEffect(() => {
     setSelectedServer(value);
   }, [value]);
 
+  // ✅ OTIMIZAÇÃO: Selecionar servidor master quando servidores carregarem
   useEffect(() => {
-    fetchServers();
-  }, []);
-
-  const fetchServers = async () => {
-    setLoading(true);
-    try {
-      const response = await axios.get<{ success: boolean; servers: Server[]; master: Server }>
-        (`${API_URL}/metadata-fields/servers`, {
-          timeout: 5000, // 5 segundos - se demorar mais, usa cache
-        });
-
-      if (response.data.success) {
-        setServers(response.data.servers);
-
-        // Se não tem servidor selecionado, selecionar master por padrão
-        if (!selectedServer && response.data.master) {
-          setSelectedServer(response.data.master.id);
-          if (onChange) {
-            onChange(response.data.master.id, response.data.master);
-          }
-        }
+    if (!loading && servers.length > 0 && master && !selectedServer) {
+      setSelectedServer(master.id);
+      if (onChange) {
+        onChange(master.id, master);
       }
-    } catch (error: any) {
-      console.error('Erro ao carregar servidores:', error);
-      // Não exibir erro, apenas log - servidor pode estar offline
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [loading, servers, master, selectedServer, onChange]);
 
-  const handleChange = (serverId: string) => {
+  // Mostrar erro se houver
+  useEffect(() => {
+    if (serversError) {
+      message.error(`Erro ao carregar servidores: ${serversError}`);
+    }
+  }, [serversError, message]);
+
+  // ✅ OTIMIZAÇÃO: useCallback para evitar re-renders
+  const handleChange = useCallback((serverId: string) => {
     const server = servers.find(s => s.id === serverId);
     setSelectedServer(serverId);
     if (onChange && server) {
       onChange(serverId, server);
     }
-  };
+  }, [servers, onChange]);
+
+  // ✅ OTIMIZAÇÃO: useMemo para processar servidores apenas quando necessário
+  const serverOptions = useMemo(() => {
+    return servers.map(server => ({
+      key: server.id,
+      value: server.id,
+      server,
+      isMaster: server.type === 'master',
+    }));
+  }, [servers]);
 
   return (
     <Select
@@ -95,23 +96,34 @@ export const ServerSelector: React.FC<ServerSelectorProps> = ({
       loading={loading}
       suffixIcon={loading ? <Spin size="small" /> : <CloudServerOutlined />}
     >
-      {servers.map(server => (
-        <Select.Option key={server.id} value={server.id}>
+      {/* Lista de servidores - usando serverOptions memoizado */}
+      {serverOptions.map((option) => (
+        <Select.Option key={option.key} value={option.value}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CloudServerOutlined />
-              <strong>{server.display_name}</strong>
+              <strong>{option.server.display_name}</strong>
             </div>
             <Badge
-              status={server.type === 'master' ? 'success' : 'processing'}
-              text={server.type === 'master' ? 'Master' : 'Slave'}
+              status={option.isMaster ? 'success' : 'processing'}
+              text={option.isMaster ? 'Master' : 'Slave'}
             />
           </div>
         </Select.Option>
       ))}
     </Select>
   );
-};
+}, (prevProps, nextProps) => {
+  // ✅ OTIMIZAÇÃO: Comparação customizada para React.memo
+  // Só re-renderiza se props relevantes mudarem
+  return (
+    prevProps.value === nextProps.value &&
+    prevProps.disabled === nextProps.disabled &&
+    prevProps.placeholder === nextProps.placeholder
+  );
+});
+
+ServerSelector.displayName = 'ServerSelector';
 
 /**
  * Hook para usar servidor selecionado

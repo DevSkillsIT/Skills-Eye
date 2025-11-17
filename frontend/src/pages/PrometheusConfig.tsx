@@ -74,6 +74,7 @@ import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import * as yaml from 'js-yaml';
 import { consulAPI, type RawFileContentResponse, type DirectEditResponse } from '../services/api';
+import { useServersContext } from '../contexts/ServersContext';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
@@ -340,6 +341,8 @@ function extractMetadataFields(relabelConfigs: any[]): any[] {
 const PrometheusConfig: React.FC = () => {
   const navigate = useNavigate();
   const { modal } = App.useApp(); // Hook para usar Modal com contexto
+  // ✅ OTIMIZAÇÃO: Usar ServersContext ao invés de fazer request próprio
+  const { servers, master, loading: serversLoading } = useServersContext();
   const [allFiles, setAllFiles] = useState<ConfigFile[]>([]); // TODOS os arquivos
   const [lastFilesFetch, setLastFilesFetch] = useState<Date | null>(null); // Data do último carregamento
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -350,7 +353,6 @@ const PrometheusConfig: React.FC = () => {
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [editingJob, setEditingJob] = useState<any | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [servers, setServers] = useState<Server[]>([]);
   const [selectedServer, setSelectedServer] = useState<string>('');
   const [previousServer, setPreviousServer] = useState<string>(''); // Para detectar mudança real
   const [serverJustChanged, setServerJustChanged] = useState(false); // Para animação ao trocar servidor
@@ -818,46 +820,13 @@ const PrometheusConfig: React.FC = () => {
     }
   }, [fileType, alertmanagerViewMode, alertmanagerRoutes, alertmanagerReceivers, alertmanagerInhibitRules]);
 
-  // OTIMIZAÇÃO: Carregamento inicial - combina carregamento de servidores + arquivos
+  // ✅ OTIMIZAÇÃO: Usar ServersContext - não precisa mais fazer request próprio
+  // Setar servidor master quando servidores carregarem do Context
   useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        // PASSO 1: Carregar servidores
-        const response = await axios.get(`${API_URL}/metadata-fields/servers`, {
-          timeout: 15000,
-        });
-
-        if (!response.data.success) {
-          message.error('Falha ao carregar servidores');
-          return;
-        }
-
-        const serversList = response.data.servers;
-        const masterServer = response.data.master;
-
-        setServers(serversList);
-
-        if (!masterServer) {
-          message.warning('Nenhum servidor master encontrado');
-          return;
-        }
-
-        // PASSO 2: Setar servidor master (isso vai triggar fetchFiles via useEffect abaixo)
-        setSelectedServer(masterServer.id);
-
-      } catch (error) {
-        console.error('Erro ao carregar dados iniciais:', error);
-        // Type guard para Axios error
-        if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
-          message.error('Tempo esgotado ao carregar servidores (servidor lento)');
-        } else {
-          message.error('Erro ao carregar servidores');
-        }
-      }
-    };
-
-    loadInitialData();
-  }, []); // Só executa no mount
+    if (!serversLoading && servers.length > 0 && master && !selectedServer) {
+      setSelectedServer(master.id);
+    }
+  }, [serversLoading, servers, master, selectedServer]);
 
   // CORREÇÃO: Carregar campos metadata automaticamente ao montar a página
   // Isso garante que o modal apareça assim que a página carrega (como solicitado)

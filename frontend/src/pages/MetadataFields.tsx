@@ -86,6 +86,7 @@ import { metadataFieldsAPI, consulAPI } from '../services/api';
 import type { PreviewFieldChangeResponse } from '../services/api';
 import type { ActionType } from '@ant-design/pro-components';
 import ResizableTitle from '../components/ResizableTitle';
+import { useServersContext } from '../contexts/ServersContext';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 
@@ -305,8 +306,9 @@ interface Site {
 
 const MetadataFieldsPage: React.FC = () => {
   const { modal, message } = App.useApp();  // Hook para usar modal e message com contexto
+  // ✅ OTIMIZAÇÃO: Usar ServersContext ao invés de fazer request próprio
+  const { servers, master, loading: serversLoading } = useServersContext();
   const [fields, setFields] = useState<MetadataField[]>([]);
-  const [servers, setServers] = useState<Server[]>([]);
   const [selectedServer, setSelectedServer] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [loadingSyncStatus, setLoadingSyncStatus] = useState(false);
@@ -769,26 +771,8 @@ const MetadataFieldsPage: React.FC = () => {
     }
   };
 
-  const fetchServers = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/metadata-fields/servers`, {
-        timeout: 15000, // 15 segundos (primeira requisição pode consultar Consul)
-      });
-      if (response.data.success) {
-        setServers(response.data.servers);
-        // Selecionar master por padrão
-        if (response.data.master) {
-          setSelectedServer(response.data.master.id);
-        }
-      }
-    } catch (error: any) {
-      if (error.code === 'ECONNABORTED') {
-        message.error('Tempo esgotado ao carregar servidores (servidor lento)');
-      } else {
-        message.error('Erro ao carregar servidores: ' + (error.response?.data?.detail || error.message));
-      }
-    }
-  };
+  // ✅ OTIMIZAÇÃO: Removido fetchServers - usa ServersContext
+  // Função removida para evitar duplicação
 
   const fetchCategories = async () => {
     setLoadingCategories(true);
@@ -1270,10 +1254,9 @@ const MetadataFieldsPage: React.FC = () => {
   // Carregamento inicial: servidores + campos + categorias + sync status + config + prometheusServers (UMA VEZ APENAS)
   useEffect(() => {
     const initializeData = async () => {
-      // OTIMIZAÇÃO: Executar chamadas independentes em PARALELO
-      // PASSO 1: Carregar servidores, categorias, config e prometheus servers em paralelo
+      // ✅ OTIMIZAÇÃO: Servidores vêm do ServersContext (não precisa mais fetchServers)
+      // PASSO 1: Carregar categorias, config e prometheus servers em paralelo
       await Promise.all([
-        fetchServers(),
         fetchCategories(),
         loadConfig(),
         fetchPrometheusServers(), // Necessário para aba "External Labels (Todos Servidores)"
@@ -1283,8 +1266,12 @@ const MetadataFieldsPage: React.FC = () => {
       // loadFieldsWithModal() busca de todos os servidores e abre modal automaticamente
       await loadFieldsWithModal();
 
+      // ✅ OTIMIZAÇÃO: Setar servidor master quando servidores carregarem do Context
+      if (!serversLoading && servers.length > 0 && master && !selectedServer) {
+        setSelectedServer(master.id);
+      }
+
       // PASSO 3: Após carregar servidores e campos, carregar external_labels e sync status do servidor selecionado
-      // IMPORTANTE: selectedServer já foi setado por fetchServers() no passo 1
       if (selectedServer) {
         console.log('[DEBUG INIT] Carregando external_labels e sync status inicial...');
         // OTIMIZAÇÃO: Carregar em paralelo

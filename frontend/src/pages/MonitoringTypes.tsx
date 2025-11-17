@@ -45,6 +45,7 @@ import {
 import axios from 'axios';
 import { ServerSelector, type Server } from '../components/ServerSelector';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
+import { useServersContext } from '../contexts/ServersContext';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 const { Title, Text, Paragraph } = Typography;
@@ -77,13 +78,14 @@ interface ServerResult {
 }
 
 export default function MonitoringTypes() {
+  // ✅ OTIMIZAÇÃO: Usar ServersContext ao invés de fazer request próprio
+  const { servers, master, loading: serversLoading } = useServersContext();
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<CategoryData[]>([]);
   const [serverData, setServerData] = useState<Record<string, ServerResult>>({});
   const [viewMode, setViewMode] = useState<'all' | 'specific'>('all');
   const [selectedServerId, setSelectedServerId] = useState<string>('ALL');
   const [selectedServerInfo, setSelectedServerInfo] = useState<Server | null>(null);
-  const [servers, setServers] = useState<Server[]>([]);
   const [totalTypes, setTotalTypes] = useState(0);
   const [totalServers, setTotalServers] = useState(0);
   const [serverJustChanged, setServerJustChanged] = useState(false);
@@ -99,34 +101,17 @@ export default function MonitoringTypes() {
     { key: 'servers', title: 'Servidores', visible: true, width: 200 },
   ]);
 
-  // Carregar lista de servidores
+  // ✅ OTIMIZAÇÃO: Usar ServersContext - não precisa mais fazer request próprio
+  // Setar servidor master quando servidores carregarem do Context
   useEffect(() => {
-    const fetchServers = async () => {
-      try {
-        const response = await axios.get<{ success: boolean; servers: Server[]; master: Server }>(
-          `${API_URL}/metadata-fields/servers`,
-          { timeout: 5000 }
-        );
-
-        if (response.data.success) {
-          setServers(response.data.servers);
-
-          // Se modo específico e nada selecionado, selecionar master
-          if (viewMode === 'specific' && (!selectedServerId || selectedServerId === 'ALL')) {
-            if (response.data.master) {
-              setSelectedServerId(response.data.master.id);
-              setSelectedServerInfo(response.data.master);
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao carregar servidores:', error);
+    if (!serversLoading && servers.length > 0 && master) {
+      // Se modo específico e nada selecionado, selecionar master
+      if (viewMode === 'specific' && (!selectedServerId || selectedServerId === 'ALL')) {
+        setSelectedServerId(master.id);
+        setSelectedServerInfo(master);
       }
-    };
-
-    fetchServers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode]); // selectedServerId é atualizado dentro, não precisa estar nas dependências
+    }
+  }, [serversLoading, servers, master, viewMode, selectedServerId]);
 
   const loadTypes = useCallback(async () => {
     setLoading(true);
