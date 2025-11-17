@@ -405,6 +405,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const lastProTableColumnsRef = useRef<string>('');
   
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
+    // ✅ CORREÇÃO: Só calcular colunas quando columnConfig estiver pronto
+    // Evita race condition onde proTableColumns é calculado antes de columnConfig ser atualizado
+    if (columnConfig.length === 0) {
+      return [];
+    }
+    
     const visibleConfigs = columnConfig.filter(c => c.visible);
     
     // ✅ OTIMIZAÇÃO: Só logar quando realmente mudou (evita logs duplicados em StrictMode)
