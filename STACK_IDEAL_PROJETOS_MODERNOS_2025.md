@@ -2036,6 +2036,107 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 
 ---
 
+## 📚 LINKS DE DOCUMENTAÇÃO OFICIAL
+
+### **🖥️ FRONTEND**
+
+#### **Framework e Build:**
+- **Refine.dev:** [https://refine.dev/docs/](https://refine.dev/docs/)
+- **Refine.dev + shadcn/ui:** [https://refine.dev/docs/ui-integrations/shadcn/introduction/](https://refine.dev/docs/ui-integrations/shadcn/introduction/)
+- **ThemedLayout (Refine.dev):** [https://refine.dev/docs/ui-integrations/shadcn/components/themed-layout/](https://refine.dev/docs/ui-integrations/shadcn/components/themed-layout/)
+- **React 19:** [https://react.dev/](https://react.dev/)
+- **Vite 7:** [https://vite.dev/](https://vite.dev/)
+- **TypeScript:** [https://www.typescriptlang.org/docs/](https://www.typescriptlang.org/docs/)
+
+#### **UI Libraries:**
+- **shadcn/ui:** [https://ui.shadcn.com/](https://ui.shadcn.com/)
+- **TanStack Table:** [https://tanstack.com/table/latest](https://tanstack.com/table/latest)
+- **Radix UI:** [https://www.radix-ui.com/](https://www.radix-ui.com/) (base do shadcn/ui)
+
+#### **Gerenciamento de Estado e Formulários:**
+- **React Query (TanStack Query):** [https://tanstack.com/query/latest](https://tanstack.com/query/latest)
+- **React Hook Form:** [https://react-hook-form.com/](https://react-hook-form.com/)
+- **Zod:** [https://zod.dev/](https://zod.dev/)
+- **Zustand:** [https://zustand-demo.pmnd.rs/](https://zustand-demo.pmnd.rs/)
+
+#### **Styling:**
+- **Tailwind CSS:** [https://tailwindcss.com/docs](https://tailwindcss.com/docs)
+- **CSS Modules:** [https://github.com/css-modules/css-modules](https://github.com/css-modules/css-modules)
+
+#### **Testes:**
+- **Vitest:** [https://vitest.dev/](https://vitest.dev/)
+- **Playwright:** [https://playwright.dev/](https://playwright.dev/)
+- **Testing Library:** [https://testing-library.com/](https://testing-library.com/)
+
+#### **Ferramentas de Desenvolvimento:**
+- **Biome:** [https://biomejs.dev/](https://biomejs.dev/)
+- **Lefthook:** [https://github.com/evilmartians/lefthook](https://github.com/evilmartians/lefthook)
+- **npm:** [https://docs.npmjs.com/](https://docs.npmjs.com/)
+
+---
+
+### **⚙️ BACKEND**
+
+#### **Framework e Runtime:**
+- **FastAPI:** [https://fastapi.tiangolo.com/](https://fastapi.tiangolo.com/)
+- **Python 3.12:** [https://docs.python.org/3.12/](https://docs.python.org/3.12/)
+- **Pydantic V2:** [https://docs.pydantic.dev/](https://docs.pydantic.dev/)
+- **Uvicorn:** [https://www.uvicorn.org/](https://www.uvicorn.org/)
+
+#### **Banco de Dados e ORM:**
+- **PostgreSQL:** [https://www.postgresql.org/docs/](https://www.postgresql.org/docs/)
+- **SQLAlchemy 2.0:** [https://docs.sqlalchemy.org/](https://docs.sqlalchemy.org/)
+- **Alembic:** [https://alembic.sqlalchemy.org/](https://alembic.sqlalchemy.org/)
+
+#### **Cache e Task Queue:**
+- **Redis:** [https://redis.io/docs/](https://redis.io/docs/)
+- **Celery:** [https://docs.celeryq.dev/](https://docs.celeryq.dev/)
+
+#### **HTTP Client:**
+- **httpx:** [https://www.python-httpx.org/](https://www.python-httpx.org/)
+
+#### **Testes:**
+- **pytest:** [https://docs.pytest.org/](https://docs.pytest.org/)
+- **httpx (test client):** [https://www.python-httpx.org/advanced/testing/](https://www.python-httpx.org/advanced/testing/)
+
+#### **Segurança:**
+- **Safety:** [https://github.com/pyupio/safety](https://github.com/pyupio/safety)
+- **Bandit:** [https://bandit.readthedocs.io/](https://bandit.readthedocs.io/)
+
+---
+
+### **🛠️ FERRAMENTAS E INFRAESTRUTURA**
+
+#### **Containerização:**
+- **Docker:** [https://docs.docker.com/](https://docs.docker.com/)
+- **Docker Compose:** [https://docs.docker.com/compose/](https://docs.docker.com/compose/)
+- **Kubernetes:** [https://kubernetes.io/docs/](https://kubernetes.io/docs/)
+
+#### **CI/CD:**
+- **GitHub Actions:** [https://docs.github.com/en/actions](https://docs.github.com/en/actions)
+
+#### **Infraestrutura como Código:**
+- **Terraform:** [https://www.terraform.io/docs](https://www.terraform.io/docs)
+
+#### **Monitoramento e Observabilidade:**
+- **Sentry:** [https://docs.sentry.io/](https://docs.sentry.io/)
+- **Prometheus:** [https://prometheus.io/docs/](https://prometheus.io/docs/)
+- **Grafana:** [https://grafana.com/docs/](https://grafana.com/docs/)
+
+#### **Documentação:**
+- **Swagger/OpenAPI:** [https://swagger.io/docs/](https://swagger.io/docs/)
+- **Storybook:** [https://storybook.js.org/docs/](https://storybook.js.org/docs/)
+- **Docusaurus:** [https://docusaurus.io/docs](https://docusaurus.io/docs)
+
+#### **Acessibilidade:**
+- **axe-core:** [https://github.com/dequelabs/axe-core](https://github.com/dequelabs/axe-core)
+- **WCAG 2.1:** [https://www.w3.org/WAI/WCAG21/quickref/](https://www.w3.org/WAI/WCAG21/quickref/)
+
+#### **APIs e Testes:**
+- **Postman:** [https://learning.postman.com/docs/](https://learning.postman.com/docs/)
+
+---
+
 ## 🔒 SEGURANÇA E OBSERVABILIDADE (PONTOS CRÍTICOS)
 
 ### **1. Segurança** 🔐
