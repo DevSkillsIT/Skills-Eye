@@ -1,7 +1,8 @@
 /* ✅ ESTILOS CUSTOMIZADOS PARA SIDEBAR (2025-11-16) */
 
 /* Sidebar Menu Items - Hover e Active States */
-.ant-pro-layout .ant-menu-item {
+.ant-pro-layout .ant-menu-item,
+.ant-pro-layout .ant-menu-item-only-child {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 8px;
   margin: 4px 12px !important;
@@ -27,7 +28,8 @@
 }
 
 /* Submenu Items */
-.ant-pro-layout .ant-menu-submenu-title {
+.ant-pro-layout .ant-menu-submenu-title,
+.ant-pro-layout .ant-menu-submenu > .ant-menu-submenu-title {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 8px;
   margin: 4px 12px !important;
