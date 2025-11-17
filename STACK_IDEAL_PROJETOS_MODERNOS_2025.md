@@ -2146,7 +2146,7 @@ npx shadcn@latest add https://ui.refine.dev/r/buttons.json
 **Dependências:**
 - ✅ **Dependabot / Renovate** - Atualização automática de dependências
 - ✅ **Snyk** - Scanning de vulnerabilidades
-- ✅ **npm audit / pnpm audit** - Verificação de vulnerabilidades
+- ✅ **npm audit** - Verificação de vulnerabilidades (pnpm/yarn também têm audit)
 - ✅ **OWASP Top 10** - Seguir guidelines
 
 **Práticas:**
