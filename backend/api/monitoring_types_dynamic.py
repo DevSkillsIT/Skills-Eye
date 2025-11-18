@@ -7,8 +7,9 @@ Extrai tipos de monitoramento diretamente dos jobs do prometheus.yml de cada ser
 FONTE DA VERDADE: prometheus.yml (não JSONs)
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 import logging
 from datetime import datetime
 
@@ -21,6 +22,15 @@ router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"]
 # Instanciar managers
 multi_config = MultiConfigManager()
 kv_manager = KVManager()
+
+
+# ============================================================================
+# MODELOS PYDANTIC
+# ============================================================================
+
+class FormSchemaUpdateRequest(BaseModel):
+    """Request para atualizar form_schema de um tipo"""
+    form_schema: Optional[Dict[str, Any]] = None
 
 
 async def _enrich_servers_with_sites_data(servers_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -712,6 +722,101 @@ async def get_types_from_prometheus(
 
     except Exception as e:
         logger.error(f"[MONITORING-TYPES-DYNAMIC] Erro ao extrair tipos do Prometheus: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/type/{type_id}/form-schema")
+async def update_type_form_schema(
+    type_id: str,
+    request: FormSchemaUpdateRequest
+):
+    """
+    ✅ SOLUÇÃO PRAGMÁTICA: Atualiza form_schema de um tipo específico
+
+    Salva form_schema diretamente no KV skills/eye/monitoring-types.
+    Cada tipo tem seu próprio form_schema (sem duplicação, sem ambiguidade).
+
+    Args:
+        type_id: ID do tipo (ex: 'icmp', 'http_2xx', 'node_exporter')
+        request: FormSchemaUpdateRequest com form_schema
+
+    Returns:
+        {"success": true, "message": "...", "type_id": "..."}
+
+    Example:
+        PUT /api/v1/monitoring-types-dynamic/type/icmp/form-schema
+        Body: {
+            "form_schema": {
+                "fields": [
+                    {"name": "target", "type": "text", "required": true, ...}
+                ],
+                "required_metadata": ["target", "module"],
+                "optional_metadata": []
+            }
+        }
+    """
+    try:
+        logger.info(f"[UPDATE-FORM-SCHEMA] Atualizando form_schema para tipo: {type_id}")
+
+        # PASSO 1: Buscar KV atual
+        kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
+
+        if not kv_data or not kv_data.get('all_types'):
+            raise HTTPException(
+                status_code=404,
+                detail="KV monitoring-types não encontrado. Execute force_refresh=true primeiro."
+            )
+
+        # PASSO 2: Encontrar tipo no all_types
+        type_found = False
+        for type_def in kv_data['all_types']:
+            if type_def.get('id') == type_id:
+                # ✅ ATUALIZAR form_schema diretamente
+                type_def['form_schema'] = request.form_schema
+                type_found = True
+                logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Tipo '{type_id}' atualizado com form_schema")
+                break
+
+        if not type_found:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tipo '{type_id}' não encontrado. Tipos disponíveis: {[t['id'] for t in kv_data['all_types'][:10]]}"
+            )
+
+        # PASSO 3: Atualizar também em servers (para consistência)
+        for server_host, server_data in kv_data.get('servers', {}).items():
+            for type_def in server_data.get('types', []):
+                if type_def.get('id') == type_id:
+                    type_def['form_schema'] = request.form_schema
+
+        # PASSO 4: Atualizar metadata
+        kv_data['last_updated'] = datetime.now().isoformat()
+
+        # PASSO 5: Salvar de volta no KV
+        success = await kv_manager.put_json(
+            key='skills/eye/monitoring-types',
+            value=kv_data
+        )
+
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Erro ao salvar no KV Consul"
+            )
+
+        logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Form schema salvo no KV para tipo '{type_id}'")
+
+        return {
+            "success": True,
+            "message": f"Form schema atualizado para tipo '{type_id}'",
+            "type_id": type_id,
+            "last_updated": kv_data['last_updated']
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UPDATE-FORM-SCHEMA] Erro ao atualizar form_schema: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
