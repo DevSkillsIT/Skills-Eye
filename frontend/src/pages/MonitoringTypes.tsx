@@ -41,15 +41,16 @@ import {
   GlobalOutlined,
   ColumnHeightOutlined,
   SettingOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { ServerSelector, type Server } from '../components/ServerSelector';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
 import { useServersContext } from '../contexts/ServersContext';
+import ExtractionProgressModal, { type ServerStatus } from '../components/ExtractionProgressModal';
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 const { Title, Text, Paragraph } = Typography;
-const { TabPane } = Tabs;
 
 interface MonitoringType {
   id: string;
@@ -58,7 +59,7 @@ interface MonitoringType {
   job_name: string;
   exporter_type: string;
   module?: string;
-  fields: string[];
+  fields?: string[]; // ⚠️ Opcional: pode ser undefined quando vem do cache KV
   metrics_path: string;
   server?: string;
   servers?: string[];
@@ -90,6 +91,26 @@ export default function MonitoringTypes() {
   const [totalServers, setTotalServers] = useState(0);
   const [serverJustChanged, setServerJustChanged] = useState(false);
   const [tableSize, setTableSize] = useState<'small' | 'middle' | 'large'>('middle');
+  
+  // Estado para modal de progresso
+  const [progressModalVisible, setProgressModalVisible] = useState(false);
+  const [extractionData, setExtractionData] = useState<{
+    loading: boolean;
+    fromCache: boolean;
+    successfulServers: number;
+    totalServers: number;
+    serverStatus: ServerStatus[];
+    totalTypes: number;
+    error: string | null;
+  }>({
+    loading: false,
+    fromCache: false,
+    successfulServers: 0,
+    totalServers: 0,
+    serverStatus: [],
+    totalTypes: 0,
+    error: null,
+  });
 
   // Configuração de colunas
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([
@@ -113,14 +134,22 @@ export default function MonitoringTypes() {
     }
   }, [serversLoading, servers, master, viewMode, selectedServerId]);
 
-  const loadTypes = useCallback(async () => {
+  const loadTypes = useCallback(async (forceRefresh: boolean = false, showModal: boolean = false) => {
     setLoading(true);
+    
+    // Atualizar estado do modal se necessário
+    if (showModal) {
+      setProgressModalVisible(true);
+      setExtractionData(prev => ({ ...prev, loading: true, error: null }));
+    }
+    
     try {
       const response = await axios.get(`${API_URL}/monitoring-types-dynamic/from-prometheus`, {
         params: {
-          server: viewMode === 'all' ? 'ALL' : (selectedServerInfo?.hostname || 'ALL')
+          server: viewMode === 'all' ? 'ALL' : (selectedServerInfo?.hostname || 'ALL'),
+          force_refresh: forceRefresh
         },
-        timeout: 30000,
+        timeout: 60000, // 60s para permitir extração SSH
       });
 
       if (response.data.success) {
@@ -128,25 +157,62 @@ export default function MonitoringTypes() {
         setServerData(response.data.servers || {});
         setTotalTypes(response.data.total_types || 0);
         setTotalServers(response.data.total_servers || 0);
+        
+        // Atualizar dados do modal
+        if (showModal) {
+          setExtractionData({
+            loading: false,
+            fromCache: response.data.from_cache || false,
+            successfulServers: response.data.successful_servers || 0,
+            totalServers: response.data.total_servers || 0,
+            serverStatus: (response.data.server_status || []).map((s: any) => ({
+              hostname: s.hostname,
+              success: s.success,
+              from_cache: s.from_cache || false,
+              files_count: s.files_count || 0,
+              fields_count: s.fields_count || 0,
+              error: s.error || null,
+              duration_ms: s.duration_ms || 0,
+            })),
+            totalTypes: response.data.total_types || 0,
+            error: null,
+          });
+        }
       }
     } catch (error: any) {
       console.error('Erro ao carregar tipos:', error);
-
-      if (error.code === 'ECONNABORTED') {
-        alert('Timeout ao carregar tipos - verifique se o backend está respondendo');
-      } else if (error.response) {
-        alert(`Erro: ${error.response.status} - ${error.response.data.detail || error.message}`);
+      
+      const errorMessage = error.code === 'ECONNABORTED'
+        ? 'Timeout ao carregar tipos - verifique se o backend está respondendo'
+        : error.response
+        ? `Erro: ${error.response.status} - ${error.response.data.detail || error.message}`
+        : `Erro ao carregar tipos: ${error.message}`;
+      
+      if (showModal) {
+        setExtractionData(prev => ({
+          ...prev,
+          loading: false,
+          error: errorMessage,
+        }));
       } else {
-        alert(`Erro ao carregar tipos: ${error.message}`);
+        alert(errorMessage);
       }
     } finally {
       setLoading(false);
     }
   }, [viewMode, selectedServerInfo]);
+  
+  const handleForceRefresh = useCallback(async () => {
+    await loadTypes(true, true);
+  }, [loadTypes]);
+  
+  const handleReload = useCallback(async () => {
+    await loadTypes(false, false);
+  }, [loadTypes]);
 
   useEffect(() => {
     if (viewMode === 'all' || selectedServerInfo) {
-      loadTypes();
+      loadTypes(false, false); // Carregar do cache, sem mostrar modal
     }
   }, [viewMode, selectedServerInfo, loadTypes]);
 
@@ -222,7 +288,13 @@ export default function MonitoringTypes() {
       title: 'Campos Metadata',
       dataIndex: 'fields',
       width: 300,
-      render: (fields: string[]) => {
+      render: (fields: string[] | undefined) => {
+        // ⚠️ IMPORTANTE: fields pode ser undefined quando vem do cache KV
+        // fields são apenas para display e não são salvos no KV
+        if (!fields || !Array.isArray(fields) || fields.length === 0) {
+          return <Text type="secondary">-</Text>;
+        }
+        
         const visibleFields = fields.slice(0, 4);
         const hiddenFields = fields.slice(4);
 
@@ -286,15 +358,33 @@ export default function MonitoringTypes() {
       title="Tipos de Monitoramento"
       subTitle="Tipos extraídos DINAMICAMENTE dos arquivos prometheus.yml de cada servidor"
       extra={[
-        <Button
-          key="reload"
-          icon={<ReloadOutlined />}
-          onClick={loadTypes}
-          loading={loading}
-          type="primary"
+        <Tooltip
+          key="reload-tooltip"
+          title="Recarrega os dados do cache KV (rápido, sem conexão SSH)"
         >
-          Recarregar
-        </Button>,
+          <Button
+            key="reload"
+            icon={<ReloadOutlined />}
+            onClick={handleReload}
+            loading={loading}
+          >
+            Recarregar
+          </Button>
+        </Tooltip>,
+        <Tooltip
+          key="refresh-tooltip"
+          title="Força nova extração via SSH de todos os servidores Prometheus (pode demorar alguns segundos)"
+        >
+          <Button
+            key="refresh"
+            icon={<SyncOutlined />}
+            onClick={handleForceRefresh}
+            loading={loading}
+            type="primary"
+          >
+            Atualizar
+          </Button>
+        </Tooltip>,
       ]}
     >
       {/* Alert explicativo */}
@@ -548,16 +638,16 @@ export default function MonitoringTypes() {
           />
         </Card>
       ) : (
-        <Tabs defaultActiveKey={categories[0]?.category}>
-          {categories.map((category) => (
-            <TabPane
-              tab={
-                <span>
-                  {category.display_name} <Badge count={category.types.length} />
-                </span>
-              }
-              key={category.category}
-            >
+        <Tabs
+          defaultActiveKey={categories[0]?.category}
+          items={categories.map((category) => ({
+            key: category.category,
+            label: (
+              <span>
+                {category.display_name} <Badge count={category.types.length} />
+              </span>
+            ),
+            children: (
               <Table<MonitoringType>
                 dataSource={category.types}
                 rowKey="id"
@@ -572,23 +662,27 @@ export default function MonitoringTypes() {
                       <Descriptions.Item label="Exporter Type">{record.exporter_type}</Descriptions.Item>
                       <Descriptions.Item label="Módulo">{record.module || 'N/A'}</Descriptions.Item>
                       <Descriptions.Item label="Metrics Path">{record.metrics_path}</Descriptions.Item>
-                      <Descriptions.Item label="Total Campos">{record.fields.length}</Descriptions.Item>
+                      <Descriptions.Item label="Total Campos">{record.fields?.length || 0}</Descriptions.Item>
                       <Descriptions.Item label="Campos Metadata" span={2}>
                         <Space wrap>
-                          {record.fields.map((field) => (
-                            <Tag key={field} color="geekblue">
-                              {field}
-                            </Tag>
-                          ))}
+                          {record.fields && record.fields.length > 0 ? (
+                            record.fields.map((field) => (
+                              <Tag key={field} color="geekblue">
+                                {field}
+                              </Tag>
+                            ))
+                          ) : (
+                            <Text type="secondary">-</Text>
+                          )}
                         </Space>
                       </Descriptions.Item>
                     </Descriptions>
                   ),
                 }}
               />
-            </TabPane>
-          ))}
-        </Tabs>
+            ),
+          }))}
+        />
       )}
 
       {/* Footer com instruções */}
@@ -598,12 +692,26 @@ export default function MonitoringTypes() {
           <a href="/prometheus-config">Prometheus Config</a> para adicionar/remover jobs no prometheus.yml
         </Paragraph>
         <Paragraph>
-          <strong>2. Recarregar Tipos:</strong> Clique no botão "Recarregar" acima para extrair os novos tipos
+          <strong>2. Recarregar Tipos:</strong> Clique no botão "Recarregar" para carregar do cache ou "Atualizar" para forçar nova extração via SSH
         </Paragraph>
         <Paragraph style={{ marginBottom: 0 }}>
           <strong>3. Zero Configuração:</strong> Não é necessário editar JSONs ou reiniciar o backend!
         </Paragraph>
       </Card>
+      
+      {/* Modal de Progresso de Extração (COMPONENTE COMPARTILHADO) */}
+      <ExtractionProgressModal
+        visible={progressModalVisible}
+        onClose={() => setProgressModalVisible(false)}
+        onRefresh={handleForceRefresh}
+        loading={extractionData.loading}
+        fromCache={extractionData.fromCache}
+        successfulServers={extractionData.successfulServers}
+        totalServers={extractionData.totalServers}
+        serverStatus={extractionData.serverStatus}
+        totalFields={extractionData.totalTypes}
+        error={extractionData.error}
+      />
     </PageContainer>
   );
 }

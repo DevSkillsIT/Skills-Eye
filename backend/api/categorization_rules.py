@@ -26,6 +26,7 @@ import re
 
 from core.consul_kv_config_manager import ConsulKVConfigManager
 from core.categorization_rule_engine import CategorizationRuleEngine
+from core.kv_manager import KVManager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -60,6 +61,28 @@ class RuleConditions(BaseModel):
         return v
 
 
+class FormSchemaField(BaseModel):
+    """Campo do form_schema"""
+    name: str = Field(..., description="Nome do campo")
+    label: Optional[str] = Field(None, description="Label para exibição")
+    type: str = Field(..., description="Tipo do campo (text, number, select, etc)")
+    required: bool = Field(False, description="Campo obrigatório")
+    default: Optional[Any] = Field(None, description="Valor padrão")
+    placeholder: Optional[str] = Field(None, description="Placeholder")
+    help: Optional[str] = Field(None, description="Texto de ajuda")
+    validation: Optional[Dict[str, Any]] = Field(None, description="Regras de validação")
+    options: Optional[List[Dict[str, str]]] = Field(None, description="Opções para select")
+    min: Optional[float] = Field(None, description="Valor mínimo (para number)")
+    max: Optional[float] = Field(None, description="Valor máximo (para number)")
+
+
+class FormSchema(BaseModel):
+    """Schema de formulário para exporter_type"""
+    fields: Optional[List[FormSchemaField]] = Field(None, description="Campos específicos do exporter")
+    required_metadata: Optional[List[str]] = Field(None, description="Campos metadata obrigatórios")
+    optional_metadata: Optional[List[str]] = Field(None, description="Campos metadata opcionais")
+
+
 class CategorizationRuleModel(BaseModel):
     """Modelo de regra de categorização"""
     id: str = Field(..., description="ID único da regra", pattern=r"^[a-z0-9_]+$")
@@ -68,6 +91,7 @@ class CategorizationRuleModel(BaseModel):
     display_name: str = Field(..., description="Nome amigável para exibição")
     exporter_type: Optional[str] = Field(None, description="Tipo de exporter (opcional)")
     conditions: RuleConditions = Field(..., description="Condições de matching")
+    form_schema: Optional[FormSchema] = Field(None, description="Schema de formulário para este exporter_type")
     observations: Optional[str] = Field(None, description="Observações sobre a regra")
 
 
@@ -79,6 +103,7 @@ class RuleCreateRequest(BaseModel):
     display_name: str
     exporter_type: Optional[str] = None
     conditions: RuleConditions
+    form_schema: Optional[FormSchema] = None
     observations: Optional[str] = None
 
 
@@ -89,6 +114,7 @@ class RuleUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     exporter_type: Optional[str] = None
     conditions: Optional[RuleConditions] = None
+    form_schema: Optional[FormSchema] = None
     observations: Optional[str] = None
 
 
@@ -192,6 +218,7 @@ async def create_categorization_rule(request: RuleCreateRequest):
             "display_name": request.display_name,
             "exporter_type": request.exporter_type,
             "conditions": request.conditions.dict(exclude_none=True),
+            "form_schema": request.form_schema.dict(exclude_none=True) if request.form_schema else None,
             "observations": request.observations
         }
 
@@ -208,7 +235,7 @@ async def create_categorization_rule(request: RuleCreateRequest):
             raise HTTPException(status_code=500, detail="Erro ao salvar regra no KV")
 
         # PASSO 6: Invalidar cache do RuleEngine
-        rule_engine = CategorizationRuleEngine()
+        rule_engine = CategorizationRuleEngine(config_manager)
         await rule_engine.load_rules(force_reload=True)
 
         logger.info(f"[CREATE RULE] Regra '{request.id}' criada com sucesso")
@@ -287,6 +314,8 @@ async def update_categorization_rule(rule_id: str, request: RuleUpdateRequest):
             current_rule['exporter_type'] = request.exporter_type
         if request.observations is not None:
             current_rule['observations'] = request.observations
+        if request.form_schema is not None:
+            current_rule['form_schema'] = request.form_schema.dict(exclude_none=True)
         if request.conditions is not None:
             # Merge conditions (manter campos não fornecidos)
             for key, value in request.conditions.dict(exclude_none=True).items():
@@ -303,7 +332,7 @@ async def update_categorization_rule(rule_id: str, request: RuleUpdateRequest):
             raise HTTPException(status_code=500, detail="Erro ao salvar regra no KV")
 
         # PASSO 6: Invalidar cache do RuleEngine
-        rule_engine = CategorizationRuleEngine()
+        rule_engine = CategorizationRuleEngine(config_manager)
         await rule_engine.load_rules(force_reload=True)
 
         logger.info(f"[UPDATE RULE] Regra '{rule_id}' atualizada com sucesso")
@@ -367,7 +396,7 @@ async def delete_categorization_rule(rule_id: str):
             raise HTTPException(status_code=500, detail="Erro ao salvar regras no KV")
 
         # PASSO 5: Invalidar cache do RuleEngine
-        rule_engine = CategorizationRuleEngine()
+        rule_engine = CategorizationRuleEngine(config_manager)
         await rule_engine.load_rules(force_reload=True)
 
         logger.info(f"[DELETE RULE] Regra '{rule_id}' deletada com sucesso")
@@ -399,7 +428,8 @@ async def reload_categorization_rules():
         }
     """
     try:
-        rule_engine = CategorizationRuleEngine()
+        config_manager = ConsulKVConfigManager()
+        rule_engine = CategorizationRuleEngine(config_manager)
         success = await rule_engine.load_rules(force_reload=True)
 
         if not success:
@@ -419,4 +449,122 @@ async def reload_categorization_rules():
         raise
     except Exception as e:
         logger.error(f"[RELOAD RULES ERROR] {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ENDPOINT FORM-SCHEMA (SPRINT 1)
+# ============================================================================
+
+@router.get("/monitoring-types/form-schema")
+async def get_form_schema(
+    exporter_type: str = Query(..., description="Tipo de exporter (ex: blackbox, snmp_exporter, node_exporter)"),
+    category: Optional[str] = Query(None, description="Categoria (opcional, para filtro)")
+):
+    """
+    Retorna schema de formulário para um exporter_type específico
+    
+    SPRINT 1: Endpoint para obter form_schema das regras de categorização
+    
+    Busca em:
+    1. categorization/rules (form_schema da regra correspondente)
+    2. metadata-fields (campos genéricos do KV)
+    
+    Args:
+        exporter_type: Tipo de exporter (blackbox, snmp_exporter, node_exporter, windows_exporter, etc)
+        category: Categoria opcional para filtro
+    
+    Returns:
+        {
+            "success": true,
+            "exporter_type": "snmp_exporter",
+            "form_schema": {
+                "fields": [
+                    {
+                        "name": "snmp_community",
+                        "label": "SNMP Community",
+                        "type": "text",
+                        "required": false,
+                        "default": "public"
+                    }
+                ],
+                "required_metadata": ["company", "tipo_monitoramento"],
+                "optional_metadata": ["localizacao", "notas"]
+            },
+            "metadata_fields": [...]
+        }
+    
+    Example:
+        GET /api/v1/monitoring-types/form-schema?exporter_type=blackbox
+        GET /api/v1/monitoring-types/form-schema?exporter_type=snmp_exporter&category=system-exporters
+    """
+    try:
+        config_manager = ConsulKVConfigManager()
+        kv_manager = KVManager()
+        
+        # PASSO 1: Buscar regra de categorização pelo exporter_type
+        rules_data = await config_manager.get('monitoring-types/categorization/rules')
+        
+        if not rules_data:
+            raise HTTPException(
+                status_code=404,
+                detail="Regras de categorização não encontradas no KV"
+            )
+        
+        # Buscar regra correspondente
+        rule = None
+        for r in rules_data.get('rules', []):
+            if r.get('exporter_type') == exporter_type:
+                # Se category foi especificado, verificar se corresponde
+                if category and r.get('category') != category:
+                    continue
+                rule = r
+                break
+        
+        if not rule:
+            # Retornar schema vazio se regra não encontrada
+            logger.warning(f"[FORM-SCHEMA] Regra não encontrada para exporter_type={exporter_type}, category={category}")
+            return {
+                "success": True,
+                "exporter_type": exporter_type,
+                "form_schema": {
+                    "fields": [],
+                    "required_metadata": [],
+                    "optional_metadata": []
+                },
+                "metadata_fields": []
+            }
+        
+        # PASSO 2: Extrair form_schema da regra
+        form_schema = rule.get('form_schema', {})
+        
+        # PASSO 3: Buscar metadata fields do KV
+        metadata_fields_kv = await kv_manager.get_json('skills/eye/metadata/fields')
+        metadata_fields = []
+        
+        if metadata_fields_kv:
+            # Estrutura pode ter wrapper 'data' ou ser direta
+            if 'data' in metadata_fields_kv:
+                metadata_fields = metadata_fields_kv.get('data', {}).get('fields', [])
+            else:
+                metadata_fields = metadata_fields_kv.get('fields', [])
+        
+        # PASSO 4: Retornar resposta
+        return {
+            "success": True,
+            "exporter_type": exporter_type,
+            "category": rule.get('category'),
+            "display_name": rule.get('display_name'),
+            "form_schema": {
+                "fields": form_schema.get('fields', []),
+                "required_metadata": form_schema.get('required_metadata', []),
+                "optional_metadata": form_schema.get('optional_metadata', [])
+            },
+            "metadata_fields": metadata_fields
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FORM-SCHEMA ERROR] {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -186,6 +186,62 @@ class ConsulManager:
             response.raise_for_status()
             return response
 
+    async def generate_dynamic_service_id(self, meta: Dict[str, Any]) -> str:
+        """
+        Gera ID dinamicamente baseado em campos obrigatórios do KV metadata-fields
+        
+        ✅ NOVO: ID gerado dinamicamente baseado em campos obrigatórios do KV
+        Ordem: campos obrigatórios (ordem do KV) + @name
+        
+        Args:
+            meta: Dicionário com metadata do serviço
+            
+        Returns:
+            ID sanitizado no formato: campo1/campo2/campo3@name
+            
+        Exemplo:
+            Se obrigatórios são ['cidade', 'instance', 'company', 'grupo_monitoramento']
+            E meta = {
+                'cidade': 'Palmas',
+                'instance': 'http://example.com',
+                'company': 'Test',
+                'grupo_monitoramento': 'Servidores',
+                'name': 'test-service'
+            }
+            ID gerado: "Palmas/http://example.com/Test/Servidores@test-service"
+        """
+        # 1. Buscar campos obrigatórios do KV
+        required_fields = Config.get_required_fields()
+        
+        # 2. Montar partes do ID (ordem do KV)
+        # ⚠️ IMPORTANTE: 'name' sempre vai no final após @, não na lista de parts
+        parts = []
+        for field in required_fields:
+            # Pular 'name' se estiver na lista (sempre vai no final após @)
+            if field == 'name':
+                continue
+            if field in meta and meta[field]:
+                # Sanitizar valor do campo antes de adicionar
+                value = str(meta[field]).strip()
+                if value:
+                    # ✅ CORREÇÃO: Substituir caracteres problemáticos em cada parte
+                    # URLs (http://) e outros caracteres especiais são normalizados
+                    sanitized_value = re.sub(r'[\[\] `~!\\#$^&*=|"{}\':;?\t\n]', '_', value)
+                    # Substituir // por _ (problema comum em URLs)
+                    sanitized_value = sanitized_value.replace('//', '_')
+                    parts.append(sanitized_value)
+        
+        # 3. Adicionar name (sempre obrigatório, sempre no final após @)
+        if 'name' not in meta or not meta['name']:
+            raise ValueError("Campo 'name' é obrigatório para gerar ID")
+        
+        # 4. Montar ID: parts + @name
+        name_sanitized = re.sub(r'[\[\] `~!\\#$^&*=|"{}\':;?\t\n]', '_', str(meta['name']).strip())
+        raw_id = "/".join(parts) + "@" + name_sanitized
+        
+        # 5. Sanitizar ID final (valida barras e outros caracteres)
+        return self.sanitize_service_id(raw_id)
+
     @staticmethod
     def sanitize_service_id(raw_id: str) -> str:
         """
@@ -818,23 +874,18 @@ class ConsulManager:
 
     async def check_duplicate_service(
         self,
-        module: str,
-        company: str,
-        project: str,
-        env: str,
-        name: str,
+        meta: Dict[str, Any],
         exclude_sid: str = None,
         target_node_addr: str = None
     ) -> bool:
         """
-        Verifica se já existe um serviço com a mesma combinação de chaves
+        Verifica se já existe um serviço com a mesma combinação de campos obrigatórios
+        
+        ✅ CORREÇÃO: Agora usa campos obrigatórios do KV dinamicamente
+        (não mais hardcoded: module/company/project/env/name)
 
         Args:
-            module: Módulo do serviço
-            company: Empresa
-            project: Projeto
-            env: Ambiente
-            name: Nome
+            meta: Dicionário com metadata do serviço (deve conter campos obrigatórios)
             exclude_sid: ID de serviço para excluir da verificação (útil em updates)
             target_node_addr: Endereço do nó alvo para verificar
 
@@ -842,6 +893,15 @@ class ConsulManager:
             True se encontrou duplicata, False caso contrário
         """
         try:
+            # ✅ CORREÇÃO: Buscar campos obrigatórios do KV dinamicamente
+            required_fields = Config.get_required_fields()
+            
+            # 'name' é sempre obrigatório (não está no required_fields, mas é necessário)
+            if 'name' not in required_fields:
+                check_fields = required_fields + ['name']
+            else:
+                check_fields = required_fields.copy()
+            
             services = await self.get_services(target_node_addr)
 
             for sid, svc in services.items():
@@ -849,19 +909,22 @@ class ConsulManager:
                 if exclude_sid and sid == exclude_sid:
                     continue
 
-                meta = svc.get("Meta", {})
+                svc_meta = svc.get("Meta", {})
 
-                # Verificar se todos os campos chave correspondem
-                if (meta.get("module") == module and
-                    meta.get("company") == company and
-                    meta.get("project") == project and
-                    meta.get("env") == env and
-                    meta.get("name") == name):
+                # ✅ CORREÇÃO: Verificar se todos os campos obrigatórios correspondem
+                # (dinamicamente, não mais hardcoded)
+                matches = True
+                for field in check_fields:
+                    if meta.get(field) != svc_meta.get(field):
+                        matches = False
+                        break
+                
+                if matches:
                     return True
 
             return False
         except Exception as e:
-            print(f"Erro ao verificar duplicatas: {e}")
+            logger.error(f"Erro ao verificar duplicatas: {e}", exc_info=True)
             return False
 
     async def _load_sites_config(self) -> List[Dict]:
@@ -1349,22 +1412,29 @@ class ConsulManager:
     async def validate_service_data(self, service_data: Dict) -> tuple[bool, List[str]]:
         """
         Valida dados de um serviço antes de registrar
+        
+        ✅ CORREÇÃO: Agora usa campos obrigatórios do KV dinamicamente
+        (não mais hardcoded)
 
         Returns:
             Tupla (is_valid, list_of_errors)
         """
         errors = []
 
-        # Verificar campos obrigatórios
+        # Verificar campos obrigatórios básicos
         if "id" not in service_data:
             errors.append("Campo 'id' é obrigatório")
 
         if "name" not in service_data:
             errors.append("Campo 'name' é obrigatório")
 
-        # Verificar metadados obrigatórios
+        # ✅ CORREÇÃO: Buscar campos obrigatórios do KV dinamicamente
+        # Não mais usa Config.REQUIRED_FIELDS (deprecated)
+        required_fields = Config.get_required_fields()
+        
+        # Verificar metadados obrigatórios (do KV)
         meta = service_data.get("Meta", {})
-        for field in Config.REQUIRED_FIELDS:
+        for field in required_fields:
             if field not in meta or not meta[field]:
                 errors.append(f"Campo obrigatório faltando em Meta: {field}")
 

@@ -380,23 +380,37 @@ async def create_service(
                 }
             )
 
-        # Verificar duplicatas
+        # ✅ CORREÇÃO: Gerar ID dinamicamente se não fornecido
+        if 'id' not in service_data or not service_data.get('id'):
+            meta = service_data.get("Meta", {})
+            try:
+                service_data['id'] = await consul.generate_dynamic_service_id(meta)
+                logger.info(f"ID gerado dinamicamente: {service_data['id']}")
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Erro ao gerar ID do serviço",
+                        "error": str(e)
+                    }
+                )
+        
+        # ✅ CORREÇÃO: Verificar duplicatas usando campos obrigatórios do KV
         meta = service_data.get("Meta", {})
         is_duplicate = await consul.check_duplicate_service(
-            module=meta.get("module"),
-            company=meta.get("company"),
-            project=meta.get("project"),
-            env=meta.get("env"),
-            name=meta.get("name"),
+            meta=meta,
             target_node_addr=service_data.get("node_addr")
         )
 
         if is_duplicate:
+            # Buscar campos obrigatórios para mensagem de erro
+            required_fields = Config.get_required_fields()
+            fields_str = "/".join(required_fields + ['name'])
             raise HTTPException(
                 status_code=409,
                 detail={
                     "message": "Serviço duplicado",
-                    "detail": "Já existe um serviço com essa combinação de module/company/project/env/name"
+                    "detail": f"Já existe um serviço com a mesma combinação de campos obrigatórios ({fields_str})"
                 }
             )
 
@@ -599,6 +613,36 @@ async def update_service(
             if suffixed_name != original_name:
                 updated_service["Name"] = suffixed_name
                 logger.info(f"[MULTI-SITE] Service name alterado: {original_name} → {suffixed_name} (site={site})")
+
+        # ✅ CORREÇÃO FASE 0: Validar dados do serviço antes de atualizar (usando validação dinâmica)
+        is_valid, errors = await consul.validate_service_data(updated_service)
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Erros de validação encontrados",
+                    "errors": errors
+                }
+            )
+
+        # ✅ CORREÇÃO FASE 0: Verificar duplicatas usando campos obrigatórios do KV (excluindo o próprio serviço)
+        is_duplicate = await consul.check_duplicate_service(
+            meta=meta,
+            exclude_sid=service_id,
+            target_node_addr=request.node_addr if request else None
+        )
+
+        if is_duplicate:
+            # Buscar campos obrigatórios para mensagem de erro
+            required_fields = Config.get_required_fields()
+            fields_str = "/".join(required_fields + ['name'])
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Serviço duplicado",
+                    "detail": f"Já existe outro serviço com a mesma combinação de campos obrigatórios ({fields_str})"
+                }
+            )
 
         # Atualizar serviço
         logger.info(f"Atualizando serviço: {service_id}")

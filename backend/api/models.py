@@ -69,13 +69,17 @@ class ServiceData(BaseModel):
 
 
 class ServiceCreateRequest(BaseModel):
-    """Requisição para criar um novo serviço"""
-    id: str = Field(..., description="ID único do serviço")
+    """Requisição para criar um novo serviço
+    
+    ✅ CORREÇÃO: Campo 'id' agora é opcional
+    Se não fornecido, será gerado dinamicamente baseado em campos obrigatórios do KV
+    """
+    id: Optional[str] = Field(None, description="ID único do serviço (opcional - será gerado se não fornecido)")
     name: str = Field(..., description="Nome do serviço no Consul")
     tags: List[str] = Field(default_factory=list, description="Tags do serviço")
     port: Optional[int] = Field(None, description="Porta do serviço")
     address: Optional[str] = Field(None, description="Endereço do serviço")
-    Meta: Dict[str, str] = Field(..., description="Metadados customizados")
+    Meta: Dict[str, Any] = Field(..., description="Metadados customizados")
     node_addr: Optional[str] = Field(None, description="Endereço do nó onde registrar")
 
 

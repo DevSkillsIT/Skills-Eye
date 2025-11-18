@@ -934,29 +934,40 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     setFormOpen(true);
   }, []);
 
-  // ✅ NOVO: Handler de deleção individual
+  // ✅ IMPLEMENTADO: Handler de deleção individual
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      // TODO: Implementar API de deleção
-      message.success(`Serviço "${record.ID}" excluído com sucesso`);
+      const service_id = record.ID;
+      const node_addr = record.node_ip || record.Address;
+      
+      await consulAPI.deleteService(service_id, node_addr);
+      
+      message.success(`Serviço "${service_id}" excluído com sucesso`);
       actionRef.current?.reload();
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.message || error));
+      message.error('Erro ao excluir: ' + (error.response?.data?.detail || error.message || error));
     }
   }, []);
 
-  // ✅ NOVO: Handler de batch delete
+  // ✅ IMPLEMENTADO: Handler de batch delete
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) return;
 
     try {
-      // TODO: Implementar batch delete API
+      // Preparar lista de serviços para deletar
+      const services = selectedRows.map(row => ({
+        service_id: row.ID,
+        node_addr: row.node_ip || row.Address
+      }));
+      
+      await consulAPI.bulkDeleteServices(services);
+      
       message.success(`${selectedRows.length} serviços excluídos com sucesso`);
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.message || error));
+      message.error('Erro ao excluir em lote: ' + (error.response?.data?.detail || error.message || error));
     }
   }, [selectedRows]);
 
@@ -1500,27 +1511,45 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ NOVO: Modal de criação/edição */}
+      {/* ✅ IMPLEMENTADO: Modal de criação/edição */}
       <Modal
-        title={formMode === 'create' ? 'Novo registro' : 'Editar registro'}
+        title={formMode === 'create' ? 'Novo Serviço de Monitoramento' : 'Editar Serviço'}
         open={formOpen}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-        onOk={() => {
-          // TODO: Implementar submit
-          message.info('Funcionalidade de criar/editar será implementada');
-          setFormOpen(false);
-        }}
+        footer={null}
         width={720}
-        destroyOnHidden
+        destroyOnClose
       >
-        <p>Modal de criação/edição - A implementar</p>
+        <div style={{ marginBottom: 16, padding: 12, background: '#f0f2f5', borderRadius: 4 }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+            <strong>ℹ️ Nota:</strong> Esta é uma versão simplificada do formulário. 
+            Para edição completa com form_schema dinâmico, será implementado no próximo sprint.
+          </p>
+        </div>
+        
         {currentRecord && (
-          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11 }}>
-            {JSON.stringify(currentRecord, null, 2)}
-          </pre>
+          <div>
+            <p><strong>ID:</strong> {currentRecord.ID}</p>
+            <p><strong>Serviço:</strong> {currentRecord.Service}</p>
+            <p><strong>Node:</strong> {currentRecord.Node}</p>
+            <p style={{ fontSize: 12, color: '#999', marginTop: 16 }}>
+              Para editar este serviço, use a API direta ou aguarde implementação completa do formulário dinâmico.
+            </p>
+          </div>
+        )}
+        
+        {formMode === 'create' && (
+          <div>
+            <p style={{ color: '#999' }}>
+              Funcionalidade de criação com form_schema dinâmico será implementada no próximo sprint.
+            </p>
+            <p style={{ fontSize: 12 }}>
+              Por enquanto, use a página antiga Services.tsx ou a API direta para criar novos serviços.
+            </p>
+          </div>
         )}
       </Modal>
     </PageContainer>

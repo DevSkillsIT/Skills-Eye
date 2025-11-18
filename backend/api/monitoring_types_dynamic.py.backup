@@ -481,14 +481,17 @@ async def _extract_types_from_all_servers(server: Optional[str] = None) -> Dict[
             logger.info(f"[EXTRACT-TYPES] Servidor {server_host}: {len(types)} tipos extraídos em {duration_ms}ms")
             
             # Adicionar ao all_types (deduplicar por id)
-            # ✅ CORREÇÃO: Manter 'fields' no dict para retornar ao frontend!
-            # Fields serão removidos apenas ao salvar no KV (mais abaixo)
+            # ⚠️ IMPORTANTE: Remover 'fields' antes de salvar no KV
+            # 'fields' são apenas para display (extraídos de relabel_configs)
+            # A fonte de verdade para campos metadata é metadata-fields KV, não monitoring-types
             for type_def in types:
                 type_id = type_def['id']
+                # Criar cópia sem 'fields' para salvar no KV
+                type_def_for_kv = {k: v for k, v in type_def.items() if k != 'fields'}
                 
                 if type_id not in all_types_dict:
-                    # Primeira vez que vemos este tipo - MANTER COM FIELDS!
-                    all_types_dict[type_id] = type_def.copy()
+                    # Primeira vez que vemos este tipo
+                    all_types_dict[type_id] = type_def_for_kv.copy()
                 else:
                     # Tipo já existe, adicionar à lista de servidores
                     existing = all_types_dict[type_id]
@@ -599,63 +602,21 @@ async def get_types_from_prometheus(
         if not force_refresh:
             kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
             if kv_data and kv_data.get('all_types'):
-                logger.info(f"[MONITORING-TYPES] ✅ KV encontrado com {len(kv_data['all_types'])} tipos")
+                logger.info(f"[MONITORING-TYPES] ✅ Retornando {len(kv_data['all_types'])} tipos do KV (cache)")
                 
-                # ✅ CORREÇÃO: Filtrar por servidor se especificado (igual versão 16/11)
-                if server and server != 'ALL':
-                    logger.info(f"[MONITORING-TYPES] Filtrando tipos para servidor: {server}")
-                    
-                    # Filtrar tipos que pertencem ao servidor especificado
-                    filtered_types = []
-                    for type_def in kv_data.get('all_types', []):
-                        # Verificar se tipo pertence ao servidor (campo 'server' ou 'servers')
-                        if type_def.get('server') == server or server in type_def.get('servers', []):
-                            filtered_types.append(type_def)
-                    
-                    # Reagrupar por categoria com tipos filtrados
-                    filtered_categories = {}
-                    for type_def in filtered_types:
-                        category = type_def['category']
-                        if category not in filtered_categories:
-                            filtered_categories[category] = {
-                                "category": category,
-                                "display_name": _format_category_display_name(category),
-                                "types": []
-                            }
-                        filtered_categories[category]['types'].append(type_def)
-                    
-                    # Filtrar servidor específico
-                    filtered_servers = {server: kv_data['servers'].get(server, {})} if server in kv_data.get('servers', {}) else {}
-                    
-                    logger.info(f"[MONITORING-TYPES] ✅ Filtrado: {len(filtered_types)} tipos para servidor {server}")
-                    
-                    return {
-                        "success": True,
-                        "from_cache": True,
-                        "categories": list(filtered_categories.values()),
-                        "all_types": filtered_types,
-                        "servers": filtered_servers,
-                        "total_types": len(filtered_types),
-                        "total_servers": 1,
-                        "successful_servers": 1 if server in kv_data.get('servers', {}) else 0,
-                        "server_status": [s for s in kv_data.get('server_status', []) if s.get('hostname') == server],
-                        "last_updated": kv_data.get('last_updated')
-                    }
-                else:
-                    # Retornar todos os dados do cache
-                    logger.info(f"[MONITORING-TYPES] ✅ Retornando todos os {len(kv_data['all_types'])} tipos do KV (cache)")
-                    return {
-                        "success": True,
-                        "from_cache": True,
-                        "categories": kv_data.get('categories', []),
-                        "all_types": kv_data.get('all_types', []),
-                        "servers": kv_data.get('servers', {}),
-                        "total_types": kv_data.get('total_types', 0),
-                        "total_servers": kv_data.get('total_servers', 0),
-                        "successful_servers": kv_data.get('successful_servers', 0),
-                        "server_status": kv_data.get('server_status', []),
-                        "last_updated": kv_data.get('last_updated')
-                    }
+                # Retornar dados do cache (sem filtrar - frontend faz o filtro)
+                return {
+                    "success": True,
+                    "from_cache": True,
+                    "categories": kv_data.get('categories', []),
+                    "all_types": kv_data.get('all_types', []),
+                    "servers": kv_data.get('servers', {}),
+                    "total_types": kv_data.get('total_types', 0),
+                    "total_servers": kv_data.get('total_servers', 0),
+                    "successful_servers": kv_data.get('successful_servers', 0),
+                    "server_status": kv_data.get('server_status', []),
+                    "last_updated": kv_data.get('last_updated')
+                }
         
         # PASSO 2: KV vazio ou force_refresh: Extrair do Prometheus
         logger.info(f"[MONITORING-TYPES] 🔄 Extraindo tipos do Prometheus via SSH (force_refresh={force_refresh})...")
@@ -675,7 +636,39 @@ async def get_types_from_prometheus(
         logger.info(f"[MONITORING-TYPES] ✅ Enriquecimento concluído. Servidores enriquecidos: {list(enriched_servers.keys())}")
         
         # PASSO 4: Salvar no KV (sobrescrever - não precisa merge como metadata-fields)
-        # ✅ CORREÇÃO: Salvar COM fields para que o cache tenha os dados completos!
+        # ⚠️ CRÍTICO: Remover 'fields' de todos os tipos antes de salvar
+        # 'fields' são apenas para display e não devem ser salvos no KV
+        # A fonte de verdade para campos metadata é metadata-fields KV
+        all_types_without_fields = []
+        for type_def in result['all_types']:
+            type_def_clean = {k: v for k, v in type_def.items() if k != 'fields'}
+            all_types_without_fields.append(type_def_clean)
+        
+        # Limpar 'fields' também dos tipos dentro de 'servers' (já enriquecidos)
+        servers_clean = {}
+        for server_host, server_data in enriched_servers.items():
+            if 'types' in server_data:
+                servers_clean[server_host] = {
+                    **server_data,
+                    'types': [
+                        {k: v for k, v in t.items() if k != 'fields'}
+                        for t in server_data['types']
+                    ]
+                }
+            else:
+                servers_clean[server_host] = server_data
+        
+        # Limpar 'fields' também dos tipos dentro de 'categories'
+        categories_clean = []
+        for category in result['categories']:
+            categories_clean.append({
+                **category,
+                'types': [
+                    {k: v for k, v in t.items() if k != 'fields'}
+                    for t in category.get('types', [])
+                ]
+            })
+        
         kv_value = {
             'version': '1.0.0',
             'last_updated': datetime.now().isoformat(),
@@ -683,9 +676,9 @@ async def get_types_from_prometheus(
             'total_types': result['total_types'],
             'total_servers': result['total_servers'],
             'successful_servers': result['successful_servers'],
-            'servers': enriched_servers,        # ✅ COM fields!
-            'all_types': result['all_types'],   # ✅ COM fields!
-            'categories': result['categories'], # ✅ COM fields!
+            'servers': servers_clean,
+            'all_types': all_types_without_fields,
+            'categories': categories_clean,
             'server_status': result['server_status']
         }
         
@@ -700,9 +693,9 @@ async def get_types_from_prometheus(
         return {
             "success": True,
             "from_cache": False,
-            "categories": result['categories'],  # ✅ COM fields para frontend!
-            "all_types": result['all_types'],    # ✅ COM fields para frontend!
-            "servers": enriched_servers,         # ✅ COM fields para frontend!
+            "categories": result['categories'],
+            "all_types": result['all_types'],
+            "servers": servers_clean,  # ✅ Usar servidores ENRIQUECIDOS e LIMPOS (sem fields), não os originais
             "total_types": result['total_types'],
             "total_servers": result['total_servers'],
             "successful_servers": result['successful_servers'],

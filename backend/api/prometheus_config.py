@@ -310,7 +310,7 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
             from core.metadata_fields_backup import get_backup_manager
             
             kv_manager = KVManager()
-            
+
             # PASSO 1: Buscar campos existentes do KV (se houver)
             existing_kv_data = await kv_manager.get_json('skills/eye/metadata/fields')
             existing_fields = existing_kv_data.get('fields', []) if existing_kv_data else []
@@ -331,16 +331,16 @@ async def get_available_fields(enrich_with_values: bool = Query(True), force_ref
             # PASSO 3: Criar backup ANTES de salvar
             backup_manager = get_backup_manager()
             fields_data = {
-                'version': '2.0.0',
-                'last_updated': datetime.now().isoformat(),
+                    'version': '2.0.0',
+                    'last_updated': datetime.now().isoformat(),
                 'source': 'prometheus_config_api_with_merge' if existing_fields else 'prometheus_config_api_initial',
                 'total_fields': len(fields_to_save),
                 'fields': fields_to_save,
-                'extraction_status': {
-                    'total_servers': extraction_result.get('total_servers'),
-                    'successful_servers': extraction_result.get('successful_servers'),
-                    'server_status': extraction_result.get('server_status'),
-                }
+                    'extraction_status': {
+                        'total_servers': extraction_result.get('total_servers'),
+                        'successful_servers': extraction_result.get('successful_servers'),
+                        'server_status': extraction_result.get('server_status'),
+                    }
             }
             
             backup_success = await backup_manager.create_backup(fields_data)

@@ -36,6 +36,10 @@ import {
   Popconfirm,
   Badge,
   Descriptions,
+  Tabs,
+  Alert,
+  Row,
+  Col,
 } from 'antd';
 import {
   PlusOutlined,
@@ -45,12 +49,35 @@ import {
   InfoCircleOutlined,
   ClearOutlined,
   CopyOutlined,
+  CodeOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
+import Editor from '@monaco-editor/react';
 import { consulAPI } from '../services/api';
 
 // ============================================================================
 // INTERFACES
 // ============================================================================
+
+interface FormSchemaField {
+  name: string;
+  label?: string;
+  type: string;
+  required?: boolean;
+  default?: any;
+  placeholder?: string;
+  help?: string;
+  validation?: any;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+}
+
+interface FormSchema {
+  fields?: FormSchemaField[];
+  required_metadata?: string[];
+  optional_metadata?: string[];
+}
 
 interface CategorizationRule {
   id: string;
@@ -63,6 +90,7 @@ interface CategorizationRule {
     metrics_path?: string;
     module_pattern?: string;
   };
+  form_schema?: FormSchema;  // ✅ SPRINT 1: Schema de formulário
   observations?: string;  // Campo de observações
 }
 
@@ -118,6 +146,8 @@ const MonitoringRules: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'ascend' | 'descend' | null>(null);
+  const [activeTab, setActiveTab] = useState('1'); // Tab ativa no modal
+  const [formSchemaJson, setFormSchemaJson] = useState(''); // JSON do Monaco Editor
 
   // =========================================================================
   // CARREGAMENTO DE DADOS
@@ -163,15 +193,19 @@ const MonitoringRules: React.FC = () => {
   const handleAdd = () => {
     setEditingRule(null);
     form.resetFields();
+    setFormSchemaJson('');
     form.setFieldsValue({
       priority: 80,
       metrics_path: '/metrics',
     });
+    setActiveTab('1');
     setModalVisible(true);
   };
 
   const handleEdit = (record: CategorizationRule) => {
     setEditingRule(record);
+    const schemaJson = record.form_schema ? JSON.stringify(record.form_schema, null, 2) : '';
+    setFormSchemaJson(schemaJson);
     form.setFieldsValue({
       id: record.id,
       priority: record.priority,
@@ -183,11 +217,14 @@ const MonitoringRules: React.FC = () => {
       module_pattern: record.conditions.module_pattern,
       observations: record.observations,
     });
+    setActiveTab('1'); // Começar na aba de configuração
     setModalVisible(true);
   };
 
   const handleDuplicate = (record: CategorizationRule) => {
     setEditingRule(null);
+    const schemaJson = record.form_schema ? JSON.stringify(record.form_schema, null, 2) : '';
+    setFormSchemaJson(schemaJson);
     form.setFieldsValue({
       id: `${record.id}_copy`,
       priority: record.priority,
@@ -199,6 +236,7 @@ const MonitoringRules: React.FC = () => {
       module_pattern: record.conditions.module_pattern,
       observations: record.observations,
     });
+    setActiveTab('1');
     setModalVisible(true);
   };
 
@@ -226,6 +264,18 @@ const MonitoringRules: React.FC = () => {
     try {
       const values = await form.validateFields();
 
+      // ✅ SPRINT 1: Parse form_schema do Monaco Editor
+      let form_schema: FormSchema | undefined = undefined;
+      if (formSchemaJson && formSchemaJson.trim()) {
+        try {
+          form_schema = JSON.parse(formSchemaJson);
+        } catch (e) {
+          message.error('Form Schema inválido. Verifique a sintaxe JSON.');
+          setActiveTab('2'); // Voltar para aba do schema
+          return;
+        }
+      }
+
       const rule: CategorizationRule = {
         id: values.id,
         priority: values.priority,
@@ -237,6 +287,7 @@ const MonitoringRules: React.FC = () => {
           metrics_path: values.metrics_path,
           module_pattern: values.module_pattern,
         },
+        form_schema: form_schema,  // ✅ SPRINT 1
         observations: values.observations,
       };
 
@@ -524,107 +575,236 @@ const MonitoringRules: React.FC = () => {
 
       {/* Modal de Edição/Criação */}
       <Modal
-        title={editingRule ? `Editar Regra: ${editingRule.id}` : 'Nova Regra'}
+        title={editingRule ? `Editar Regra: ${editingRule.id}` : 'Nova Regra de Categorização'}
         open={modalVisible}
         onCancel={() => setModalVisible(false)}
         onOk={handleSave}
-        width={700}
-        okText={editingRule ? 'Salvar' : 'Criar'}
+        width={1100}
+        okText={editingRule ? 'Salvar Alterações' : 'Criar Regra'}
         cancelText="Cancelar"
+        destroyOnClose
       >
-        <Form
-          form={form}
-          layout="vertical"
-          style={{ marginTop: 24 }}
-        >
-          <ProFormText
-            name="id"
-            label="ID da Regra"
-            placeholder="ex: blackbox_icmp, exporter_node"
-            rules={[
-              { required: true, message: 'ID é obrigatório' },
-              { pattern: /^[a-z0-9_]+$/, message: 'Use apenas letras minúsculas, números e _' },
-            ]}
-            disabled={!!editingRule}
-            tooltip="Identificador único da regra (não pode ser alterado após criação)"
-          />
+        <Tabs
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={[
+            {
+              key: '1',
+              label: (
+                <span>
+                  <SettingOutlined /> Configuração
+                </span>
+              ),
+              children: (
+                <Form
+                  form={form}
+                  layout="vertical"
+                  style={{ marginTop: 16 }}
+                >
+                  {/* Linha 1: ID e Prioridade */}
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <ProFormText
+                        name="id"
+                        label="ID da Regra"
+                        placeholder="ex: blackbox_icmp, exporter_node"
+                        rules={[
+                          { required: true, message: 'ID é obrigatório' },
+                          { pattern: /^[a-z0-9_]+$/, message: 'Use apenas letras minúsculas, números e _' },
+                        ]}
+                        disabled={!!editingRule}
+                        tooltip="Identificador único da regra (não pode ser alterado após criação)"
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <ProFormDigit
+                        name="priority"
+                        label="Prioridade"
+                        min={1}
+                        max={100}
+                        rules={[{ required: true, message: 'Prioridade é obrigatória' }]}
+                        tooltip="Maior prioridade = regra avaliada primeiro (100 = Blackbox, 80 = Exporters)"
+                        fieldProps={{
+                          style: { width: '100%' },
+                        }}
+                      />
+                    </Col>
+                  </Row>
 
-          <ProFormDigit
-            name="priority"
-            label="Prioridade"
-            min={1}
-            max={100}
-            rules={[{ required: true, message: 'Prioridade é obrigatória' }]}
-            tooltip="Maior prioridade = regra avaliada primeiro (100 = Blackbox, 80 = Exporters)"
-            fieldProps={{
-              style: { width: '100%' },
-            }}
-          />
+                  {/* Linha 2: Categoria e Display Name */}
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <ProFormSelect
+                        name="category"
+                        label="Nome de Exibição (Categoria)"
+                        rules={[{ required: true, message: 'Categoria é obrigatória' }]}
+                        options={rulesData?.categories.map(c => ({
+                          label: c.display_name,
+                          value: c.id,
+                        }))}
+                        tooltip="Categoria para a qual este tipo de monitoramento será classificado"
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <ProFormText
+                        name="display_name"
+                        label="Display Name"
+                        placeholder="ex: ICMP (Ping), Node Exporter (Linux)"
+                        rules={[{ required: true, message: 'Nome de exibição é obrigatório' }]}
+                        tooltip="Nome amigável que aparecerá na interface"
+                      />
+                    </Col>
+                  </Row>
 
-          <ProFormSelect
-            name="category"
-            label="Nome de Exibição (Categoria)"
-            rules={[{ required: true, message: 'Categoria é obrigatória' }]}
-            options={rulesData?.categories.map(c => ({
-              label: c.display_name,
-              value: c.id,
-            }))}
-            tooltip="Categoria para a qual este tipo de monitoramento será classificado"
-          />
+                  {/* Linha 3: Exporter Type e Job Name Pattern */}
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <ProFormText
+                        name="exporter_type"
+                        label="Tipo de Exporter"
+                        placeholder="ex: blackbox, node_exporter, mysqld_exporter"
+                        tooltip="Nome técnico do exporter (ex: node_exporter, blackbox)"
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <ProFormText
+                        name="job_name_pattern"
+                        label="Regex de Job Name"
+                        placeholder="ex: ^icmp.*, ^node.*, ^mysql.*"
+                        rules={[
+                          { required: true, message: 'Pattern de job_name é obrigatório' },
+                        ]}
+                        tooltip="Expressão regular para matching no nome do job do Prometheus"
+                      />
+                    </Col>
+                  </Row>
 
-          <ProFormText
-            name="display_name"
-            label="Display Name"
-            placeholder="ex: ICMP (Ping), Node Exporter (Linux)"
-            rules={[{ required: true, message: 'Nome de exibição é obrigatório' }]}
-            tooltip="Nome amigável que aparecerá na interface"
-          />
+                  {/* Linha 4: Metrics Path e Module Pattern */}
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <ProFormSelect
+                        name="metrics_path"
+                        label="Metrics Path"
+                        rules={[{ required: true, message: 'Metrics path é obrigatório' }]}
+                        options={[
+                          { label: '/probe (Blackbox)', value: '/probe' },
+                          { label: '/metrics (Exporter)', value: '/metrics' },
+                        ]}
+                        tooltip="Caminho de métricas no exporter"
+                      />
+                    </Col>
+                    <Col span={12}>
+                      <ProFormText
+                        name="module_pattern"
+                        label="Regex de Module (Opcional)"
+                        placeholder="ex: ^icmp$, ^http_2xx$"
+                        tooltip="Expressão regular para matching em __param_module (apenas para Blackbox)"
+                      />
+                    </Col>
+                  </Row>
 
-          <ProFormText
-            name="exporter_type"
-            label="Tipo de Exporter"
-            placeholder="ex: blackbox, node_exporter, mysqld_exporter"
-            tooltip="Nome técnico do exporter (ex: node_exporter, blackbox)"
-          />
+                  {/* Linha 5: Observações (linha inteira) */}
+                  <ProFormTextArea
+                    name="observations"
+                    label="Observações"
+                    placeholder="Observações sobre esta regra de categorização"
+                    tooltip="Campo opcional para anotações e observações sobre a regra"
+                    fieldProps={{
+                      rows: 3,
+                    }}
+                  />
+                </Form>
+              ),
+            },
+            {
+              key: '2',
+              label: (
+                <span>
+                  <CodeOutlined /> Form Schema (JSON)
+                </span>
+              ),
+              children: (
+                <div>
+                  <div style={{ marginBottom: 12 }}>
+                    <strong>Editor JSON com Validação Automática:</strong>
+                  </div>
 
-          <ProFormText
-            name="job_name_pattern"
-            label="Regex de Job Name"
-            placeholder="ex: ^icmp.*, ^node.*, ^mysql.*"
-            rules={[
-              { required: true, message: 'Pattern de job_name é obrigatório' },
-            ]}
-            tooltip="Expressão regular para matching no nome do job do Prometheus"
-          />
+                  <Editor
+                    height="400px"
+                    defaultLanguage="json"
+                    value={formSchemaJson}
+                    onChange={(value) => setFormSchemaJson(value || '')}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      formatOnPaste: true,
+                      formatOnType: true,
+                    }}
+                  />
 
-          <ProFormSelect
-            name="metrics_path"
-            label="Metrics Path"
-            rules={[{ required: true, message: 'Metrics path é obrigatório' }]}
-            options={[
-              { label: '/probe (Blackbox)', value: '/probe' },
-              { label: '/metrics (Exporter)', value: '/metrics' },
-            ]}
-            tooltip="Caminho de métricas no exporter"
-          />
+                  <Alert
+                    message="Form Schema - Schema de Formulário Dinâmico"
+                    description={
+                      <div>
+                        <p><strong>O que é?</strong></p>
+                        <p>Define quais campos específicos este tipo de exporter precisa no formulário de criação de serviços.</p>
+                        
+                        <p style={{ marginTop: 12 }}><strong>Exemplo para Blackbox (ICMP):</strong></p>
+                        <ul style={{ marginLeft: 20, marginTop: 8 }}>
+                          <li><code>target</code>: IP ou hostname a ser monitorado</li>
+                          <li><code>module</code>: Módulo do blackbox (icmp, http_2xx, tcp_connect)</li>
+                        </ul>
+                        
+                        <p style={{ marginTop: 12 }}><strong>Exemplo para SNMP:</strong></p>
+                        <ul style={{ marginLeft: 20, marginTop: 8 }}>
+                          <li><code>target</code>: IP do dispositivo</li>
+                          <li><code>snmp_community</code>: Community string (public, private)</li>
+                          <li><code>snmp_module</code>: Módulo SNMP (if_mib, cisco_ios)</li>
+                        </ul>
+                        
+                        <p style={{ marginTop: 12 }}><strong>Quando usar?</strong></p>
+                        <p>Use quando este exporter precisar de campos específicos além dos metadados padrão (company, env, name).</p>
+                      </div>
+                    }
+                    type="info"
+                    showIcon
+                    style={{ marginTop: 16, marginBottom: 16 }}
+                  />
 
-          <ProFormText
-            name="module_pattern"
-            label="Regex de Module (Opcional)"
-            placeholder="ex: ^icmp$, ^http_2xx$"
-            tooltip="Expressão regular para matching em __param_module (apenas para Blackbox)"
-          />
-
-          <ProFormTextArea
-            name="observations"
-            label="Observações"
-            placeholder="Observações sobre esta regra de categorização"
-            tooltip="Campo opcional para anotações e observações sobre a regra"
-            fieldProps={{
-              rows: 3,
-            }}
-          />
-        </Form>
+                  <div style={{ padding: 12, background: '#f5f5f5', borderRadius: 4 }}>
+                    <div style={{ fontSize: 12, color: '#666' }}>
+                      <strong>💡 Estrutura do JSON:</strong>
+                      <pre style={{ marginTop: 8, background: '#fff', padding: 8, borderRadius: 4, fontSize: 11 }}>
+{`{
+  "fields": [
+    {
+      "name": "target",
+      "label": "Alvo (IP ou Hostname)",
+      "type": "text",
+      "required": true,
+      "placeholder": "192.168.1.1",
+      "help": "IP ou hostname do alvo"
+    }
+  ],
+  "required_metadata": ["target"],
+  "optional_metadata": []
+}`}
+                      </pre>
+                      <div style={{ marginTop: 8 }}>
+                        <strong>Tipos suportados:</strong> text, number, select, password
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       </Modal>
 
       {/* Modal de Preview */}

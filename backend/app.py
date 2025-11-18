@@ -266,20 +266,158 @@ async def _prewarm_metadata_fields_cache():
         print(f"[PRE-WARM] ✗ ERRO: {e}")
         print("[PRE-WARM] Aplicação continuará funcionando. Cache será populado na primeira requisição.")
 
+async def _prewarm_monitoring_types_cache():
+    """
+    Pré-aquece o cache de monitoring-types em background
+    
+    OBJETIVO:
+    - Garante que o KV do Consul esteja sempre populado com tipos recentes
+    - Evita cold start lento na primeira requisição após reiniciar o backend
+    - Roda em background para não bloquear o startup da aplicação
+    
+    FLUXO:
+    1. Aguarda 2 segundos para o servidor terminar de inicializar
+    2. Extrai tipos de TODOS os servidores Prometheus via SSH
+    3. Salva automaticamente no Consul KV (skills/eye/monitoring-types)
+    4. Tipos ficam disponíveis instantaneamente para requisições HTTP
+    
+    ⚠️ DIFERENÇA vs metadata-fields:
+    - Não precisa verificar se KV já tem dados (sempre sobrescreve)
+    - Não precisa merge (é só cópia do prometheus.yml)
+    - Não precisa backup (não é editável)
+    
+    PERFORMANCE:
+    - Tempo estimado: 10-20 segundos (SSH para 3 servidores)
+    - Não bloqueia startup (roda em background via asyncio.create_task)
+    - Primeira requisição HTTP após startup será rápida (~2s lendo do KV)
+    
+    TRATAMENTO DE ERROS:
+    - Erros são logados mas NÃO quebram a aplicação
+    - Se falhar, requisições HTTP farão extração sob demanda (fallback)
+    """
+    try:
+        # PASSO 1: Aguardar servidor terminar de inicializar
+        print("[PRE-WARM MONITORING-TYPES] Aguardando 2s para servidor inicializar completamente...")
+        await asyncio.sleep(2)
+        
+        # PASSO 2: Importar dependências (após startup completo)
+        from api.monitoring_types_dynamic import _extract_types_from_all_servers
+        from core.kv_manager import KVManager
+        from datetime import datetime
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        logger.info("[PRE-WARM MONITORING-TYPES] Iniciando prewarm de monitoring-types...")
+        
+        # PASSO 3: Extrair tipos de TODOS os servidores
+        result = await _extract_types_from_all_servers(server=None)
+        
+        # PASSO 4: Enriquecer servidores com dados de sites do KV
+        from api.monitoring_types_dynamic import _enrich_servers_with_sites_data
+        logger.info("[PRE-WARM MONITORING-TYPES] Enriquecendo servidores com dados de sites...")
+        enriched_servers = await _enrich_servers_with_sites_data(result['servers'])
+        
+        # PASSO 5: Salvar no KV (sempre sobrescreve - não precisa verificar existência)
+        # ⚠️ CRÍTICO: Remover 'fields' de todos os tipos antes de salvar
+        # 'fields' são apenas para display e não devem ser salvos no KV
+        # A fonte de verdade para campos metadata é metadata-fields KV
+        all_types_without_fields = []
+        for type_def in result['all_types']:
+            type_def_clean = {k: v for k, v in type_def.items() if k != 'fields'}
+            all_types_without_fields.append(type_def_clean)
+        
+        # Limpar 'fields' também dos tipos dentro de 'servers' (já enriquecidos)
+        servers_clean = {}
+        for server_host, server_data in enriched_servers.items():
+            if 'types' in server_data:
+                servers_clean[server_host] = {
+                    **server_data,
+                    'types': [
+                        {k: v for k, v in t.items() if k != 'fields'}
+                        for t in server_data['types']
+                    ]
+                }
+            else:
+                servers_clean[server_host] = server_data
+        
+        # Limpar 'fields' também dos tipos dentro de 'categories'
+        categories_clean = []
+        for category in result['categories']:
+            categories_clean.append({
+                **category,
+                'types': [
+                    {k: v for k, v in t.items() if k != 'fields'}
+                    for t in category.get('types', [])
+                ]
+            })
+        
+        kv_manager = KVManager()
+        kv_value = {
+            'version': '1.0.0',
+            'last_updated': datetime.now().isoformat(),
+            'source': 'prewarm_startup',
+            'total_types': result['total_types'],
+            'total_servers': result['total_servers'],
+            'successful_servers': result['successful_servers'],
+            'servers': servers_clean,
+            'all_types': all_types_without_fields,
+            'categories': categories_clean,
+            'server_status': result['server_status']
+        }
+        
+        await kv_manager.put_json(
+            key='skills/eye/monitoring-types',
+            value=kv_value,
+            metadata={'auto_updated': True, 'source': 'prewarm_startup'}
+        )
+        
+        logger.info(
+            f"[PRE-WARM MONITORING-TYPES] ✅ Monitoring-types cache populado: "
+            f"{result['total_types']} tipos de {result['successful_servers']}/{result['total_servers']} servidores"
+        )
+        print(
+            f"[PRE-WARM MONITORING-TYPES] ✅ SUCESSO: {result['total_types']} tipos adicionados ao KV "
+            f"({result['successful_servers']}/{result['total_servers']} servidores OK)"
+        )
+        
+    except asyncio.TimeoutError:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error("[PRE-WARM MONITORING-TYPES] ✗ TIMEOUT: PRE-WARM demorou mais de 60s")
+        print("[PRE-WARM MONITORING-TYPES] ✗ TIMEOUT: PRE-WARM demorou mais de 60s")
+        print("[PRE-WARM MONITORING-TYPES] Aplicação continuará funcionando. Tente atualizar manualmente.")
+        
+    except Exception as e:
+        # IMPORTANTE: NÃO deixar erro quebrar a aplicação
+        # Se falhar, requisições HTTP farão extração sob demanda
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"[PRE-WARM MONITORING-TYPES] ✗ Erro ao pré-aquecer cache: {e}", exc_info=True)
+        print(f"[PRE-WARM MONITORING-TYPES] ✗ ERRO: {e}")
+        print("[PRE-WARM MONITORING-TYPES] Aplicação continuará funcionando. Cache será populado na primeira requisição.")
+
+
 async def _prewarm_with_timeout():
     """
     Wrapper para adicionar timeout de 60s ao PRE-WARM
 
     IMPORTANTE: Timeout de 60s para evitar que a aplicação trave
     se algum servidor Prometheus estiver inacessível na inicialização.
+    
+    Executa prewarm de metadata-fields e monitoring-types em paralelo.
     """
     try:
+        # Executar ambos os prewarms em paralelo
         await asyncio.wait_for(
-            _prewarm_metadata_fields_cache(),
+            asyncio.gather(
+                _prewarm_metadata_fields_cache(),
+                _prewarm_monitoring_types_cache(),
+                return_exceptions=True  # Não falhar se um falhar
+            ),
             timeout=60.0
         )
     except asyncio.TimeoutError:
-        # Timeout já é tratado dentro da função _prewarm_metadata_fields_cache
+        # Timeout já é tratado dentro das funções individuais
         # mas garantimos aqui também caso a função não trate
         import logging
         logger = logging.getLogger(__name__)

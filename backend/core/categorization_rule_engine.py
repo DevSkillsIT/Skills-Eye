@@ -57,6 +57,8 @@ class CategorizationRule:
         self.display_name = rule_data.get('display_name', '')
         self.exporter_type = rule_data.get('exporter_type', '')
         self.conditions = rule_data['conditions']
+        # ✅ SPRINT 1: Suporte a form_schema
+        self.form_schema = rule_data.get('form_schema', None)
 
         # Pre-compilar regexes para performance
         # Compilar apenas uma vez no init, reutilizar no matches()

@@ -581,6 +581,13 @@ export const consulAPI = {
   deleteService: (serviceId: string, params?: ServiceQuery) =>
     api.delete(`/services/${encodeURIComponent(serviceId)}`, { params }),
 
+  // ✅ SPRINT 1: Bulk delete de serviços
+  bulkDeleteServices: (services: Array<{service_id: string; node_addr?: string}>) =>
+    api.delete('/services/bulk/deregister', {
+      data: { service_ids: services.map(s => s.service_id) },
+      params: { node_addr: services[0]?.node_addr }
+    }),
+
   // Deregister service (Consul native API) - usado para exporters
   deregisterService: (params: { service_id: string; node_addr?: string }) =>
     api.delete(`/services/${encodeURIComponent(params.service_id)}`, {
@@ -1013,6 +1020,8 @@ export const consulAPI = {
       metrics_path?: string;
       module_pattern?: string;
     };
+    form_schema?: any;  // ✅ SPRINT 1
+    observations?: string;
   }) =>
     api.post<{
       success: boolean;
@@ -1035,6 +1044,8 @@ export const consulAPI = {
         metrics_path?: string;
         module_pattern?: string;
       };
+      form_schema?: any;  // ✅ SPRINT 1
+      observations?: string;
     }
   ) =>
     api.put<{
@@ -1060,6 +1071,40 @@ export const consulAPI = {
       message: string;
       total_rules: number;
     }>('/categorization-rules/reload'),
+
+  /**
+   * ✅ SPRINT 1: Obter form_schema para um exporter_type
+   */
+  getFormSchema: (exporter_type: string, category?: string) =>
+    api.get<{
+      success: boolean;
+      exporter_type: string;
+      category?: string;
+      display_name?: string;
+      form_schema: {
+        fields: Array<{
+          name: string;
+          label?: string;
+          type: string;
+          required?: boolean;
+          default?: any;
+          placeholder?: string;
+          help?: string;
+          validation?: any;
+          options?: Array<{ value: string; label: string }>;
+          min?: number;
+          max?: number;
+        }>;
+        required_metadata?: string[];
+        optional_metadata?: string[];
+      };
+      metadata_fields: any[];
+    }>('/monitoring-types/form-schema', {
+      params: {
+        exporter_type,
+        ...(category ? { category } : {}),
+      },
+    }),
 };
 
 // ============================================================================
