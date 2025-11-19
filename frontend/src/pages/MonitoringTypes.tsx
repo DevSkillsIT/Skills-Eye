@@ -49,6 +49,7 @@ import {
   EditOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
+import Editor from '@monaco-editor/react';
 import { consulAPI } from '../services/api';
 import { ServerSelector, type Server } from '../components/ServerSelector';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
@@ -866,29 +867,25 @@ export default function MonitoringTypes() {
 
         <div style={{ marginBottom: 16 }}>
           <Text strong>Form Schema (JSON):</Text>
-          <Input.TextArea
-            value={formSchemaJson}
-            onChange={(e) => setFormSchemaJson(e.target.value)}
-            rows={15}
-            style={{
-              fontFamily: 'monospace',
-              fontSize: '12px',
-              marginTop: 8
-            }}
-            placeholder={`{
-  "fields": [
-    {
-      "name": "target",
-      "label": "Alvo",
-      "type": "text",
-      "required": true,
-      "placeholder": "192.168.1.1"
-    }
-  ],
-  "required_metadata": ["target"],
-  "optional_metadata": []
-}`}
-          />
+          <div style={{ marginTop: 8, border: '1px solid #d9d9d9', borderRadius: '2px' }}>
+            <Editor
+              height="400px"
+              defaultLanguage="json"
+              value={formSchemaJson}
+              onChange={(value) => setFormSchemaJson(value || '')}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                tabSize: 2,
+                formatOnPaste: true,
+                formatOnType: true,
+              }}
+            />
+          </div>
         </div>
 
         <div style={{ marginTop: 16 }}>
