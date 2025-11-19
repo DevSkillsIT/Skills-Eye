@@ -38,6 +38,7 @@ import {
   Drawer,
   Input,
   message,
+  Modal,
   Popconfirm,
   Space,
   Tag,
@@ -80,7 +81,6 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
-import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 2: Modal dinâmico de CRUD
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -221,32 +221,14 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedColumns, ...metadataColumns];
   }, [tableFields]);
 
-  // ✅ CORREÇÃO CRÍTICA: Atualizar columnConfig quando tableFields carregar
-  // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos e recálculos desnecessários
-  const lastColumnConfigRef = useRef<string>('');
-  
+  // Atualizar columnConfig quando tableFields carregar
   useEffect(() => {
-    // ✅ OTIMIZAÇÃO: Só atualizar quando realmente necessário (tableFields carregou E há diferença)
-    if (defaultColumnConfig.length > 0 && tableFields.length > 0) {
-      // Verificar se há diferença real (não apenas comprimento, mas também conteúdo)
-      const defaultKeys = defaultColumnConfig.map(c => c.key).sort().join(',');
-      const currentKeys = columnConfig.map(c => c.key).sort().join(',');
-      
-      // ✅ OTIMIZAÇÃO: Só atualizar se realmente mudou (evita loops)
-      if (defaultKeys !== currentKeys || defaultColumnConfig.length !== columnConfig.length) {
-        // ✅ OTIMIZAÇÃO: Só logar se realmente mudou (evita logs duplicados)
-        if (import.meta.env.DEV && lastColumnConfigRef.current !== defaultKeys) {
-          console.log('[DynamicMonitoringPage] ✅ Atualizando columnConfig:', {
-            from: columnConfig.length,
-            to: defaultColumnConfig.length,
-            metadataColumns: defaultColumnConfig.length - 7, // 7 colunas fixas
-          });
-          lastColumnConfigRef.current = defaultKeys;
-        }
-        setColumnConfig(defaultColumnConfig);
-      }
+    // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
+    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
+    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
+      setColumnConfig(defaultColumnConfig);
     }
-  }, [defaultColumnConfig, columnConfig, tableFields.length]);
+  }, [defaultColumnConfig, columnConfig.length]);
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
@@ -258,23 +240,13 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // ✅ NOVO: Handler de mudanças na tabela (ordenação)
-  // ✅ CORREÇÃO: Recarregar tabela quando ordenação mudar
   const handleTableChange = useCallback((_pagination: any, _filters: any, sorter: any) => {
     if (sorter && sorter.field) {
       setSortField(sorter.field);
       setSortOrder(sorter.order || null);
-      // ✅ CORREÇÃO: Recarregar tabela para aplicar ordenação
-      // Pequeno delay para garantir que estado foi atualizado
-      setTimeout(() => {
-        actionRef.current?.reload();
-      }, 0);
     } else {
       setSortField(null);
       setSortOrder(null);
-      // Recarregar quando ordenação for removida
-      setTimeout(() => {
-        actionRef.current?.reload();
-      }, 0);
     }
   }, []);
 
@@ -384,49 +356,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     [advancedConditions, advancedOperator, getFieldValue],
   );
 
-  // ✅ OTIMIZAÇÃO: Serializar dependências uma vez para evitar recálculos
-  const columnConfigKey = useMemo(
-    () => columnConfig.map(c => `${c.key}:${c.visible}`).join(','),
-    [columnConfig]
-  );
-  
-  const tableFieldsKey = useMemo(
-    () => tableFields.map(f => f.name).join(','),
-    [tableFields]
-  );
-  
-  const columnWidthsKey = useMemo(
-    () => JSON.stringify(columnWidths),
-    [columnWidths]
-  );
-
   // SISTEMA DINÂMICO: Gerar colunas do ProTable com TODAS as features
-  // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos
-  const lastProTableColumnsRef = useRef<string>('');
-  
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
-    // ✅ CORREÇÃO: Só calcular colunas quando columnConfig estiver pronto
-    // Evita race condition onde proTableColumns é calculado antes de columnConfig ser atualizado
-    if (columnConfig.length === 0) {
-      return [];
-    }
-    
     const visibleConfigs = columnConfig.filter(c => c.visible);
-    
-    // ✅ OTIMIZAÇÃO: Só logar quando realmente mudou (evita logs duplicados em StrictMode)
-    if (import.meta.env.DEV) {
-      const configKey = `${columnConfig.length}-${visibleConfigs.length}-${tableFields.length}`;
-      if (lastProTableColumnsRef.current !== configKey) {
-        const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
-        console.log('[DynamicMonitoringPage] proTableColumns:', {
-          columnConfigLength: columnConfig.length,
-          tableFieldsLength: tableFields.length,
-          visibleConfigsCount: visibleConfigs.length,
-          metadataColumnsCount: metadataColumns.length,
-        });
-        lastProTableColumnsRef.current = configKey;
-      }
-    }
 
     return visibleConfigs.map((colConfig) => {
       // Definir larguras específicas para colunas especiais
@@ -436,19 +368,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       else if (colConfig.key === 'Service') defaultWidth = 180;
 
       const width = columnWidths[colConfig.key] || defaultWidth;
-      
-      // ✅ CORREÇÃO CRÍTICA: dataIndex para colunas de metadata deve ser ['Meta', fieldName]
-      // Colunas fixas usam o nome direto, mas colunas de metadata estão em record.Meta[fieldName]
-      const isMetadataColumn = tableFields.some(f => f.name === colConfig.key);
-      const dataIndex = colConfig.key === 'actions' 
-        ? undefined 
-        : isMetadataColumn 
-          ? ['Meta', colConfig.key]  // ✅ CORREÇÃO: Metadata está em Meta[fieldName]
-          : colConfig.key;  // Colunas fixas (ID, Service, Node, etc)
-      
       const baseColumn: ProColumns<MonitoringDataItem> = {
         title: colConfig.title,
-        dataIndex,
+        dataIndex: colConfig.key === 'actions' ? undefined : colConfig.key,
         key: colConfig.key,
         width,
         fixed: colConfig.key === 'actions' ? 'right' : undefined,
@@ -467,17 +389,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           return aValue.localeCompare(bValue);
         };
         baseColumn.sortDirections = ['ascend', 'descend'];
-        // ✅ CORREÇÃO: Usar sortOrder do estado para controlar ordenação visual
-        baseColumn.sortOrder = sortField === colConfig.key ? sortOrder : null;
       }
 
-      // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
-      // Só renderizar se metadataOptions estiver carregado e tiver opções
+      // ✅ NOVO: Filtros customizados por coluna (searchable checkboxes)
       const fieldOptions = metadataOptions[colConfig.key] || [];
-      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags' && metadataOptionsLoaded) {
-        // ✅ CORREÇÃO: Usar filteredValue para controlar estado visual do filtro
-        baseColumn.filteredValue = filters[colConfig.key] ? [filters[colConfig.key]] : null;
-        
+      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags') {
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
           const [searchText, setSearchText] = useState('');
 
@@ -537,19 +453,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   type="primary"
                   size="small"
-                  onClick={() => {
-                    // ✅ CORREÇÃO: Aplicar filtro na coluna específica
-                    const newFilters = { ...filters };
-                    if (selectedKeys.length > 0) {
-                      // Se múltiplos valores selecionados, usar o primeiro (ou implementar lógica OR)
-                      newFilters[colConfig.key] = selectedKeys[0];
-                    } else {
-                      delete newFilters[colConfig.key];
-                    }
-                    setFilters(newFilters);
-                    confirm();
-                    actionRef.current?.reload();
-                  }}
+                  onClick={() => confirm()}
                   icon={<SearchOutlined />}
                 >
                   OK
@@ -557,12 +461,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   size="small"
                   onClick={() => {
-                    const newFilters = { ...filters };
-                    delete newFilters[colConfig.key];
-                    setFilters(newFilters);
                     clearFilters?.();
                     setSearchText('');
-                    actionRef.current?.reload();
                   }}
                 >
                   Limpar
@@ -574,9 +474,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         baseColumn.filterIcon = (filtered: boolean) => (
           <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
         );
-        // ✅ CORREÇÃO: onFilter agora verifica se o valor está nos selectedKeys
         baseColumn.onFilter = (value, record) => {
-          // Este método é usado pelo ProTable internamente, mas vamos usar filtros customizados
           const fieldValue = getFieldValue(record, colConfig.key);
           return fieldValue === value;
         };
@@ -643,19 +541,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       return baseColumn;
     });
-  }, [
-    // ✅ OTIMIZAÇÃO: Usar apenas valores primitivos e funções estáveis
-    columnConfig,
-    columnWidths,
-    tableFields,
-    metadataOptionsLoaded,
-    metadataOptions,  // ✅ CORREÇÃO: Adicionado para filteredValue
-    filters,  // ✅ CORREÇÃO: Adicionado para filteredValue
-    sortField,  // ✅ CORREÇÃO: Adicionado para sortOrder
-    sortOrder,  // ✅ CORREÇÃO: Adicionado para sortOrder
-    handleResize,
-    getFieldValue,
-  ]);
+  }, [columnConfig, columnWidths, tableFields, metadataOptions, handleResize, getFieldValue]);
 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
@@ -715,7 +601,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         rows = rows.filter(item => item.node_ip === selectedNode);
       }
 
-      // ✅ NOVO: Extrair metadataOptions dinamicamente (ANTES de filtrar)
+      // ✅ NOVO: Extrair metadataOptions dinamicamente
       const metadataStart = performance.now();
       const optionsSets: Record<string, Set<string>> = {};
       filterFields.forEach((field) => {
@@ -754,42 +640,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
       }
 
-      // ✅ CORREÇÃO CRÍTICA: Aplicar filtros de metadata ANTES de filtros avançados
-      const metadataFiltersStart = performance.now();
-      let metadataFilteredRows = rows;
-      
-      // Aplicar filtros de MetadataFilterBar (filtros simples)
-      const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '');
-      if (activeFilters.length > 0) {
-        metadataFilteredRows = rows.filter((item) => {
-          return activeFilters.every(([fieldName, filterValue]) => {
-            // Verificar se é campo de metadata
-            const field = filterFields.find(f => f.name === fieldName);
-            if (field) {
-              const itemValue = item.Meta?.[fieldName];
-              return itemValue === filterValue || String(itemValue) === String(filterValue);
-            }
-            
-            // Verificar se é campo fixo
-            if (fieldName === 'Node') {
-              return item.Node === filterValue;
-            }
-            if (fieldName === 'Service') {
-              return item.Service === filterValue;
-            }
-            
-            return true;
-          });
-        });
-      }
-      const metadataFiltersEnd = performance.now();
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Filtros metadata em ${(metadataFiltersEnd - metadataFiltersStart).toFixed(0)}ms → ${metadataFilteredRows.length} registros`, 'color: #e91e63; font-weight: bold');
-      }
-
-      // ✅ NOVO: Aplicar filtros avançados (depois dos filtros de metadata)
+      // ✅ NOVO: Aplicar filtros avançados
       const filtersStart = performance.now();
-      const filteredRows = applyAdvancedFilters(metadataFilteredRows);
+      const filteredRows = applyAdvancedFilters(rows);
       const filtersEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
@@ -925,7 +778,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         total: 0
       };
     }
-  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue, metadataOptionsLoaded]);
+  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue]);
 
   // ✅ NOVO: Handler de edição
   const handleEdit = useCallback((record: MonitoringDataItem) => {
@@ -934,40 +787,29 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     setFormOpen(true);
   }, []);
 
-  // ✅ IMPLEMENTADO: Handler de deleção individual
+  // ✅ NOVO: Handler de deleção individual
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      const service_id = record.ID;
-      const node_addr = record.node_ip || record.Node;
-      
-      await consulAPI.deleteService(service_id, node_addr ? { node_addr } : undefined);
-      
-      message.success(`Serviço "${service_id}" excluído com sucesso`);
+      // TODO: Implementar API de deleção
+      message.success(`Serviço "${record.ID}" excluído com sucesso`);
       actionRef.current?.reload();
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.response?.data?.detail || error.message || error));
+      message.error('Erro ao excluir: ' + (error.message || error));
     }
   }, []);
 
-  // ✅ IMPLEMENTADO: Handler de batch delete
+  // ✅ NOVO: Handler de batch delete
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) return;
 
     try {
-      // Preparar lista de serviços para deletar
-      const services = selectedRows.map(row => ({
-        service_id: row.ID,
-        node_addr: row.node_ip || row.Address
-      }));
-      
-      await consulAPI.bulkDeleteServices(services);
-      
+      // TODO: Implementar batch delete API
       message.success(`${selectedRows.length} serviços excluídos com sucesso`);
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
     } catch (error: any) {
-      message.error('Erro ao excluir em lote: ' + (error.response?.data?.detail || error.message || error));
+      message.error('Erro ao excluir: ' + (error.message || error));
     }
   }, [selectedRows]);
 
@@ -1105,7 +947,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       title={CATEGORY_DISPLAY_NAMES[category] || category}
       subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
       loading={tableFieldsLoading || filterFieldsLoading}
-      style={{ minHeight: 'calc(100vh - 64px)' }}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Dashboard com métricas - altura mínima para evitar layout shift */}
@@ -1242,8 +1083,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
-                  // Manter selectedNode, advancedConditions e ordenação
-                  
+                  // Manter selectedNode e advancedConditions
                   // Reload para aplicar mudanças
                   actionRef.current?.reload();
                 }}
@@ -1256,19 +1096,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // ✅ CORREÇÃO: Usar reset() do ProTable para limpar TUDO (filtros + ordenação)
-                  actionRef.current?.reset?.();
-                  
-                  // Limpar estados customizados
+                  // Limpar estados customizados ANTES de resetar tabela
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   setSortField(null);
                   setSortOrder(null);
                   // Manter selectedNode e advancedConditions
-                  
-                  // Reload para aplicar mudanças
-                  actionRef.current?.reload();
+
+                  // CRÍTICO: reloadAndRest() reseta filtros E ordenação corretamente
+                  // Ao contrário de reset() + reload() que não limpa ordenação visual
+                  actionRef.current?.reloadAndRest?.();
                 }}
               >
                 Limpar Filtros e Ordem
@@ -1347,45 +1185,39 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               setFilters(newFilters);
               actionRef.current?.reload();
             }}
-            onReset={() => {
-              setFilters({});
-              actionRef.current?.reload();
-            }}
           />
         )}
 
         {/* ✅ COMPLETO: Tabela com TODAS as features */}
-        {/* ✅ CORREÇÃO LAYOUT SHIFT: Container com altura fixa para evitar mudanças de layout */}
-        <div style={{ minHeight: '600px', height: '600px', position: 'relative' }}>
-          <ProTable<MonitoringDataItem>
-            actionRef={actionRef}
-            rowKey="ID"
-            columns={proTableColumns}
-            request={requestHandler}
-            onChange={handleTableChange}
-            search={false}
-            pagination={{
-              defaultPageSize: 50,
-              showSizeChanger: true,
-              pageSizeOptions: ['20', '50', '100', '200'],
-              showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
-              style: { marginBottom: 8 },
-            }}
-            scroll={{
-              x: 2000, // Força scroll horizontal para fixed columns
-              y: 'calc(100vh - 450px)'
-            }}
-            sticky
-            options={{
-              reload: true,
-              setting: true,
-              density: true,
-              fullScreen: false,
-            }}
-            toolbar={{
-              settings: [],
-            }}
-            components={{
+        <ProTable<MonitoringDataItem>
+          actionRef={actionRef}
+          rowKey="ID"
+          columns={proTableColumns}
+          request={requestHandler}
+          onChange={handleTableChange}
+          search={false}
+          pagination={{
+            defaultPageSize: 50,
+            showSizeChanger: true,
+            pageSizeOptions: ['20', '50', '100', '200'],
+            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
+            style: { marginBottom: 8 },
+          }}
+          scroll={{
+            x: 2000, // Força scroll horizontal para fixed columns
+            y: 'calc(100vh - 450px)'
+          }}
+          sticky
+          options={{
+            reload: true,
+            setting: true,
+            density: true,
+            fullScreen: false,
+          }}
+          toolbar={{
+            settings: [],
+          }}
+          components={{
             header: {
               cell: ResizableTitle,
             },
@@ -1430,24 +1262,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             },
             fixed: true,
           }}
-          locale={{
-            emptyText: (
-              <div style={{ padding: '60px 0', textAlign: 'center', minHeight: '400px', height: '400px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: 16 }}>📊</div>
-                <div style={{ fontSize: '16px', color: '#8c8c8c', marginBottom: 8 }}>
-                  Não há dados disponíveis
-                </div>
-                <div style={{ fontSize: '14px', color: '#bfbfbf' }}>
-                  Tente ajustar os filtros ou selecionar outro nó do Consul
-                </div>
-              </div>
-            ),
-          }}
           tableAlertRender={({ selectedRowKeys: keys }) =>
             keys.length ? <span>{`${keys.length} registros selecionados`}</span> : null
           }
         />
-        </div>
       </Space>
 
       {/* ✅ NOVO: Drawer de busca avançada */}
@@ -1508,22 +1326,29 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ SPRINT 2: Modal dinâmico de criação/edição */}
-      <DynamicCRUDModal
-        mode={formMode}
-        category={category}
-        service={currentRecord}
-        visible={formOpen}
-        onSuccess={() => {
-          setFormOpen(false);
-          setCurrentRecord(null);
-          actionRef.current?.reload();
-        }}
+      {/* ✅ NOVO: Modal de criação/edição */}
+      <Modal
+        title={formMode === 'create' ? 'Novo registro' : 'Editar registro'}
+        open={formOpen}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-      />
+        onOk={() => {
+          // TODO: Implementar submit
+          message.info('Funcionalidade de criar/editar será implementada');
+          setFormOpen(false);
+        }}
+        width={720}
+        destroyOnHidden
+      >
+        <p>Modal de criação/edição - A implementar</p>
+        {currentRecord && (
+          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11 }}>
+            {JSON.stringify(currentRecord, null, 2)}
+          </pre>
+        )}
+      </Modal>
     </PageContainer>
   );
 };

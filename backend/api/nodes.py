@@ -18,24 +18,11 @@ cache = get_cache(ttl_seconds=60)
 
 @router.get("/", include_in_schema=True)
 @router.get("")
-async def get_nodes(include_services_count: bool = False):
-    """
-    Retorna todos os nós do cluster com cache de 30s
-    
-    ✅ OTIMIZAÇÃO CRÍTICA (2025-11-16):
-    - Por padrão, NÃO conta serviços (include_services_count=False)
-    - Reduz latência de ~25s (5 nós × 5s) para ~100ms
-    - Usa /catalog/nodes (mais rápido que /agent/members + enriquecimento)
-    
-    Args:
-        include_services_count: Se True, conta serviços de cada nó (lento, ~5s por nó)
-    
-    Returns:
-        Lista de nós com site_name (sempre) e services_count (se solicitado)
-    """
+async def get_nodes():
+    """Retorna todos os nós do cluster com cache de 30s"""
     
     # SPRINT 2: Usar LocalCache global
-    cache_key = f"nodes:list:all:services_count={include_services_count}"
+    cache_key = "nodes:list:all"
     
     # Verificar cache
     cached = await cache.get(cache_key)
@@ -44,12 +31,8 @@ async def get_nodes(include_services_count: bool = False):
 
     try:
         consul = ConsulManager()
-        
-        # ✅ OTIMIZAÇÃO: Usar /catalog/nodes (mais rápido que /agent/members)
-        # /catalog/nodes retorna dados do catálogo (já agregado)
-        # /agent/members retorna apenas membros do cluster local
-        catalog_nodes = await consul.get_nodes()
-        
+        members = await consul.get_members()
+
         # Buscar mapeamento de sites do KV
         from core.kv_manager import KVManager
         kv = KVManager()
@@ -69,43 +52,33 @@ async def get_nodes(include_services_count: bool = False):
                     if ip:
                         sites_map[ip] = name
 
-        # Processar nós do catálogo
-        processed_nodes = []
-        for node in catalog_nodes:
-            node_addr = node.get("Address", "")
-            node_name = node.get("Node", "")
-            
-            processed_node = {
-                "name": node_name,
-                "addr": node_addr,
-                "port": 8500,  # Porta padrão do Consul
-                "status": 1,  # Assumir alive (catálogo só mostra nós ativos)
-                "site_name": sites_map.get(node_addr, "Não mapeado"),
-            }
-            
-            # ✅ OTIMIZAÇÃO: Só contar serviços se solicitado (muito lento!)
-            if include_services_count:
-                try:
-                    temp_consul = ConsulManager(host=node_addr)
-                    # Timeout individual de 5s por nó
-                    services = await asyncio.wait_for(
-                        temp_consul.get_services(),
-                        timeout=5.0
-                    )
-                    processed_node["services_count"] = len(services)
-                except Exception:
-                    # Silencioso - se falhar, deixa services_count = 0
-                    processed_node["services_count"] = 0
-            else:
-                # Não contar serviços (padrão - muito mais rápido)
-                processed_node["services_count"] = None
+        # OTIMIZAÇÃO: Enriquecer em paralelo usando asyncio.gather para evitar timeouts
+        async def get_service_count(member: dict) -> dict:
+            """Conta serviços de um nó específico com timeout de 5s"""
+            member["services_count"] = 0
+            # Adicionar site_name baseado no IP do sites.json
+            # Se não encontrar no mapeamento, usa "Não mapeado" ao invés de mostrar IP
+            member["site_name"] = sites_map.get(member["addr"], "Não mapeado")
+            try:
+                temp_consul = ConsulManager(host=member["addr"])
+                # Timeout individual de 5s por nó (aumentado de 3s)
+                services = await asyncio.wait_for(
+                    temp_consul.get_services(),
+                    timeout=5.0
+                )
+                member["services_count"] = len(services)
+            except Exception as e:
+                # Silencioso - se falhar, deixa services_count = 0
+                pass
+            return member
 
-            processed_nodes.append(processed_node)
+        # Executar todas as requisições em paralelo
+        enriched_members = await asyncio.gather(*[get_service_count(m) for m in members])
 
         result = {
             "success": True,
-            "data": processed_nodes,
-            "total": len(processed_nodes),
+            "data": enriched_members,
+            "total": len(enriched_members),
             "main_server": Config.MAIN_SERVER
         }
 

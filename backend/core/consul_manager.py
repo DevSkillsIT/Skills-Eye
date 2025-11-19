@@ -186,62 +186,6 @@ class ConsulManager:
             response.raise_for_status()
             return response
 
-    async def generate_dynamic_service_id(self, meta: Dict[str, Any]) -> str:
-        """
-        Gera ID dinamicamente baseado em campos obrigatórios do KV metadata-fields
-        
-        ✅ NOVO: ID gerado dinamicamente baseado em campos obrigatórios do KV
-        Ordem: campos obrigatórios (ordem do KV) + @name
-        
-        Args:
-            meta: Dicionário com metadata do serviço
-            
-        Returns:
-            ID sanitizado no formato: campo1/campo2/campo3@name
-            
-        Exemplo:
-            Se obrigatórios são ['cidade', 'instance', 'company', 'grupo_monitoramento']
-            E meta = {
-                'cidade': 'Palmas',
-                'instance': 'http://example.com',
-                'company': 'Test',
-                'grupo_monitoramento': 'Servidores',
-                'name': 'test-service'
-            }
-            ID gerado: "Palmas/http://example.com/Test/Servidores@test-service"
-        """
-        # 1. Buscar campos obrigatórios do KV
-        required_fields = Config.get_required_fields()
-        
-        # 2. Montar partes do ID (ordem do KV)
-        # ⚠️ IMPORTANTE: 'name' sempre vai no final após @, não na lista de parts
-        parts = []
-        for field in required_fields:
-            # Pular 'name' se estiver na lista (sempre vai no final após @)
-            if field == 'name':
-                continue
-            if field in meta and meta[field]:
-                # Sanitizar valor do campo antes de adicionar
-                value = str(meta[field]).strip()
-                if value:
-                    # ✅ CORREÇÃO: Substituir caracteres problemáticos em cada parte
-                    # URLs (http://) e outros caracteres especiais são normalizados
-                    sanitized_value = re.sub(r'[\[\] `~!\\#$^&*=|"{}\':;?\t\n]', '_', value)
-                    # Substituir // por _ (problema comum em URLs)
-                    sanitized_value = sanitized_value.replace('//', '_')
-                    parts.append(sanitized_value)
-        
-        # 3. Adicionar name (sempre obrigatório, sempre no final após @)
-        if 'name' not in meta or not meta['name']:
-            raise ValueError("Campo 'name' é obrigatório para gerar ID")
-        
-        # 4. Montar ID: parts + @name
-        name_sanitized = re.sub(r'[\[\] `~!\\#$^&*=|"{}\':;?\t\n]', '_', str(meta['name']).strip())
-        raw_id = "/".join(parts) + "@" + name_sanitized
-        
-        # 5. Sanitizar ID final (valida barras e outros caracteres)
-        return self.sanitize_service_id(raw_id)
-
     @staticmethod
     def sanitize_service_id(raw_id: str) -> str:
         """
@@ -260,16 +204,10 @@ class ConsulManager:
         return candidate
 
     async def query_agent_services(self, filter_expr: Optional[str] = None) -> Dict[str, Dict]:
-        """
-        Consulta /agent/services com filtro opcional
-        
-        ✅ CORREÇÃO FASE 1.2 (2025-11-16):
-        - Adicionado use_cache=True para Agent Caching (background refresh)
-        - Baseado em: https://developer.hashicorp.com/consul/api-docs/agent/service#agent-caching
-        """
-        params = {"filter": filter_expr} if filter_expr else {}
+        """Consulta /agent/services com filtro opcional"""
+        params = {"filter": filter_expr} if filter_expr else None
         try:
-            response = await self._request("GET", "/agent/services", use_cache=True, params=params)
+            response = await self._request("GET", "/agent/services", params=params)
             return response.json()
         except Exception as exc:
             logger.error("Failed to query agent services: %s", exc)
@@ -304,23 +242,8 @@ class ConsulManager:
             return []
 
     async def get_service_names(self) -> List[str]:
-        """
-        Retorna apenas os nomes dos serviços cadastrados do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido e consistente)
-        - Site principal está sempre próximo (is_default=True no KV)
-        - ?stale só faz sentido para clusters grandes (1000+ nodes) ou fallback
-        - Para 3-5 nodes, default mode é melhor
-        - Fallback já implementado em get_services_with_fallback() se necessário
-        
-        Baseado em análise crítica do contexto real:
-        - Arquitetura: 1 SERVER (master) + 2 CLIENTS
-        - Sistema sempre próximo do site principal
-        - Não precisa distribuir carga (apenas 3 nodes)
-        """
+        """Retorna apenas os nomes dos serviços cadastrados"""
         try:
-            # Site principal SEM ?stale (default mode - mais rápido)
             response = await self._request("GET", "/catalog/services")
             services = response.json()
             services.pop("consul", None)
@@ -464,19 +387,14 @@ class ConsulManager:
             ]
 
     async def get_services(self, node_addr: str = None) -> Dict:
-        """
-        Obtém serviços de um nó específico ou local
-        
-        ✅ CORREÇÃO FASE 1.2 (2025-11-16):
-        - Adicionado use_cache=True para Agent Caching (alta frequência de chamadas)
-        """
+        """Obtém serviços de um nó específico ou local"""
         if node_addr and node_addr != self.host:
             # Conectar ao nó específico
             temp_manager = ConsulManager(host=node_addr, token=self.token)
             return await temp_manager.get_services()
 
         try:
-            response = await self._request("GET", "/agent/services", use_cache=True)
+            response = await self._request("GET", "/agent/services")
             return response.json()
         except:
             return {}
@@ -525,16 +443,8 @@ class ConsulManager:
             return []
 
     async def get_catalog_services(self) -> Dict:
-        """
-        Lista todos os serviços do catálogo do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido)
-        - Site principal está sempre próximo (is_default=True no KV)
-        - ?stale apenas no fallback (get_services_with_fallback)
-        """
+        """Lista todos os serviços do catálogo"""
         try:
-            # Site principal SEM ?stale (default mode)
             response = await self._request("GET", "/catalog/services")
             return response.json()
         except:
@@ -607,13 +517,7 @@ class ConsulManager:
         return services.get(service_id)
 
     async def get_services_by_name(self, service_name: str) -> List[Dict]:
-        """
-        Obtém todos os serviços com um nome específico do catálogo do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido)
-        - ?stale apenas no fallback (get_services_with_fallback)
-        """
+        """Obtém todos os serviços com um nome específico do catálogo"""
         try:
             response = await self._request("GET", f"/catalog/service/{service_name}")
             return response.json()
@@ -633,13 +537,7 @@ class ConsulManager:
             return {}
 
     async def get_datacenters(self) -> List[str]:
-        """
-        Lista todos os datacenters do Consul do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido)
-        - ?stale apenas no fallback se necessário
-        """
+        """Lista todos os datacenters do Consul"""
         try:
             response = await self._request("GET", "/catalog/datacenters")
             return response.json()
@@ -647,13 +545,7 @@ class ConsulManager:
             return []
 
     async def get_nodes(self) -> List[Dict]:
-        """
-        Lista todos os nós do catálogo do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido)
-        - ?stale apenas no fallback se necessário
-        """
+        """Lista todos os nós do catálogo"""
         try:
             response = await self._request("GET", "/catalog/nodes")
             return response.json()
@@ -661,13 +553,7 @@ class ConsulManager:
             return []
 
     async def get_node_services(self, node_name: str) -> Dict:
-        """
-        Obtém todos os serviços de um nó específico pelo nome do site principal.
-        
-        ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-        - Usa site principal SEM ?stale (default mode - mais rápido)
-        - ?stale apenas no fallback se necessário
-        """
+        """Obtém todos os serviços de um nó específico pelo nome"""
         try:
             response = await self._request("GET", f"/catalog/node/{node_name}")
             return response.json()
@@ -874,18 +760,23 @@ class ConsulManager:
 
     async def check_duplicate_service(
         self,
-        meta: Dict[str, Any],
+        module: str,
+        company: str,
+        project: str,
+        env: str,
+        name: str,
         exclude_sid: str = None,
         target_node_addr: str = None
     ) -> bool:
         """
-        Verifica se já existe um serviço com a mesma combinação de campos obrigatórios
-        
-        ✅ CORREÇÃO: Agora usa campos obrigatórios do KV dinamicamente
-        (não mais hardcoded: module/company/project/env/name)
+        Verifica se já existe um serviço com a mesma combinação de chaves
 
         Args:
-            meta: Dicionário com metadata do serviço (deve conter campos obrigatórios)
+            module: Módulo do serviço
+            company: Empresa
+            project: Projeto
+            env: Ambiente
+            name: Nome
             exclude_sid: ID de serviço para excluir da verificação (útil em updates)
             target_node_addr: Endereço do nó alvo para verificar
 
@@ -893,15 +784,6 @@ class ConsulManager:
             True se encontrou duplicata, False caso contrário
         """
         try:
-            # ✅ CORREÇÃO: Buscar campos obrigatórios do KV dinamicamente
-            required_fields = Config.get_required_fields()
-            
-            # 'name' é sempre obrigatório (não está no required_fields, mas é necessário)
-            if 'name' not in required_fields:
-                check_fields = required_fields + ['name']
-            else:
-                check_fields = required_fields.copy()
-            
             services = await self.get_services(target_node_addr)
 
             for sid, svc in services.items():
@@ -909,22 +791,19 @@ class ConsulManager:
                 if exclude_sid and sid == exclude_sid:
                     continue
 
-                svc_meta = svc.get("Meta", {})
+                meta = svc.get("Meta", {})
 
-                # ✅ CORREÇÃO: Verificar se todos os campos obrigatórios correspondem
-                # (dinamicamente, não mais hardcoded)
-                matches = True
-                for field in check_fields:
-                    if meta.get(field) != svc_meta.get(field):
-                        matches = False
-                        break
-                
-                if matches:
+                # Verificar se todos os campos chave correspondem
+                if (meta.get("module") == module and
+                    meta.get("company") == company and
+                    meta.get("project") == project and
+                    meta.get("env") == env and
+                    meta.get("name") == name):
                     return True
 
             return False
         except Exception as e:
-            logger.error(f"Erro ao verificar duplicatas: {e}", exc_info=True)
+            print(f"Erro ao verificar duplicatas: {e}")
             return False
 
     async def _load_sites_config(self) -> List[Dict]:
@@ -945,40 +824,9 @@ class ConsulManager:
                     'is_default': True
                 }]
 
-            # ✅ CORREÇÃO: Tratar diferentes estruturas do KV (como em config.py)
-            # ESTRUTURA DO KV pode ser:
-            # 1. {"data": {"sites": [...]}} (estrutura dupla após auto_sync)
-            # 2. {"sites": [...]} (estrutura simples)
-            # 3. [...] (array direto)
-            sites_list = []
-            
-            if isinstance(sites_data, list):
-                # Estrutura array direto: [...]
-                sites_list = sites_data
-            elif isinstance(sites_data, dict):
-                if 'data' in sites_data and isinstance(sites_data['data'], dict):
-                    # Estrutura dupla: {"data": {"sites": [...]}}
-                    sites_list = sites_data['data'].get('sites', [])
-                elif 'sites' in sites_data:
-                    # Estrutura simples: {"sites": [...]}
-                    sites_list = sites_data.get('sites', [])
-                else:
-                    logger.error(f"❌ KV metadata/sites tem estrutura desconhecida: {list(sites_data.keys())}")
-                    return [{
-                        'name': 'fallback',
-                        'prometheus_instance': Config.get_main_server(),
-                        'is_default': True
-                    }]
-            else:
-                logger.error(f"❌ KV metadata/sites tem tipo inválido: {type(sites_data).__name__} (esperado: list ou dict)")
-                return [{
-                    'name': 'fallback',
-                    'prometheus_instance': Config.get_main_server(),
-                    'is_default': True
-                }]
-
-            if not isinstance(sites_list, list) or len(sites_list) == 0:
-                logger.warning("⚠️ KV metadata/sites não contém lista válida - usando fallback")
+            # SPRINT 2 - FIX: Validar tipo de dados antes de usar
+            if not isinstance(sites_data, list):
+                logger.error(f"❌ KV metadata/sites tem tipo inválido: {type(sites_data).__name__} (esperado: list)")
                 return [{
                     'name': 'fallback',
                     'prometheus_instance': Config.get_main_server(),
@@ -987,7 +835,7 @@ class ConsulManager:
 
             # Ordenar: master (is_default=True) primeiro
             sites = sorted(
-                sites_list,
+                sites_data,
                 key=lambda s: (not s.get('is_default', False), s.get('name', ''))
             )
 
@@ -996,8 +844,6 @@ class ConsulManager:
 
         except Exception as e:
             logger.error(f"❌ Erro ao carregar sites do KV: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
             # Fallback: usar CONSUL_HOST da env
             return [{
                 'name': 'fallback',
@@ -1065,33 +911,18 @@ class ConsulManager:
                 # Criar manager temporário para o node específico
                 temp_manager = ConsulManager(host=node_addr, token=self.token)
 
-                # ✅ ESTRATÉGIA CORRIGIDA (2025-11-16):
-                # - Master: SEM ?stale (default mode - mais rápido e consistente)
-                # - Clients: COM ?stale (permite distribuir se master offline)
+                # ✅ CORREÇÃO CRÍTICA: Catalog API (não Agent API!)
                 # Catalog API retorna TODOS os serviços do datacenter
                 # Agent API retornaria APENAS serviços locais do node
-                
-                if is_master:
-                    # Master: SEM ?stale (default mode - mais rápido)
-                    response = await asyncio.wait_for(
-                        temp_manager._request(
-                            "GET",
-                            "/catalog/services",
-                            use_cache=True  # ← Agent caching (OFFICIAL FEATURE)
-                        ),
-                        timeout=timeout_per_node
-                    )
-                else:
-                    # Clients: COM ?stale (distribui se master offline)
-                    response = await asyncio.wait_for(
-                        temp_manager._request(
-                            "GET",
-                            "/catalog/services",
-                            use_cache=True,  # ← Agent caching (OFFICIAL FEATURE)
-                            params={"stale": ""}  # ← Stale reads apenas no fallback
-                        ),
-                        timeout=timeout_per_node
-                    )
+                response = await asyncio.wait_for(
+                    temp_manager._request(
+                        "GET",
+                        "/catalog/services",
+                        use_cache=True,  # ← Agent caching (OFFICIAL FEATURE)
+                        params={"stale": ""}  # ← Stale reads (OFFICIAL CONSISTENCY MODE)
+                    ),
+                    timeout=timeout_per_node
+                )
 
                 services = response.json()
                 elapsed_ms = (datetime.now() - start_time).total_seconds() * 1000
@@ -1199,27 +1030,17 @@ class ConsulManager:
             # Buscar node ativo com fallback
             _, metadata = await self.get_services_with_fallback()
             source_node = metadata["source_node"]
-            is_master = metadata.get("is_master", False)
 
-            logger.debug(f"[Catalog] Buscando lista de serviços de {source_node} (master: {is_master})")
+            logger.debug(f"[Catalog] Buscando lista de serviços de {source_node}")
 
             # PASSO 1: Buscar lista de nomes dos serviços (leve, 4-10ms)
             temp_manager = ConsulManager(host=source_node, token=self.token)
-            
-            # ✅ ESTRATÉGIA CORRIGIDA: Master SEM ?stale, clients COM ?stale
-            if is_master:
-                response = await temp_manager._request(
-                    "GET",
-                    "/catalog/services",
-                    use_cache=True  # ← Agent caching apenas
-                )
-            else:
-                response = await temp_manager._request(
-                    "GET",
-                    "/catalog/services",
-                    use_cache=True,
-                    params={"stale": ""}  # ← Stale apenas no fallback
-                )
+            response = await temp_manager._request(
+                "GET",
+                "/catalog/services",
+                use_cache=True,
+                params={"stale": "", "cached": ""}
+            )
 
             service_names = response.json()  # Dict {name: [tags]}
             logger.debug(f"[Catalog] Encontrados {len(service_names)} nomes de serviços")
@@ -1228,20 +1049,12 @@ class ConsulManager:
             async def fetch_service_details(name: str):
                 """Busca detalhes de um serviço específico"""
                 try:
-                    # ✅ ESTRATÉGIA CORRIGIDA: Master SEM ?stale, clients COM ?stale
-                    if is_master:
-                        resp = await temp_manager._request(
-                            "GET",
-                            f"/catalog/service/{name}",
-                            use_cache=True
-                        )
-                    else:
-                        resp = await temp_manager._request(
-                            "GET",
-                            f"/catalog/service/{name}",
-                            use_cache=True,
-                            params={"stale": ""}
-                        )
+                    resp = await temp_manager._request(
+                        "GET",
+                        f"/catalog/service/{name}",
+                        use_cache=True,
+                        params={"stale": "", "cached": ""}
+                    )
                     return name, resp.json()
                 except Exception as e:
                     logger.error(f"[Catalog] Erro ao buscar serviço '{name}': {e}")
@@ -1284,13 +1097,13 @@ class ConsulManager:
 
             return all_services
         else:
-            # Modo legado: apenas consulta self.host (MAIN_SERVER - site principal)
+            # Modo legado: apenas consulta self.host (MAIN_SERVER)
             logger.debug("[Catalog] Modo legado sem fallback - consultando MAIN_SERVER")
-            # ✅ ESTRATÉGIA CORRIGIDA: Site principal SEM ?stale
             response = await self._request(
                 "GET",
                 "/catalog/services",
-                use_cache=True  # ← Agent caching apenas
+                use_cache=True,
+                params={"stale": ""}
             )
             services = response.json()
             return {"default": services}
@@ -1412,29 +1225,22 @@ class ConsulManager:
     async def validate_service_data(self, service_data: Dict) -> tuple[bool, List[str]]:
         """
         Valida dados de um serviço antes de registrar
-        
-        ✅ CORREÇÃO: Agora usa campos obrigatórios do KV dinamicamente
-        (não mais hardcoded)
 
         Returns:
             Tupla (is_valid, list_of_errors)
         """
         errors = []
 
-        # Verificar campos obrigatórios básicos
+        # Verificar campos obrigatórios
         if "id" not in service_data:
             errors.append("Campo 'id' é obrigatório")
 
         if "name" not in service_data:
             errors.append("Campo 'name' é obrigatório")
 
-        # ✅ CORREÇÃO: Buscar campos obrigatórios do KV dinamicamente
-        # Não mais usa Config.REQUIRED_FIELDS (deprecated)
-        required_fields = Config.get_required_fields()
-        
-        # Verificar metadados obrigatórios (do KV)
+        # Verificar metadados obrigatórios
         meta = service_data.get("Meta", {})
-        for field in required_fields:
+        for field in Config.REQUIRED_FIELDS:
             if field not in meta or not meta[field]:
                 errors.append(f"Campo obrigatório faltando em Meta: {field}")
 

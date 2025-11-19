@@ -262,24 +262,13 @@ async def get_monitoring_data(
             # ==================================================================
             all_services_dict = await consul_manager.get_all_services_catalog(use_fallback=True)
 
-            # ✅ CORREÇÃO: Verificar se retornou dict válido (não string)
-            if not isinstance(all_services_dict, dict):
-                logger.error(f"[MONITORING DATA] get_all_services_catalog retornou tipo inválido: {type(all_services_dict)}")
-                raise HTTPException(status_code=500, detail="Erro ao buscar serviços do Consul: resposta inválida")
-
             # Remover _metadata se existir (não usado aqui)
             all_services_dict.pop("_metadata", None)
 
             # Converter estrutura aninhada para lista plana
             all_services = []
             for node_name, services_dict in all_services_dict.items():
-                if not isinstance(services_dict, dict):
-                    logger.warning(f"[MONITORING DATA] Serviços do nó {node_name} não é dict: {type(services_dict)}")
-                    continue
                 for service_id, service_data in services_dict.items():
-                    if not isinstance(service_data, dict):
-                        logger.warning(f"[MONITORING DATA] Serviço {service_id} não é dict: {type(service_data)}")
-                        continue
                     service_data['Node'] = node_name
                     service_data['ID'] = service_id
                     all_services.append(service_data)
@@ -505,42 +494,30 @@ async def get_monitoring_metrics(
         # ==================================================================
         # PASSO 3: Construir query PromQL baseado na categoria
         # ==================================================================
-        # ✅ FASE 2.1 (2025-11-16): Otimização de queries PromQL
-        # - Adicionado topk() para limitar cardinalidade (evita timeouts em clusters grandes)
-        # - Timeout específico de 30s para queries PromQL
-        # - Cache para queries pesadas (TTL 60s)
-        # Baseado em: Prometheus Best Practices
-        
         query = None
-        max_results = 1000  # Limite padrão de resultados
 
         if category in ['network-probes', 'web-probes']:
             # Blackbox probes
             if modules_patterns:
                 modules_regex = '|'.join(modules_patterns)
-                # ✅ Otimizado: topk() limita cardinalidade
-                query = f"topk({max_results}, probe_success{{__param_module=~\"{modules_regex}\"}})"
+                query = f"probe_success{{__param_module=~\"{modules_regex}\"}}"
 
         elif category == 'system-exporters':
             # Node/Windows exporters - CPU usage
             if jobs_patterns:
                 jobs_regex = '|'.join(jobs_patterns)
-                # ✅ Otimizado: topk() limita cardinalidade
-                base_query = f"100 - (avg by (instance) (irate(node_cpu_seconds_total{{job=~\"{jobs_regex}\",mode=\"idle\"}}[{time_range}])) * 100)"
-                query = f"topk({max_results}, {base_query})"
+                query = f"100 - (avg by (instance) (irate(node_cpu_seconds_total{{job=~\"{jobs_regex}\",mode=\"idle\"}}[{time_range}])) * 100)"
 
         elif category == 'database-exporters':
             # Database exporters - up status
             if jobs_patterns:
                 jobs_regex = '|'.join(jobs_patterns)
-                # ✅ Otimizado: topk() limita cardinalidade
-                query = f"topk({max_results}, up{{job=~\"{jobs_regex}\"}})"
+                query = f"up{{job=~\"{jobs_regex}\"}}"
         else:
             # Categoria genérica - up status
             if jobs_patterns:
                 jobs_regex = '|'.join(jobs_patterns)
-                # ✅ Otimizado: topk() limita cardinalidade
-                query = f"topk({max_results}, up{{job=~\"{jobs_regex}\"}})"
+                query = f"up{{job=~\"{jobs_regex}\"}}"
 
         if not query:
             raise HTTPException(
@@ -551,24 +528,15 @@ async def get_monitoring_metrics(
         logger.info(f"[MONITORING METRICS] Query PromQL: {query}")
 
         # ==================================================================
-        # PASSO 4: Executar query no Prometheus (com cache e timeout otimizado)
+        # PASSO 4: Executar query no Prometheus
         # ==================================================================
         prometheus_url = f"http://{prometheus_host}:{prometheus_port}"
-        
-        # ✅ FASE 2.1: Cache para queries PromQL (TTL 60s)
-        cache_key = f"promql:{category}:{server or 'default'}:{time_range}:{query}"
-        cached_result = await cache.get(cache_key)
-        if cached_result is not None:
-            logger.debug(f"[CACHE HIT] PromQL query (key: {cache_key})")
-            return cached_result
 
-        # Cache miss - executar query
         async with httpx.AsyncClient() as client:
-            # ✅ FASE 2.1: Timeout específico de 30s para queries PromQL
             response = await client.get(
                 f"{prometheus_url}/api/v1/query",
                 params={'query': query},
-                timeout=30.0  # Timeout aumentado para queries pesadas
+                timeout=10.0
             )
             response.raise_for_status()
             prom_data = response.json()
@@ -601,7 +569,7 @@ async def get_monitoring_metrics(
 
         logger.info(f"[MONITORING METRICS] Retornando {len(formatted_metrics)} métricas")
 
-        result = {
+        return {
             "success": True,
             "category": category,
             "metrics": formatted_metrics,
@@ -609,12 +577,6 @@ async def get_monitoring_metrics(
             "prometheus_server": f"{prometheus_host}:{prometheus_port}",
             "total": len(formatted_metrics)
         }
-        
-        # ✅ FASE 2.1: Armazenar no cache (TTL 60s)
-        await cache.set(cache_key, result, ttl=60)
-        logger.debug(f"[CACHE SET] PromQL query (key: {cache_key}, TTL: 60s)")
-        
-        return result
 
     except HTTPException:
         raise

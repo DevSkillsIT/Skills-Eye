@@ -141,9 +141,15 @@
       "Bash(timeout:*)",
       "WebSearch",
       "Bash(PYTHONPATH=/home/adrianofante/projetos/Skills-Eye/backend python3:*)",
-      "Bash(bash scripts/deployment/restart-all.sh:*)"
+      "Bash(bash scripts/deployment/restart-all.sh:*)",
+      "Bash(\"http://172.16.1.26:8500/v1/kv/skills/eye/metadata/fields\")"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "context7",
+    "playwright",
+    "sequential-thinking"
+  ]
 }

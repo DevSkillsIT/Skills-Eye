@@ -111,3 +111,56 @@ TenSunS/
 
 # Python cache files
 backend/core/installers/__pycache__/
+.pytest_cache/
+*.bak
+# Logs
+*_backup_*/
+*.temp
+venv/
+.uv_cache
+.coverage
+docs/out/
+.mypy_cache
+# Virtual environment
+# Package templates (src/moai_adk/templates/) are tracked
+/CLAUDE.md
+.netlify/
+.venv/
+*.backup/
+*.tmp
+# MoAI dynamic content (로컬 프로젝트만 무시, but package templates are tracked)
+# Backups
+# Cache
+.firebase/
+.aws/
+.ruff_cache
+.env/
+.moai/reports/*-draft.*
+.moai-backups/
+# Claude and MoAI configuration (user-specific, root only)
+.vercel/
+docs_backup_*/
+.env*
+.moai/*.tmp
+coverage.json
+# MoAI reports (임시 보고서만 무시)
+env/
+*.tsbuildinfo
+# Temporary files
+.moai/logs/
+.moai/reports/*.tmp
+# Next.js build output
+*-backup/
+.tscache/
+.moai/temp/
+# Environment variables and deployment secrets
+.playwright-mcp
+hooks_backup_*/
+docs/.next/
+.venv_issue43_py313
+# Build artifacts
+*.pyc
+*.backup
+.uv-cache
+*.pyo
+# Test coverage
