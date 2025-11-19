@@ -331,10 +331,14 @@ async def _prewarm_monitoring_types_cache():
         # Se tipo já existia com form_schema customizado, PRESERVAR
         existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
         existing_form_schemas = {}
-        if existing_kv and existing_kv.get('data', {}).get('all_types'):
-            for existing_type in existing_kv['data']['all_types']:
+        # ✅ BUGFIX: KVManager JÁ desembrulha automaticamente!
+        # existing_kv é a estrutura direta {all_types: [...], version: ...}
+        # NÃO precisa acessar existing_kv['data']
+        if existing_kv and existing_kv.get('all_types'):
+            for existing_type in existing_kv['all_types']:
                 if existing_type.get('form_schema'):
                     existing_form_schemas[existing_type['id']] = existing_type['form_schema']
+                    logger.debug(f"[PRE-WARM] Preservando form_schema customizado: {existing_type['id']}")
 
         # PASSO 4: Salvar no KV (sempre sobrescreve - não precisa verificar existência)
         # ⚠️ CRÍTICO: Remover 'fields' de todos os tipos antes de salvar

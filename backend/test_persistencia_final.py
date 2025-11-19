@@ -33,17 +33,37 @@ async def main():
 
     # PASSO 2: Verificar backup
     print("\nPASSO 2: Verificando backup...")
-    backup_data = await kv.get_json('skills/eye/monitoring-types.backup')
+    backup_data_raw = await kv.get_json('skills/eye/monitoring-types.backup')
 
-    if backup_data and 'types_data' in backup_data:
-        types_data = backup_data['types_data']
-        tipos_backup = types_data.get('all_types', [])
-        com_schema_backup = [t for t in tipos_backup if t.get('form_schema')]
-        print(f"✅ Backup: {len(tipos_backup)} tipos, {len(com_schema_backup)} com form_schema")
-        if com_schema_backup:
-            print(f"  Tipos: {', '.join([t['id'] for t in com_schema_backup])}")
+    if backup_data_raw:
+        print(f"  Debug: Chaves do backup: {list(backup_data_raw.keys())}")
+
+        # Desembrulhar nível 1 (backup wrapped)
+        if 'data' in backup_data_raw:
+            backup_data = backup_data_raw['data']
+            print(f"  Debug: Desembrulhado nível 1. Chaves: {list(backup_data.keys())[:6]}")
+        else:
+            backup_data = backup_data_raw
+
+        # Acessar types_data
+        if 'types_data' in backup_data:
+            types_data = backup_data['types_data']
+            print(f"  Debug: types_data encontrado. Chaves: {list(types_data.keys()) if isinstance(types_data, dict) else 'não é dict'}")
+
+            # Desembrulhar nível 2 (types_data wrapped)
+            if isinstance(types_data, dict) and list(types_data.keys()) == ['data']:
+                types_data = types_data['data']
+                print(f"  Debug: Desembrulhado nível 2. Chaves: {list(types_data.keys())[:6]}")
+
+            tipos_backup = types_data.get('all_types', [])
+            com_schema_backup = [t for t in tipos_backup if t.get('form_schema')]
+            print(f"✅ Backup: {len(tipos_backup)} tipos, {len(com_schema_backup)} com form_schema")
+            if com_schema_backup:
+                print(f"  Tipos: {', '.join([t['id'] for t in com_schema_backup])}")
+        else:
+            print("❌ types_data não encontrado no backup")
     else:
-        print("❌ Backup vazio ou estrutura incorreta")
+        print("❌ Backup vazio")
 
     # PASSO 3: Simular restauração
     print("\nPASSO 3: Testando restauração do backup...")
