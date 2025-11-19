@@ -35,6 +35,7 @@ import {
   Card,
   Checkbox,
   Descriptions,
+  Divider,
   Drawer,
   Input,
   message,
@@ -790,21 +791,62 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // ✅ NOVO: Handler de deleção individual
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      // TODO: Implementar API de deleção
-      message.success(`Serviço "${record.ID}" excluído com sucesso`);
-      actionRef.current?.reload();
+      // Chamar API de deleção
+      const response = await consulAPI.deleteService(record.ID);
+      if (response.data?.success) {
+        message.success(`Serviço "${record.ID}" excluído com sucesso`);
+        actionRef.current?.reload();
+      } else {
+        message.error(response.data?.error || 'Erro ao excluir serviço');
+      }
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.message || error));
+      // Tratamento de erros específicos
+      if (error.response?.status === 404) {
+        message.error('Serviço não encontrado');
+      } else if (error.response?.status === 409) {
+        message.error('Serviço em uso, não pode ser excluído');
+      } else {
+        message.error('Erro ao excluir: ' + (error.message || error));
+      }
     }
   }, []);
 
-  // ✅ NOVO: Handler de batch delete
+  // ✅ NOVO: Handler de batch delete com limite de concorrência
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) return;
 
     try {
-      // TODO: Implementar batch delete API
-      message.success(`${selectedRows.length} serviços excluídos com sucesso`);
+      // Processar em lotes de 10 para evitar sobrecarga
+      const batchSize = 10;
+      const results: { success: string[]; failed: string[] } = { success: [], failed: [] };
+
+      for (let i = 0; i < selectedRows.length; i += batchSize) {
+        const batch = selectedRows.slice(i, i + batchSize);
+
+        // Executar batch em paralelo
+        const promises = batch.map(async (record) => {
+          try {
+            const response = await consulAPI.deleteService(record.ID);
+            if (response.data?.success) {
+              results.success.push(record.ID);
+            } else {
+              results.failed.push(record.ID);
+            }
+          } catch {
+            results.failed.push(record.ID);
+          }
+        });
+
+        await Promise.all(promises);
+      }
+
+      // Mostrar resultado detalhado
+      if (results.failed.length === 0) {
+        message.success(`${results.success.length} serviços excluídos com sucesso`);
+      } else {
+        message.warning(`${results.success.length} excluídos, ${results.failed.length} falhas`);
+      }
+
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
@@ -1326,7 +1368,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ NOVO: Modal de criação/edição */}
+      {/* ✅ Modal de criação/edição - Redireciona para página de Serviços */}
       <Modal
         title={formMode === 'create' ? 'Novo registro' : 'Editar registro'}
         open={formOpen}
@@ -1334,19 +1376,51 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-        onOk={() => {
-          // TODO: Implementar submit
-          message.info('Funcionalidade de criar/editar será implementada');
-          setFormOpen(false);
-        }}
+        footer={[
+          <Button key="cancel" onClick={() => {
+            setFormOpen(false);
+            setCurrentRecord(null);
+          }}>
+            Cancelar
+          </Button>,
+          <Button
+            key="services"
+            type="primary"
+            onClick={() => {
+              setFormOpen(false);
+              // Redirecionar para página de serviços com CRUD completo
+              window.location.href = '/services';
+            }}
+          >
+            Ir para Gerenciador de Serviços
+          </Button>,
+        ]}
         width={720}
         destroyOnHidden
       >
-        <p>Modal de criação/edição - A implementar</p>
-        {currentRecord && (
-          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11 }}>
-            {JSON.stringify(currentRecord, null, 2)}
-          </pre>
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <Typography.Title level={4}>
+            {formMode === 'create' ? 'Criar Novo Serviço' : 'Editar Serviço'}
+          </Typography.Title>
+          <Typography.Paragraph>
+            Para {formMode === 'create' ? 'criar novos serviços' : 'editar serviços'}, utilize a página
+            <strong> Gerenciador de Serviços</strong> que possui formulário completo com:
+          </Typography.Paragraph>
+          <ul style={{ textAlign: 'left', display: 'inline-block' }}>
+            <li>Seleção de servidor Prometheus</li>
+            <li>Seleção de tipo de monitoramento</li>
+            <li>Campos dinâmicos baseados no form_schema</li>
+            <li>Auto-cadastro de novos valores de metadata</li>
+            <li>Validação completa de campos</li>
+          </ul>
+        </div>
+        {currentRecord && formMode === 'edit' && (
+          <>
+            <Divider>Dados Atuais</Divider>
+            <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11, maxHeight: 200, overflow: 'auto' }}>
+              {JSON.stringify(currentRecord.Meta, null, 2)}
+            </pre>
+          </>
         )}
       </Modal>
     </PageContainer>
