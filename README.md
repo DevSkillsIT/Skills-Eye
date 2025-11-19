@@ -368,50 +368,61 @@ http://localhost:5000/docs
 
 ## 📚 Documentação
 
-### Guias de Uso
-- **[Quick Start](docs/guides/quick-start.md)** - Início rápido
+**📖 [Índice Completo de Documentação](docs/DOCUMENTATION_INDEX.md)** - 224 documentos organizados em 14 categorias
+
+### Primeiros Passos
+- **[Quick Start](docs/guides/quick-start.md)** - Início rápido (5 minutos)
+- **[README Docs](docs/README.md)** - Índice de documentação organizado
+
+### Guias de Uso (14 documentos)
 - **[Prometheus Basic Auth](docs/guides/prometheus-basic-auth.md)** - Configurar autenticação
 - **[Restart Guide](docs/guides/restart-guide.md)** - Como reiniciar serviços
 - **[Reference Values](docs/guides/reference-values.md)** - Sistema de valores
 - **[External Labels](docs/guides/external-labels.md)** - Uso correto de labels
 - **[Migration Guide](docs/guides/migration.md)** - Migração de versões
 - **[Git Workflow](docs/guides/git-workflow.md)** - Boas práticas Git
+- **[Mais Guias](docs/guides/)** - Acesse a pasta completa
 
-### Arquitetura
-- **[Overview](docs/architecture/METADATA_FIELDS_ANALYSIS.md)** - Visão geral do sistema
-- **[Monitoring Types](docs/architecture/monitoring-types.md)** - Sistema de tipos
-- **[Multi-Site](docs/architecture/multi-site.md)** - Setup multi-servidor
-- **[Dynamic Fields](docs/architecture/dynamic-fields.md)** - Campos dinâmicos
-- **[Service ID Sanitization](docs/architecture/service-id-sanitization.md)** - Regras de IDs
-- **[Reload Logic](docs/architecture/reload-logic.md)** - Lógica de recarregamento
-- **[Prometheus Config Editor](docs/architecture/PROMETHEUS_CONFIG_PAGE_SUMMARY.md)** - Editor YAML
-- **[Server Detection](docs/architecture/SERVER_DETECTION_INTEGRATION.md)** - Detecção automática
+### Arquitetura Técnica (35 documentos)
+- **[Metadata Fields Analysis](docs/developer/architecture/METADATA_FIELDS_ANALYSIS.md)** - Visão geral do sistema de campos dinâmicos
+- **[Monitoring Types](docs/developer/architecture/monitoring-types.md)** - Sistema de tipos de monitoramento dinâmico
+- **[Multi-Site Architecture](docs/developer/architecture/multi-site.md)** - Setup com múltiplos servidores Prometheus
+- **[Dynamic Fields](docs/developer/architecture/dynamic-fields.md)** - Campos extraídos automaticamente
+- **[Service ID Sanitization](docs/developer/architecture/service-id-sanitization.md)** - Regras de sanitização
+- **[Reload Logic](docs/developer/architecture/reload-logic.md)** - Lógica de recarregamento inteligente
+- **[Prometheus Config Editor](docs/developer/architecture/PROMETHEUS_CONFIG_PAGE_SUMMARY.md)** - Editor YAML multi-servidor
+- **[Server Detection](docs/developer/architecture/SERVER_DETECTION_INTEGRATION.md)** - Detecção automática de servidores
+- **[Mais Análises](docs/developer/architecture/)** - 27 análises técnicas adicionais
 
-### API
-- **[Endpoints Reference](docs/api/endpoints-reference.md)** - Todos os 100+ endpoints
+### API Reference (100+ endpoints)
+- **[Endpoints Reference](docs/api/endpoints-reference.md)** - Documentação completa de todos endpoints
 
-### Planejamento
-- **[Refactoring Architecture](docs/planning/refactoring-architecture.md)** - Arquitetura futura
+### Performance & Otimizações (9 documentos)
+- **[Performance Analysis Complete](docs/performance/analysis-complete.md)** - Análise profunda P0/P1/P2
+- **[Context API Implementation](docs/performance/context-api-implementation.md)** - Implementação no frontend
+- **[Context API Checklist](docs/performance/context-api-checklist.md)** - Testes de validação
+- **[SSH Optimization](docs/ssh-optimization/ANALISE_SSH_COMPLETA.md)** - AsyncSSH vs Paramiko
+- **[Mais Reports](docs/performance/)** - Relatórios adicionais
+
+### Planejamento & Roadmap (16 documentos)
+- **[Refactoring Architecture](docs/planning/refactoring-architecture.md)** - Arquitetura futura (Clean Architecture)
 - **[Refactoring Plan](docs/planning/refactoring-plan.md)** - Roadmap detalhado
+- **[Mais Planos](docs/planning/)** - Sprints e planejamentos adicionais
 
-### Performance
-- **[Analysis Complete](docs/performance/analysis-complete.md)** - Análise de performance
-- **[Context API Implementation](docs/performance/context-api-implementation.md)** - Implementação Context API
-- **[Context API Checklist](docs/performance/context-api-checklist.md)** - Testes de performance
+### Pesquisa & Estudos
+- **[Prometheus Architecture Research](docs/research/prometheus-architecture-research.md)** - Pesquisa detalhada
 
-### Pesquisa
-- **[Prometheus Architecture Research](docs/research/prometheus-architecture-research.md)** - Pesquisa sobre arquitetura
+### Incidentes & Lições Aprendidas
+- **[Jobs Perdidos](docs/incidents/jobs-perdidos.md)** - Incidente resolvido e lições
 
-### Incidentes
-- **[Jobs Perdidos](docs/incidents/jobs-perdidos.md)** - Lições aprendidas
-
-### Histórico
-- **[Phase 1](docs/history/phase1-implementation.md)** - KV Namespace e Dual Storage
-- **[Phase 2](docs/history/phase2-implementation.md)** - Presets e Advanced Search
+### Histórico de Implementação (8 documentos)
+- **[Phase 1](docs/history/phase1-implementation.md)** - KV Namespace e Dual Storage Pattern
+- **[Phase 2](docs/history/phase2-implementation.md)** - Service Presets e Advanced Search
 - **[Phase 3](docs/history/phase3-implementation.md)** - Frontend Modernization
 - **[Prometheus Editor Phase 1](docs/history/prometheus-editor-phase1.md)** - Editor YAML inicial
-- **[Installer Improvements](docs/history/installer-improvements.md)** - Melhorias do installer
+- **[Installer Improvements](docs/history/installer-improvements.md)** - Melhorias do remote installer
 - **[Layout Standardization](docs/history/layout-standardization.md)** - Padronização de layout
+- **[Mais História](docs/history/)** - Session summaries e documentação adicional
 
 ---
 

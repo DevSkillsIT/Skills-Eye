@@ -1,24 +1,22 @@
 # Índice de Documentação - Skills Eye
 
-**Última Atualização:** 2025-11-12 (Reorganização Completa - Fase 2)
+**Última Atualização:** 2025-11-19 (Sincronização SPEC-DOCS-001)
 
-Este documento serve como índice para TODA a documentação do projeto, organizada por categoria.
+> **TOTAL DE ARQUIVOS:** 224 documentos .md organizados em 14 categorias principais
 
-**🆕 Mudanças nesta revisão (Fase 2):**
-- ✅ **ESTRUTURA PROFISSIONAL:** Pastas organizadas seguindo melhores práticas
-- ✅ **51+ arquivos reorganizados** da raiz para pastas apropriadas
-- ✅ **34 documentos obsoletos** movidos de `obsolete/` para `docs/obsolete/`
-- ✅ **ORGANIZATIONAL_GUIDE.md criado** - Guia definitivo de organização
-- ✅ Scripts movidos para `scripts/{deployment,migration,development,benchmarks}`
-- ✅ Logs movidos para `logs/` (gitignored)
-- ✅ Dados movidos para `data/{baselines,fixtures,temp}`
-- ✅ Screenshots movidos para `assets/screenshots/`
-- ✅ Docs separados: `docs/developer/` vs `docs/user/`
-- ✅ Correções isoladas em `docs/developer/corrections/`
-- ✅ Arquitetura em `docs/developer/architecture/`
-- ✅ README.md COMPLETAMENTE atualizado com navegação
-- ✅ .gitignore atualizado para nova estrutura
-- ✅ **RAIZ LIMPA:** Apenas 6 arquivos essenciais permanecem
+Este documento serve como índice completo para TODA a documentação do projeto, com navegação por perfil e categoria.
+
+**🆕 Status da Reorganização (SPEC-DOCS-001):**
+- ✅ **Reorganização Completa:** 3 commits com 147 arquivos movidos com sucesso
+- ✅ **Estrutura Profissional:** Pastas organizadas seguindo melhores práticas
+- ✅ **224 Documentos Catalogados:** Todos os arquivos contabilizados e categorizados
+- ✅ **Raiz Limpa:** Apenas 4 arquivos essenciais na raiz de docs/
+  - `README.md` - Índice principal
+  - `DOCUMENTATION_INDEX.md` - Este documento
+  - `CLAUDE.md` - Instruções para IA
+  - `CHANGELOG-DOCS.md` - Registro de mudanças
+- ✅ **Estrutura Validada:** developer/, guides/, features/, performance/ etc.
+- ✅ **Estatísticas Atualizadas:** Contagem real de documentos por categoria
 
 **📘 GUIA DE ORGANIZAÇÃO:**
 - ✨ **[ORGANIZATIONAL_GUIDE.md](../ORGANIZATIONAL_GUIDE.md)** - **DOCUMENTO PRINCIPAL**
@@ -36,45 +34,69 @@ Este documento serve como índice para TODA a documentação do projeto, organiz
 Skills-Eye/
 ├── backend/          # API FastAPI + Business Logic
 ├── frontend/         # React 19 + TypeScript
-├── docs/            # 📖 DOCUMENTAÇÃO ORGANIZADA
-│   ├── features/           # Funcionalidades principais (15 docs)
-│   ├── developer/          # Para desenvolvedores
-│   │   ├── corrections/    # Correções aplicadas (10 docs)
-│   │   ├── architecture/   # Análises técnicas (8 docs)
-│   │   └── troubleshooting/
-│   ├── guides/             # Guias de uso
-│   ├── planning/           # Roadmap e refatoração
-│   ├── performance/        # Análises de performance
-│   ├── obsolete/           # Documentos antigos
-│   └── user/               # Para usuários finais
+├── docs/            # 📖 DOCUMENTAÇÃO ORGANIZADA (224 documentos)
+│   ├── README.md                           # Índice principal
+│   ├── DOCUMENTATION_INDEX.md              # Este arquivo
+│   ├── CLAUDE.md                           # Instruções para IA
+│   ├── CHANGELOG-DOCS.md                   # Registro de mudanças
+│   ├── api/                                # 1 doc - Referência de endpoints
+│   ├── features/                           # 16 docs - Funcionalidades ativas
+│   ├── developer/                          # 51 docs - Para desenvolvedores
+│   │   ├── architecture/                   # 35 docs - Análises técnicas
+│   │   ├── corrections/                    # 16 docs - Correções aplicadas
+│   │   └── troubleshooting/                # (futuro)
+│   ├── guides/                             # 14 docs - Guias de uso
+│   ├── history/                            # 8 docs - Histórico de implementações
+│   ├── incidents/                          # 1 doc - Incidentes resolvidos
+│   ├── obsolete/                           # 50 docs - Documentos antigos
+│   ├── performance/                        # 9 docs - Análises de performance
+│   ├── planning/                           # 16 docs - Roadmap e planejamento
+│   ├── reports/                            # 34 docs - Relatórios diversos
+│   ├── research/                           # 3 docs - Pesquisas técnicas
+│   ├── ssh-optimization/                   # 1 doc - Otimizações SSH
+│   ├── tests/                              # 4 docs - Documentação de testes
+│   ├── user/                               # (futuro) - Para usuários finais
+│   └── Configuracoes-Exemplos-Prometheus/  # Exemplos de configurações
 ├── Tests/           # 🧪 34 TESTES ORGANIZADOS
-│   ├── naming/             # 3 testes nomenclatura
-│   ├── metadata/           # 12 testes campos dinâmicos
-│   ├── performance/        # 5 testes performance
-│   ├── integration/        # 14 testes integração
-│   └── README.md
 ├── scripts/         # 🔧 AUTOMAÇÃO (25+ scripts)
-│   ├── deployment/         # Deploy e restart (15 scripts)
-│   ├── migration/          # Migrações (5 scripts)
-│   ├── development/        # Análise e debug (7 scripts)
-│   └── benchmarks/         # Performance tests (3 scripts)
 ├── data/            # 📊 DADOS DE TESTE
-│   ├── baselines/          # Baselines JSON (3 arquivos)
-│   ├── fixtures/           # Fixtures de teste (4 arquivos)
-│   └── temp/               # Temporários (gitignored)
 ├── logs/            # 📝 LOGS (gitignored)
 ├── assets/          # 🖼️ SCREENSHOTS E ASSETS
-│   └── screenshots/        # Capturas de tela (2 imagens)
 └── tools/           # 🛠️ FERRAMENTAS AUXILIARES
 
-RAIZ (apenas essenciais):
-├── README.md               # Documentação principal
-├── CLAUDE.md               # Instruções para IA
-├── COMANDOS_RAPIDOS.md     # Quick reference
+RAIZ (apenas essenciais - 4 arquivos):
+├── README.md               # Documentação principal do projeto
+├── CLAUDE.md               # Instruções para IA (Claude Code)
 ├── DOCUMENTATION_INDEX.md  # Este arquivo
-├── .gitignore              # Git ignore rules
-└── _ul                     # Arquivo de controle
+└── (em breve: ORGANIZATIONAL_GUIDE.md movido para cá)
 ```
+
+---
+
+---
+
+## 📊 ESTATÍSTICAS DE DOCUMENTAÇÃO (ATUALIZADO 2025-11-19)
+
+| Categoria | Documentos | Status | Observações |
+|-----------|----------|--------|------------|
+| **api/** | 1 | ✅ Completo | Endpoints reference - 100+ endpoints documentados |
+| **features/** | 16 | ✅ Ativo | Funcionalidades principais do projeto |
+| **developer/architecture/** | 35 | ✅ Extenso | Análises técnicas profundas |
+| **developer/corrections/** | 16 | ✅ Manutenção | Correções aplicadas ao longo do tempo |
+| **guides/** | 14 | ✅ Prático | Tutoriais e how-to guides |
+| **history/** | 8 | ✅ Histórico | Fases de implementação (P1-P3) |
+| **incidents/** | 1 | ✅ Referência | Lições aprendidas de incidentes |
+| **obsolete/** | 50 | ⚠️ Legado | Mantidos para referência histórica |
+| **performance/** | 9 | ✅ Crítico | Análises, relatórios, checklist P0-P2 |
+| **planning/** | 16 | ✅ Roadmap | Refatoração, sprints, futuro |
+| **reports/** | 34 | 📋 Diversos | Relatórios de sprints, validações, análises |
+| **research/** | 3 | 🔬 Pesquisa | Estudos técnicos (Prometheus, etc.) |
+| **ssh-optimization/** | 1 | ⚡ Performance | Otimizações de SSH (AsyncSSH vs Paramiko) |
+| **tests/** | 4 | 🧪 Testes | Documentação de testes (logs, outputs) |
+| **user/** | - | 🔜 Futuro | Documentação para usuários finais (em breve) |
+| **Raiz de docs/** | 4 | ✅ Limpo | README, INDEX, CLAUDE, CHANGELOG |
+| **Configuracoes-Exemplos/** | - | 📚 Referência | Exemplos de configs Prometheus/Blackbox |
+| **TOTAL** | **224** | ✅ **SINCRONIZADO** | Reorganização SPEC-DOCS-001 completa |
 
 ---
 
@@ -82,25 +104,28 @@ RAIZ (apenas essenciais):
 
 ### 👤 Usuário Final
 - 📖 [README Principal](../README.md) - Início rápido e funcionalidades
-- 📖 [Quick Start](docs/guides/quick-start.md) - Primeiros passos
-- 📖 [Guias de Uso](docs/guides/) - Tutoriais passo a passo
+- 📖 [Quick Start](guides/quick-start.md) - Primeiros passos
+- 📖 [Guias de Uso](guides/) - Tutoriais passo a passo (14 guias)
 
 ### 👨‍💻 Desenvolvedor
-- 🔧 [Arquitetura](docs/developer/architecture/) - Design técnico
-- 🔧 [Correções Aplicadas](docs/developer/corrections/) - Histórico de fixes
-- 🔧 [Testes](Tests/README.md) - 34 testes documentados
-- 🔧 [Scripts](scripts/) - Automação e deploy
-- 🔧 [Roadmap](docs/planning/) - Futuro do projeto
+- 🔧 [Arquitetura](developer/architecture/) - Design técnico (35 análises)
+- 🔧 [Correções Aplicadas](developer/corrections/) - Histórico de fixes (16 docs)
+- 🔧 [Testes](../Tests/README.md) - 34 testes documentados
+- 🔧 [Scripts](../scripts/) - Automação e deploy
+- 🔧 [Roadmap](planning/) - Futuro do projeto (16 docs)
+- 🔧 [Performance](performance/) - Relatórios P0/P1/P2 (9 docs)
 
 ### 🔍 QA / Tester
-- 🧪 [Tests/README.md](Tests/README.md) - Guia completo de testes
-- 📊 [data/baselines/](data/baselines/) - Dados de baseline
-- 📊 [data/fixtures/](data/fixtures/) - Fixtures de teste
+- 🧪 [Tests/README.md](../Tests/README.md) - Guia completo de testes
+- 📊 [data/baselines/](../data/baselines/) - Dados de baseline
+- 📊 [data/fixtures/](../data/fixtures/) - Fixtures de teste
+- 📋 [Reports](reports/) - Relatórios de validação (34 docs)
 
 ### 🚀 DevOps
-- 🔧 [scripts/deployment/](scripts/deployment/) - Scripts de deploy
-- 🔧 [scripts/migration/](scripts/migration/) - Scripts de migração
-- 📝 [logs/](logs/) - Arquivos de log
+- 🔧 [scripts/deployment/](../scripts/deployment/) - Scripts de deploy
+- 🔧 [scripts/migration/](../scripts/migration/) - Scripts de migração
+- ⚡ [SSH Optimization](ssh-optimization/) - Otimizações de performance
+- 📝 [logs/](../logs/) - Arquivos de log
 
 ---
 
