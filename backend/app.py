@@ -402,7 +402,9 @@ async def _prewarm_monitoring_types_cache():
 
         # PASSO 4.5: ✅ CRIAR BACKUP antes de salvar (preservar form_schemas customizados)
         logger.info("[PRE-WARM MONITORING-TYPES] Criando backup antes de salvar...")
-        backup_success = await backup_manager.create_backup({'data': kv_value})
+        # 🐛 BUGFIX: Passar kv_value DIRETAMENTE (sem envolver em {'data': ...})
+        # O backup espera estrutura direta com total_types, total_servers, all_types
+        backup_success = await backup_manager.create_backup(kv_value)
         if backup_success:
             logger.info("[PRE-WARM MONITORING-TYPES] ✅ Backup criado com sucesso")
         else:
