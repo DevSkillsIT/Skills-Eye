@@ -409,9 +409,11 @@ async def _prewarm_monitoring_types_cache():
             logger.warning("[PRE-WARM MONITORING-TYPES] ⚠️ Falha ao criar backup (continuando salvamento)")
 
         # PASSO 5: Salvar no KV
+        # 🐛 BUGFIX: NÃO envolver em {'data': ...} porque KVManager já retorna essa estrutura
+        #            ao ler. O kv_value já é o conteúdo completo para salvar.
         await kv_manager.put_json(
             key='skills/eye/monitoring-types',
-            value={'data': kv_value},  # ✅ Estrutura correta: {data: {...}}
+            value=kv_value,  # ✅ CORRETO: Apenas kv_value, sem wrapper adicional
             metadata={'auto_updated': True, 'source': 'prewarm_startup'}
         )
         
