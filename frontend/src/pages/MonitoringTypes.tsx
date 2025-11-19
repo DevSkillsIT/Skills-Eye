@@ -28,6 +28,9 @@ import {
   Radio,
   Dropdown,
   Tooltip,
+  Modal,
+  Input,
+  message,
   type MenuProps,
 } from 'antd';
 import {
@@ -42,8 +45,11 @@ import {
   ColumnHeightOutlined,
   SettingOutlined,
   SyncOutlined,
+  CodeOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
+import { consulAPI } from '../services/api';
 import { ServerSelector, type Server } from '../components/ServerSelector';
 import ColumnSelector, { type ColumnConfig } from '../components/ColumnSelector';
 import { useServersContext } from '../contexts/ServersContext';
@@ -51,6 +57,26 @@ import ExtractionProgressModal, { type ServerStatus } from '../components/Extrac
 
 const API_URL = import.meta.env?.VITE_API_URL ?? 'http://localhost:5000/api/v1';
 const { Title, Text, Paragraph } = Typography;
+
+interface FormSchemaField {
+  name: string;
+  label?: string;
+  type: string;
+  required?: boolean;
+  default?: any;
+  placeholder?: string;
+  help?: string;
+  validation?: any;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+}
+
+interface FormSchema {
+  fields?: FormSchemaField[];
+  required_metadata?: string[];
+  optional_metadata?: string[];
+}
 
 interface MonitoringType {
   id: string;
@@ -63,6 +89,7 @@ interface MonitoringType {
   metrics_path: string;
   server?: string;
   servers?: string[];
+  form_schema?: FormSchema; // ✅ NOVO: Form schema do tipo
 }
 
 interface CategoryData {
@@ -120,7 +147,14 @@ export default function MonitoringTypes() {
     { key: 'module', title: 'Módulo', visible: true, width: 120 },
     { key: 'fields', title: 'Campos Metadata', visible: true, width: 300 },
     { key: 'servers', title: 'Servidores', visible: true, width: 200 },
+    { key: 'actions', title: 'Ações', visible: true, width: 200 },
   ]);
+
+  // ✅ NOVO: Estados para modais de ações
+  const [jsonModalVisible, setJsonModalVisible] = useState(false);
+  const [formSchemaModalVisible, setFormSchemaModalVisible] = useState(false);
+  const [selectedType, setSelectedType] = useState<MonitoringType | null>(null);
+  const [formSchemaJson, setFormSchemaJson] = useState('');
 
   // ✅ OTIMIZAÇÃO: Usar ServersContext - não precisa mais fazer request próprio
   // Setar servidor master quando servidores carregarem do Context
@@ -241,6 +275,43 @@ export default function MonitoringTypes() {
     setTimeout(() => setServerJustChanged(false), 2000);
   };
 
+  // ✅ NOVO: Handler para ver JSON do tipo
+  const handleViewJSON = (type: MonitoringType) => {
+    setSelectedType(type);
+    setJsonModalVisible(true);
+  };
+
+  // ✅ NOVO: Handler para editar form_schema
+  const handleEditFormSchema = (type: MonitoringType) => {
+    setSelectedType(type);
+    const schemaJson = type.form_schema
+      ? JSON.stringify(type.form_schema, null, 2)
+      : JSON.stringify({ fields: [], required_metadata: [], optional_metadata: [] }, null, 2);
+    setFormSchemaJson(schemaJson);
+    setFormSchemaModalVisible(true);
+  };
+
+  // ✅ NOVO: Handler para salvar form_schema
+  const handleSaveFormSchema = async () => {
+    if (!selectedType) return;
+
+    try {
+      const formSchema = JSON.parse(formSchemaJson);
+      await consulAPI.updateTypeFormSchema(selectedType.id, formSchema);
+      message.success(`Form schema salvo para tipo '${selectedType.display_name}'!`);
+      setFormSchemaModalVisible(false);
+
+      // Recarregar tipos
+      await handleReload();
+    } catch (e: any) {
+      if (e instanceof SyntaxError) {
+        message.error('JSON inválido! Corrija os erros de sintaxe.');
+      } else {
+        message.error('Erro ao salvar: ' + (e.message || e));
+      }
+    }
+  };
+
   const serverList = Object.keys(serverData);
   const successServers = serverList.filter(s => !serverData[s].error);
   const failedServers = serverList.filter(s => serverData[s].error);
@@ -345,6 +416,36 @@ export default function MonitoringTypes() {
           </Space>
         );
       },
+    },
+    {
+      key: 'actions',
+      title: 'Ações',
+      width: 200,
+      fixed: 'right' as 'right',
+      render: (_: any, record: MonitoringType) => (
+        <Space size="small">
+          <Tooltip title="Ver JSON do Job">
+            <Button
+              type="link"
+              size="small"
+              icon={<CodeOutlined />}
+              onClick={() => handleViewJSON(record)}
+            >
+              JSON
+            </Button>
+          </Tooltip>
+          <Tooltip title="Editar Form Schema">
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEditFormSchema(record)}
+            >
+              Schema
+            </Button>
+          </Tooltip>
+        </Space>
+      ),
     },
   ];
 
@@ -712,6 +813,95 @@ export default function MonitoringTypes() {
         totalFields={extractionData.totalTypes}
         error={extractionData.error}
       />
+
+      {/* ✅ NOVO: Modal para ver JSON do Job */}
+      <Modal
+        title={`JSON do Tipo: ${selectedType?.display_name}`}
+        open={jsonModalVisible}
+        onCancel={() => setJsonModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setJsonModalVisible(false)}>
+            Fechar
+          </Button>,
+        ]}
+        width={700}
+      >
+        {selectedType && (
+          <div>
+            <Alert
+              message="Definição completa do tipo de monitoramento"
+              description="Este JSON representa como o tipo está configurado no KV."
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Input.TextArea
+              value={JSON.stringify(selectedType, null, 2)}
+              readOnly
+              rows={20}
+              style={{ fontFamily: 'monospace', fontSize: '12px' }}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* ✅ NOVO: Modal para editar Form Schema */}
+      <Modal
+        title={`Editar Form Schema: ${selectedType?.display_name}`}
+        open={formSchemaModalVisible}
+        onCancel={() => setFormSchemaModalVisible(false)}
+        onOk={handleSaveFormSchema}
+        width={800}
+        okText="Salvar"
+        cancelText="Cancelar"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Alert
+            message="Edite o schema do formulário em formato JSON"
+            description="Este schema define quais campos aparecerão ao criar um serviço deste tipo."
+            type="info"
+            showIcon
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <Text strong>Form Schema (JSON):</Text>
+          <Input.TextArea
+            value={formSchemaJson}
+            onChange={(e) => setFormSchemaJson(e.target.value)}
+            rows={15}
+            style={{
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              marginTop: 8
+            }}
+            placeholder={`{
+  "fields": [
+    {
+      "name": "target",
+      "label": "Alvo",
+      "type": "text",
+      "required": true,
+      "placeholder": "192.168.1.1"
+    }
+  ],
+  "required_metadata": ["target"],
+  "optional_metadata": []
+}`}
+          />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            💡 <strong>Dica:</strong> Use formato JSON válido. Campos disponíveis:
+            <ul style={{ marginTop: 8, marginBottom: 0 }}>
+              <li><code>fields</code>: Array de campos do formulário</li>
+              <li><code>required_metadata</code>: Campos metadata obrigatórios</li>
+              <li><code>optional_metadata</code>: Campos metadata opcionais</li>
+            </ul>
+          </Text>
+        </div>
+      </Modal>
     </PageContainer>
   );
 }
