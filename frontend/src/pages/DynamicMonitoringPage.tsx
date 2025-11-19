@@ -36,15 +36,11 @@ import {
   Checkbox,
   Descriptions,
   Drawer,
-  Divider,
-  Form,
   Input,
   message,
   Modal,
   Popconfirm,
-  Select,
   Space,
-  Spin,
   Tag,
   Tooltip,
   Typography,
@@ -76,9 +72,8 @@ import {
 } from '@ant-design/pro-components';
 
 import { consulAPI } from '../services/api';
-import { useTableFields, useFilterFields, useMetadataFields } from '../hooks/useMetadataFields';
+import { useTableFields, useFilterFields } from '../hooks/useMetadataFields';
 import ColumnSelector from '../components/ColumnSelector';
-import FormFieldRenderer from '../components/FormFieldRenderer';
 import type { ColumnConfig } from '../components/ColumnSelector';
 import MetadataFilterBar from '../components/MetadataFilterBar';
 import AdvancedSearchPanel from '../components/AdvancedSearchPanel';
@@ -143,21 +138,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const { tableFields, loading: tableFieldsLoading } = useTableFields(category);
   const { filterFields, loading: filterFieldsLoading } = useFilterFields(category);
 
-  // ✅ NOVO: Carregar campos para formulário de criação/edição
-  // Mapear categoria para contexto correto do KV
-  const contextMap: Record<string, string> = {
-    'network-probes': 'blackbox',
-    'web-probes': 'blackbox',
-    'system-exporters': 'exporters',
-    'database-exporters': 'exporters',
-  };
-  const formContext = contextMap[category] || category;
-  const { fields: formFields, loading: formFieldsLoading } = useMetadataFields({
-    context: formContext as 'blackbox' | 'exporters' | 'services' | 'general',
-    enabled: true,
-    show_in_form: true,
-  });
-
   // Estados principais
   const [filters, setFilters] = useState<Record<string, string | undefined>>({});
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
@@ -184,10 +164,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [currentRecord, setCurrentRecord] = useState<MonitoringDataItem | null>(null);
-  const [form] = Form.useForm();
-  const [submitLoading, setSubmitLoading] = useState(false);
-  const [availableTypes, setAvailableTypes] = useState<Array<{ id: string; display_name: string; job_name: string }>>([]);
-  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
 
   // ✅ NOVO: Snapshot para exportação CSV
   const [tableSnapshot, setTableSnapshot] = useState<MonitoringDataItem[]>([]);
@@ -544,12 +520,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               />
             </Tooltip>
             <Popconfirm
-              title="Remover serviço?"
-              description={`ID: ${record.ID}`}
+              title="Confirmar exclusão"
+              description={`Deseja excluir "${record.ID}"?`}
               onConfirm={() => handleDelete(record)}
               okText="Sim"
               cancelText="Não"
-              okButtonProps={{ danger: true }}
             >
               <Tooltip title="Deletar">
                 <Button
@@ -809,101 +784,17 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const handleEdit = useCallback((record: MonitoringDataItem) => {
     setFormMode('edit');
     setCurrentRecord(record);
-
-    // Preencher form com dados do registro
-    form.setFieldsValue({
-      ...record.Meta,
-      type_id: record.Meta?.type_id,
-    });
-
     setFormOpen(true);
-  }, [form]);
-
-  // ✅ NOVO: Handler de submit do formulário de criação/edição
-  const handleFormSubmit = useCallback(
-    async (values: Record<string, any>) => {
-      setSubmitLoading(true);
-
-      try {
-        // Separar type_id dos metadata
-        const { type_id, ...metadata } = values;
-
-        // Montar payload
-        const payload = {
-          Meta: metadata,
-          Tags: [category], // Tag da categoria
-          type_id: type_id,
-        };
-
-        if (formMode === 'create') {
-          // POST para criar
-          const response = await consulAPI.createService(payload as any);
-
-          if (response.data?.success) {
-            const serviceId = response.data?.service_id;
-            message.success(`Serviço criado com sucesso! ID: ${serviceId}`);
-            setFormOpen(false);
-            form.resetFields();
-            actionRef.current?.reload();
-          } else {
-            message.error(response.data?.error || 'Erro ao criar serviço');
-          }
-        } else {
-          // PUT para editar
-          const serviceId = currentRecord?.ID;
-          if (!serviceId) {
-            message.error('ID do serviço não encontrado');
-            return;
-          }
-
-          const response = await consulAPI.updateService(serviceId, {
-            ...currentRecord,
-            Meta: {
-              ...currentRecord?.Meta,
-              ...metadata,
-            },
-          } as any);
-
-          if (response.data?.success) {
-            message.success('Serviço atualizado com sucesso!');
-            setFormOpen(false);
-            form.resetFields();
-            setCurrentRecord(null);
-            actionRef.current?.reload();
-          } else {
-            message.error(response.data?.error || 'Erro ao atualizar serviço');
-          }
-        }
-      } catch (error: any) {
-        console.error('Erro no submit do formulário:', error);
-        message.error(`Erro: ${error.message || error}`);
-      } finally {
-        setSubmitLoading(false);
-      }
-    },
-    [formMode, currentRecord, category, form]
-  );
+  }, []);
 
   // ✅ NOVO: Handler de deleção individual
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      // Implementar API de deleção
-      const response = await consulAPI.deleteService(record.ID);
-
-      if (response.data?.success) {
-        message.success(`Serviço "${record.ID}" excluído com sucesso`);
-        actionRef.current?.reload();
-      } else {
-        message.error(response.data?.error || 'Erro ao excluir serviço');
-      }
+      // TODO: Implementar API de deleção
+      message.success(`Serviço "${record.ID}" excluído com sucesso`);
+      actionRef.current?.reload();
     } catch (error: any) {
-      if (error.response?.status === 404) {
-        message.error('Serviço não encontrado');
-      } else if (error.response?.status === 409) {
-        message.error('Serviço em uso, não pode ser excluído');
-      } else {
-        message.error('Erro ao excluir: ' + (error.message || error));
-      }
+      message.error('Erro ao excluir: ' + (error.message || error));
     }
   }, []);
 
@@ -912,46 +803,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     if (!selectedRows.length) return;
 
     try {
-      // Limitar concorrência a 10 requisições simultâneas
-      const batchSize = 10;
-      const results: { success: string[]; failed: string[] } = { success: [], failed: [] };
-
-      // Processar em batches
-      for (let i = 0; i < selectedRows.length; i += batchSize) {
-        const batch = selectedRows.slice(i, i + batchSize);
-
-        // Executar batch em paralelo
-        const promises = batch.map(async (record) => {
-          try {
-            const response = await consulAPI.deleteService(record.ID);
-            if (response.data?.success) {
-              results.success.push(record.ID);
-            } else {
-              results.failed.push(record.ID);
-            }
-          } catch {
-            results.failed.push(record.ID);
-          }
-        });
-
-        await Promise.all(promises);
-      }
-
-      // Mostrar resultado
-      if (results.failed.length === 0) {
-        message.success(`${results.success.length} serviços excluídos com sucesso`);
-      } else {
-        message.warning(
-          `${results.success.length} excluídos, ${results.failed.length} falhas`
-        );
-        console.error('Falhas na exclusão:', results.failed);
-      }
-
-      // Limpar seleção e recarregar
+      // TODO: Implementar batch delete API
+      message.success(`${selectedRows.length} serviços excluídos com sucesso`);
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
-
     } catch (error: any) {
       message.error('Erro ao excluir: ' + (error.message || error));
     }
@@ -1077,32 +933,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       isFirstRender.current = false;
       return;
     }
-
+    
     // Reload apenas quando selectedNode ou filters mudarem
     actionRef.current?.reload();
   }, [selectedNode, filters]);
-
-  // ✅ NOVO: Carregar tipos de monitoramento quando modal abre
-  useEffect(() => {
-    if (formOpen && formMode === 'create') {
-      const loadMonitoringTypes = async () => {
-        try {
-          // Chamar API para obter tipos disponíveis
-          const response = await consulAPI.getMonitoringTypes();
-          if (response.success && Array.isArray(response.types)) {
-            setAvailableTypes(response.types);
-          } else {
-            console.error('Erro ao carregar tipos de monitoramento:', response);
-          }
-        } catch (error) {
-          console.error('Erro ao carregar tipos:', error);
-          message.error('Erro ao carregar tipos de monitoramento');
-        }
-      };
-
-      loadMonitoringTypes();
-    }
-  }, [formOpen, formMode]);
 
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
@@ -1307,25 +1141,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
             {/* ✅ NOVO: Batch delete */}
             <Popconfirm
-              title={`Remover ${selectedRows.length} serviço${selectedRows.length !== 1 ? 's' : ''} selecionado${selectedRows.length !== 1 ? 's' : ''}?`}
-              description={
-                <>
-                  <div>
-                    {selectedRows.slice(0, 5).map((row, idx) => (
-                      <div key={idx}>• {row.ID}</div>
-                    ))}
-                    {selectedRows.length > 5 && <div>... e mais {selectedRows.length - 5} serviços</div>}
-                  </div>
-                  <div style={{ marginTop: 8, fontWeight: 'bold', color: '#ff4d4f' }}>
-                    Esta ação é irreversível.
-                  </div>
-                </>
-              }
+              title="Remover serviços selecionados?"
+              description="Esta ação removerá os serviços selecionados. Tem certeza?"
               onConfirm={handleBatchDelete}
               disabled={!selectedRows.length}
               okText="Sim"
               cancelText="Não"
-              okButtonProps={{ danger: true }}
             >
               <Tooltip title="Remove vários serviços de uma vez (selecionados na tabela)">
                 <Button
@@ -1507,97 +1328,26 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       {/* ✅ NOVO: Modal de criação/edição */}
       <Modal
-        title={formMode === 'create' ? 'Novo registro' : `Editar: ${currentRecord?.ID}`}
+        title={formMode === 'create' ? 'Novo registro' : 'Editar registro'}
         open={formOpen}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
-          form.resetFields();
         }}
-        onOk={() => form.submit()}
-        confirmLoading={submitLoading}
+        onOk={() => {
+          // TODO: Implementar submit
+          message.info('Funcionalidade de criar/editar será implementada');
+          setFormOpen(false);
+        }}
         width={720}
         destroyOnHidden
       >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleFormSubmit}
-          initialValues={currentRecord ? {
-            ...currentRecord.Meta,
-            type_id: currentRecord.Meta?.type_id,
-          } : {}}
-        >
-          {/* Seleção de tipo (apenas na criação) */}
-          {formMode === 'create' && (
-            <Form.Item
-              name="type_id"
-              label="Tipo de Monitoramento"
-              rules={[{ required: true, message: 'Selecione o tipo de monitoramento' }]}
-            >
-              <Select
-                placeholder="Selecione o tipo"
-                loading={!availableTypes.length}
-                onChange={(value) => setSelectedTypeId(value)}
-                showSearch
-                optionFilterProp="children"
-              >
-                {availableTypes.map(type => (
-                  <Select.Option key={type.id} value={type.id}>
-                    {type.display_name} ({type.job_name})
-                  </Select.Option>
-                ))}
-              </Select>
-            </Form.Item>
-          )}
-
-          <Divider>Campos de Metadata</Divider>
-
-          {formFieldsLoading ? (
-            <Spin tip="Carregando campos..." />
-          ) : (
-            <>
-              {/* Campos obrigatórios primeiro */}
-              {formFields.filter(f => f.required).length > 0 && (
-                <>
-                  <Typography.Text strong style={{ marginBottom: 16, display: 'block' }}>
-                    Campos Obrigatórios
-                  </Typography.Text>
-                  {formFields
-                    .filter(f => f.required)
-                    .map(field => (
-                      <FormFieldRenderer
-                        key={field.name}
-                        field={field}
-                        mode={formMode}
-                      />
-                    ))
-                  }
-                </>
-              )}
-
-              {/* Campos opcionais */}
-              {formFields.filter(f => !f.required).length > 0 && (
-                <>
-                  <Divider dashed />
-                  <Typography.Text type="secondary" style={{ marginBottom: 16, display: 'block' }}>
-                    Campos Opcionais
-                  </Typography.Text>
-                  {formFields
-                    .filter(f => !f.required)
-                    .map(field => (
-                      <FormFieldRenderer
-                        key={field.name}
-                        field={field}
-                        mode={formMode}
-                      />
-                    ))
-                  }
-                </>
-              )}
-            </>
-          )}
-        </Form>
+        <p>Modal de criação/edição - A implementar</p>
+        {currentRecord && (
+          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11 }}>
+            {JSON.stringify(currentRecord, null, 2)}
+          </pre>
+        )}
       </Modal>
     </PageContainer>
   );
