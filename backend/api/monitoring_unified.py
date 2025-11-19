@@ -262,13 +262,24 @@ async def get_monitoring_data(
             # ==================================================================
             all_services_dict = await consul_manager.get_all_services_catalog(use_fallback=True)
 
+            # ✅ CORREÇÃO: Verificar se retornou dict válido (não string)
+            if not isinstance(all_services_dict, dict):
+                logger.error(f"[MONITORING DATA] get_all_services_catalog retornou tipo inválido: {type(all_services_dict)}")
+                raise HTTPException(status_code=500, detail="Erro ao buscar serviços do Consul: resposta inválida")
+
             # Remover _metadata se existir (não usado aqui)
             all_services_dict.pop("_metadata", None)
 
             # Converter estrutura aninhada para lista plana
             all_services = []
             for node_name, services_dict in all_services_dict.items():
+                if not isinstance(services_dict, dict):
+                    logger.warning(f"[MONITORING DATA] Serviços do nó {node_name} não é dict: {type(services_dict)}")
+                    continue
                 for service_id, service_data in services_dict.items():
+                    if not isinstance(service_data, dict):
+                        logger.warning(f"[MONITORING DATA] Serviço {service_id} não é dict: {type(service_data)}")
+                        continue
                     service_data['Node'] = node_name
                     service_data['ID'] = service_id
                     all_services.append(service_data)

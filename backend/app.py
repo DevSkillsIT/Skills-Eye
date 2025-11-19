@@ -312,12 +312,7 @@ async def _prewarm_monitoring_types_cache():
         # PASSO 3: Extrair tipos de TODOS os servidores
         result = await _extract_types_from_all_servers(server=None)
         
-        # PASSO 4: Enriquecer servidores com dados de sites do KV
-        from api.monitoring_types_dynamic import _enrich_servers_with_sites_data
-        logger.info("[PRE-WARM MONITORING-TYPES] Enriquecendo servidores com dados de sites...")
-        enriched_servers = await _enrich_servers_with_sites_data(result['servers'])
-        
-        # PASSO 5: Salvar no KV (sempre sobrescreve - não precisa verificar existência)
+        # PASSO 4: Salvar no KV (sempre sobrescreve - não precisa verificar existência)
         # ⚠️ CRÍTICO: Remover 'fields' de todos os tipos antes de salvar
         # 'fields' são apenas para display e não devem ser salvos no KV
         # A fonte de verdade para campos metadata é metadata-fields KV
@@ -326,9 +321,9 @@ async def _prewarm_monitoring_types_cache():
             type_def_clean = {k: v for k, v in type_def.items() if k != 'fields'}
             all_types_without_fields.append(type_def_clean)
         
-        # Limpar 'fields' também dos tipos dentro de 'servers' (já enriquecidos)
+        # Limpar 'fields' também dos tipos dentro de 'servers'
         servers_clean = {}
-        for server_host, server_data in enriched_servers.items():
+        for server_host, server_data in result['servers'].items():
             if 'types' in server_data:
                 servers_clean[server_host] = {
                     **server_data,

@@ -38,7 +38,6 @@ import {
   Drawer,
   Input,
   message,
-  Modal,
   Popconfirm,
   Space,
   Tag,
@@ -81,6 +80,7 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
+import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 2: Modal dinâmico de CRUD
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -938,9 +938,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
       const service_id = record.ID;
-      const node_addr = record.node_ip || record.Address;
+      const node_addr = record.node_ip || record.Node;
       
-      await consulAPI.deleteService(service_id, node_addr);
+      await consulAPI.deleteService(service_id, node_addr ? { node_addr } : undefined);
       
       message.success(`Serviço "${service_id}" excluído com sucesso`);
       actionRef.current?.reload();
@@ -1238,9 +1238,6 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // ✅ CORREÇÃO: Limpar filtros internos do ProTable primeiro
-                  actionRef.current?.clearFilters?.();
-                  
                   // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
@@ -1511,47 +1508,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ IMPLEMENTADO: Modal de criação/edição */}
-      <Modal
-        title={formMode === 'create' ? 'Novo Serviço de Monitoramento' : 'Editar Serviço'}
-        open={formOpen}
+      {/* ✅ SPRINT 2: Modal dinâmico de criação/edição */}
+      <DynamicCRUDModal
+        mode={formMode}
+        category={category}
+        service={currentRecord}
+        visible={formOpen}
+        onSuccess={() => {
+          setFormOpen(false);
+          setCurrentRecord(null);
+          actionRef.current?.reload();
+        }}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-        footer={null}
-        width={720}
-        destroyOnClose
-      >
-        <div style={{ marginBottom: 16, padding: 12, background: '#f0f2f5', borderRadius: 4 }}>
-          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
-            <strong>ℹ️ Nota:</strong> Esta é uma versão simplificada do formulário. 
-            Para edição completa com form_schema dinâmico, será implementado no próximo sprint.
-          </p>
-        </div>
-        
-        {currentRecord && (
-          <div>
-            <p><strong>ID:</strong> {currentRecord.ID}</p>
-            <p><strong>Serviço:</strong> {currentRecord.Service}</p>
-            <p><strong>Node:</strong> {currentRecord.Node}</p>
-            <p style={{ fontSize: 12, color: '#999', marginTop: 16 }}>
-              Para editar este serviço, use a API direta ou aguarde implementação completa do formulário dinâmico.
-            </p>
-          </div>
-        )}
-        
-        {formMode === 'create' && (
-          <div>
-            <p style={{ color: '#999' }}>
-              Funcionalidade de criação com form_schema dinâmico será implementada no próximo sprint.
-            </p>
-            <p style={{ fontSize: 12 }}>
-              Por enquanto, use a página antiga Services.tsx ou a API direta para criar novos serviços.
-            </p>
-          </div>
-        )}
-      </Modal>
+      />
     </PageContainer>
   );
 };

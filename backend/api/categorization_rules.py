@@ -462,9 +462,12 @@ async def get_form_schema(
     category: Optional[str] = Query(None, description="Categoria (opcional, para filtro)")
 ):
     """
-    Retorna schema de formulário para um exporter_type específico
-    
-    SPRINT 1: Endpoint para obter form_schema das regras de categorização
+    ⚠️ DEPRECATED: Este endpoint usa o método antigo de categorization/rules
+
+    ✅ NOVO MÉTODO: Use form_schema diretamente dos tipos em /monitoring-types-dynamic/
+    O form_schema agora está armazenado em skills/eye/monitoring-types (fonte única).
+
+    SPRINT 1: Endpoint para obter form_schema das regras de categorização (LEGADO)
     
     Busca em:
     1. categorization/rules (form_schema da regra correspondente)

@@ -3,10 +3,12 @@ API endpoints para gerenciamento de serviços
 Conecta ao servidor Consul real e retorna dados de serviços com metadados completos
 """
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from core.consul_manager import ConsulManager
 from core.config import Config
 from core.naming_utils import apply_site_suffix, extract_site_from_metadata
+from core.consul_kv_config_manager import ConsulKVConfigManager
+from core.cache_manager import LocalCache
 from .models import (
     ServiceCreateRequest,
     ServiceUpdateRequest,
@@ -18,6 +20,191 @@ import logging
 
 router = APIRouter(tags=["Services"])
 logger = logging.getLogger(__name__)
+
+# Singleton do cache local (SPRINT 2)
+_catalog_cache = LocalCache(default_ttl_seconds=60)
+
+
+# ============================================================================
+# FUNÇÕES AUXILIARES DE VALIDAÇÃO (SPRINT 2)
+# ============================================================================
+
+async def validate_monitoring_type(service_name: str, exporter_type: Optional[str] = None, category: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Valida se o tipo de monitoramento existe no monitoring-types
+    
+    SPRINT 2: Validação crítica - verifica se tipo existe antes de criar serviço
+    
+    Args:
+        service_name: Nome do serviço (job_name)
+        exporter_type: Tipo do exporter (opcional, para validação mais específica)
+        category: Categoria (opcional, para validação mais específica)
+    
+    Returns:
+        Dict com informações do tipo encontrado
+    
+    Raises:
+        HTTPException: Se tipo não encontrado
+    """
+    try:
+        from core.kv_manager import KVManager
+        kv_manager = KVManager()
+        
+        # Buscar tipos do KV cache
+        types_data = await kv_manager.get_json('skills/eye/monitoring-types')
+        
+        if not types_data or not types_data.get('all_types'):
+            # Se KV vazio, tentar buscar diretamente do endpoint
+            logger.warning("[VALIDATE-TYPE] KV vazio, tentando buscar tipos diretamente...")
+            # Por enquanto, permitir criação sem validação se KV vazio (fallback)
+            return {
+                "valid": True,
+                "job_name": service_name,
+                "exporter_type": exporter_type or "unknown",
+                "category": category or "unknown"
+            }
+        
+        all_types = types_data.get('all_types', [])
+        
+        # Buscar tipo correspondente
+        matching_type = None
+        for type_def in all_types:
+            if type_def.get('job_name') == service_name:
+                # Verificar exporter_type se fornecido
+                if exporter_type and type_def.get('exporter_type') != exporter_type:
+                    continue
+                # Verificar category se fornecido
+                if category and type_def.get('category') != category:
+                    continue
+                matching_type = type_def
+                break
+        
+        if not matching_type:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Tipo de monitoramento não encontrado",
+                    "detail": f"Tipo '{service_name}' não existe no monitoring-types. Verifique se o tipo está configurado no Prometheus.",
+                    "service_name": service_name,
+                    "exporter_type": exporter_type,
+                    "category": category
+                }
+            )
+        
+        return {
+            "valid": True,
+            "id": matching_type.get('id'),  # ✅ NOVO: ID do tipo para form_schema
+            "job_name": matching_type.get('job_name'),
+            "exporter_type": matching_type.get('exporter_type'),
+            "category": matching_type.get('category'),
+            "display_name": matching_type.get('display_name'),
+            "module": matching_type.get('module')
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[VALIDATE-TYPE] Erro ao validar tipo: {e}", exc_info=True)
+        # Em caso de erro, permitir criação (não bloquear por falha de validação)
+        logger.warning(f"[VALIDATE-TYPE] Permitindo criação sem validação devido a erro: {e}")
+        return {
+            "valid": True,
+            "job_name": service_name,
+            "exporter_type": exporter_type or "unknown",
+            "category": category or "unknown"
+        }
+
+
+async def validate_form_schema_fields(meta: Dict[str, Any], type_id: str, category: Optional[str] = None) -> List[str]:
+    """
+    ✅ SOLUÇÃO PRAGMÁTICA: Valida campos obrigatórios do form_schema
+
+    Busca form_schema diretamente do tipo em skills/eye/monitoring-types (fonte única de verdade)
+
+    SPRINT 2: Validação crítica - verifica campos obrigatórios específicos do tipo
+
+    Args:
+        meta: Metadata do serviço
+        type_id: ID do tipo de monitoramento (ex: 'icmp', 'node_exporter')
+        category: Categoria (opcional, não usado mais - mantido para compatibilidade)
+
+    Returns:
+        Lista de erros encontrados (vazia se válido)
+    """
+    errors = []
+
+    try:
+        from core.kv_manager import KVManager
+
+        kv_manager = KVManager()
+
+        # ✅ NOVO: Buscar tipo diretamente de monitoring-types (fonte única)
+        kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
+
+        if not kv_data or not kv_data.get('all_types'):
+            # KV vazio - não validar
+            return errors
+
+        # Buscar tipo por ID
+        type_def = None
+        for t in kv_data['all_types']:
+            if t.get('id') == type_id:
+                type_def = t
+                break
+
+        if not type_def:
+            # Tipo não encontrado - não validar
+            logger.warning(f"[VALIDATE-FORM-SCHEMA] Tipo '{type_id}' não encontrado em monitoring-types")
+            return errors
+
+        # Extrair form_schema do tipo
+        form_schema = type_def.get('form_schema')
+        if not form_schema:
+            # Tipo sem form_schema - não validar
+            return errors
+
+        # Validar campos obrigatórios do form_schema
+        required_fields = form_schema.get('fields', [])
+        for field in required_fields:
+            if field.get('required', False):
+                field_name = field.get('name')
+                if field_name and (field_name not in meta or not meta.get(field_name)):
+                    errors.append(f"Campo obrigatório do tipo '{field_name}' não fornecido")
+
+        # Validar required_metadata
+        required_metadata = form_schema.get('required_metadata', [])
+        for field_name in required_metadata:
+            if field_name not in meta or not meta.get(field_name):
+                errors.append(f"Campo metadata obrigatório '{field_name}' não fornecido")
+
+        logger.info(f"[VALIDATE-FORM-SCHEMA] Validação para tipo '{type_id}': {len(errors)} erros")
+
+    except Exception as e:
+        logger.error(f"[VALIDATE-FORM-SCHEMA] Erro ao validar form_schema: {e}", exc_info=True)
+        # Não bloquear por erro de validação
+        pass
+
+    return errors
+
+
+async def invalidate_monitoring_cache(category: Optional[str] = None):
+    """
+    Invalida cache após operações CRUD
+    
+    SPRINT 2: Invalidação crítica - garante dados atualizados após CRUD
+    
+    Args:
+        category: Categoria do serviço (opcional, para invalidação específica)
+    """
+    try:
+        # Invalidar cache local (LocalCache)
+        if category:
+            await _catalog_cache.invalidate_pattern(f"catalog:*{category}*")
+        else:
+            await _catalog_cache.invalidate_pattern("catalog:*")
+        
+        logger.info(f"[CACHE] Cache invalidado para categoria: {category or 'all'}")
+    except Exception as e:
+        logger.error(f"[CACHE] Erro ao invalidar cache: {e}", exc_info=True)
 
 
 # ============================================================================
@@ -369,7 +556,37 @@ async def create_service(
             service_data['id'] = ConsulManager.sanitize_service_id(service_data['id'])
             logger.info(f"ID sanitizado para: {service_data['id']}")
 
-        # Validar dados do serviço
+        # ✅ SPRINT 2: Validar tipo de monitoramento (CRÍTICO)
+        meta = service_data.get("Meta", {})
+        service_name = service_data.get("service") or service_data.get("name", "")
+        exporter_type = meta.get("exporter_type")
+        category = meta.get("category")
+        type_id = None  # ✅ NOVO: ID do tipo para validação de form_schema
+
+        if service_name:
+            try:
+                type_info = await validate_monitoring_type(service_name, exporter_type, category)
+                type_id = type_info.get('id')  # ✅ NOVO: Capturar ID do tipo
+                logger.info(f"[VALIDATE-TYPE] Tipo validado: {type_info.get('display_name')} ({type_info.get('id')})")
+            except HTTPException as e:
+                # Re-raise HTTPException (tipo não encontrado)
+                raise e
+            except Exception as e:
+                logger.warning(f"[VALIDATE-TYPE] Erro ao validar tipo (permitindo criação): {e}")
+
+        # ✅ SPRINT 2: Validar campos obrigatórios do form_schema (SOLUÇÃO PRAGMÁTICA)
+        if type_id:
+            form_schema_errors = await validate_form_schema_fields(meta, type_id, category)
+            if form_schema_errors:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Erros de validação do form_schema",
+                        "errors": form_schema_errors
+                    }
+                )
+        
+        # Validar dados do serviço (validação genérica)
         is_valid, errors = await consul.validate_service_data(service_data)
         if not is_valid:
             raise HTTPException(
@@ -396,7 +613,6 @@ async def create_service(
                 )
         
         # ✅ CORREÇÃO: Verificar duplicatas usando campos obrigatórios do KV
-        meta = service_data.get("Meta", {})
         is_duplicate = await consul.check_duplicate_service(
             meta=meta,
             target_node_addr=service_data.get("node_addr")
@@ -455,6 +671,12 @@ async def create_service(
         )
 
         if success:
+            # ✅ SPRINT 2: Invalidar cache após criação
+            background_tasks.add_task(
+                invalidate_monitoring_cache,
+                category
+            )
+            
             # Log assíncrono
             background_tasks.add_task(
                 log_action,
@@ -653,6 +875,14 @@ async def update_service(
         )
 
         if success:
+            # ✅ SPRINT 2: Invalidar cache após atualização
+            meta = updated_service.get("Meta", {})
+            category = meta.get("category")
+            background_tasks.add_task(
+                invalidate_monitoring_cache,
+                category
+            )
+            
             background_tasks.add_task(
                 log_action,
                 f"Serviço atualizado: {service_id}"
@@ -754,6 +984,14 @@ async def delete_service(
         success = await consul.deregister_service(service_id, node_addr)
 
         if success:
+            # ✅ SPRINT 2: Invalidar cache após exclusão
+            meta = existing_service.get("Meta", {})
+            category = meta.get("category")
+            background_tasks.add_task(
+                invalidate_monitoring_cache,
+                category
+            )
+            
             background_tasks.add_task(
                 log_action,
                 f"Serviço removido: {service_id}"
