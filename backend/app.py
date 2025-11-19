@@ -282,9 +282,9 @@ async def _prewarm_monitoring_types_cache():
     4. Tipos ficam disponíveis instantaneamente para requisições HTTP
     
     ⚠️ DIFERENÇA vs metadata-fields:
-    - Não precisa verificar se KV já tem dados (sempre sobrescreve)
-    - Não precisa merge (é só cópia do prometheus.yml)
-    - Não precisa backup (não é editável)
+    - Sempre sobrescreve tipos do Prometheus (extração)
+    - ✅ PRECISA backup (form_schema É editável manualmente!)
+    - Merge de form_schema: preserva customizações
     
     PERFORMANCE:
     - Tempo estimado: 10-20 segundos (SSH para 3 servidores)
@@ -303,50 +303,90 @@ async def _prewarm_monitoring_types_cache():
         # PASSO 2: Importar dependências (após startup completo)
         from api.monitoring_types_dynamic import _extract_types_from_all_servers
         from core.kv_manager import KVManager
+        from core.monitoring_types_backup import get_backup_manager
         from datetime import datetime
         import logging
-        
+
         logger = logging.getLogger(__name__)
         logger.info("[PRE-WARM MONITORING-TYPES] Iniciando prewarm de monitoring-types...")
+
+        # PASSO 2.5: ✅ Verificar se há backup para restaurar (se KV vazio)
+        backup_manager = get_backup_manager()
+        kv_manager = KVManager()
+
+        # Tentar restaurar backup se KV estiver vazio
+        existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
+        if not existing_kv or not existing_kv.get('data', {}).get('all_types'):
+            logger.info("[PRE-WARM MONITORING-TYPES] KV vazio - tentando restaurar backup...")
+            restored = await backup_manager.restore_from_backup()
+            if restored:
+                logger.info("[PRE-WARM MONITORING-TYPES] ✅ Backup restaurado com sucesso!")
+            else:
+                logger.info("[PRE-WARM MONITORING-TYPES] Sem backup - continuando extração normal...")
         
         # PASSO 3: Extrair tipos de TODOS os servidores
         result = await _extract_types_from_all_servers(server=None)
-        
+
+        # PASSO 3.5: ✅ MERGE de form_schema (preservar customizações manuais)
+        # Se tipo já existia com form_schema customizado, PRESERVAR
+        existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
+        existing_form_schemas = {}
+        if existing_kv and existing_kv.get('data', {}).get('all_types'):
+            for existing_type in existing_kv['data']['all_types']:
+                if existing_type.get('form_schema'):
+                    existing_form_schemas[existing_type['id']] = existing_type['form_schema']
+
         # PASSO 4: Salvar no KV (sempre sobrescreve - não precisa verificar existência)
         # ⚠️ CRÍTICO: Remover 'fields' de todos os tipos antes de salvar
         # 'fields' são apenas para display e não devem ser salvos no KV
         # A fonte de verdade para campos metadata é metadata-fields KV
+        # ✅ PRESERVAR form_schema customizado (merge)
         all_types_without_fields = []
         for type_def in result['all_types']:
             type_def_clean = {k: v for k, v in type_def.items() if k != 'fields'}
+
+            # ✅ MERGE: Se tipo tinha form_schema customizado, PRESERVAR
+            if type_def['id'] in existing_form_schemas:
+                type_def_clean['form_schema'] = existing_form_schemas[type_def['id']]
+                logger.debug(f"[PRE-WARM] Preservando form_schema customizado: {type_def['id']}")
+
             all_types_without_fields.append(type_def_clean)
         
-        # Limpar 'fields' também dos tipos dentro de 'servers'
+        # Limpar 'fields' também dos tipos dentro de 'servers' + merge form_schema
         servers_clean = {}
         for server_host, server_data in result['servers'].items():
             if 'types' in server_data:
+                types_with_merge = []
+                for t in server_data['types']:
+                    t_clean = {k: v for k, v in t.items() if k != 'fields'}
+                    # ✅ MERGE: Preservar form_schema
+                    if t['id'] in existing_form_schemas:
+                        t_clean['form_schema'] = existing_form_schemas[t['id']]
+                    types_with_merge.append(t_clean)
+
                 servers_clean[server_host] = {
                     **server_data,
-                    'types': [
-                        {k: v for k, v in t.items() if k != 'fields'}
-                        for t in server_data['types']
-                    ]
+                    'types': types_with_merge
                 }
             else:
                 servers_clean[server_host] = server_data
-        
-        # Limpar 'fields' também dos tipos dentro de 'categories'
+
+        # Limpar 'fields' também dos tipos dentro de 'categories' + merge form_schema
         categories_clean = []
         for category in result['categories']:
+            types_with_merge = []
+            for t in category.get('types', []):
+                t_clean = {k: v for k, v in t.items() if k != 'fields'}
+                # ✅ MERGE: Preservar form_schema
+                if t['id'] in existing_form_schemas:
+                    t_clean['form_schema'] = existing_form_schemas[t['id']]
+                types_with_merge.append(t_clean)
+
             categories_clean.append({
                 **category,
-                'types': [
-                    {k: v for k, v in t.items() if k != 'fields'}
-                    for t in category.get('types', [])
-                ]
+                'types': types_with_merge
             })
         
-        kv_manager = KVManager()
         kv_value = {
             'version': '1.0.0',
             'last_updated': datetime.now().isoformat(),
@@ -359,10 +399,19 @@ async def _prewarm_monitoring_types_cache():
             'categories': categories_clean,
             'server_status': result['server_status']
         }
-        
+
+        # PASSO 4.5: ✅ CRIAR BACKUP antes de salvar (preservar form_schemas customizados)
+        logger.info("[PRE-WARM MONITORING-TYPES] Criando backup antes de salvar...")
+        backup_success = await backup_manager.create_backup({'data': kv_value})
+        if backup_success:
+            logger.info("[PRE-WARM MONITORING-TYPES] ✅ Backup criado com sucesso")
+        else:
+            logger.warning("[PRE-WARM MONITORING-TYPES] ⚠️ Falha ao criar backup (continuando salvamento)")
+
+        # PASSO 5: Salvar no KV
         await kv_manager.put_json(
             key='skills/eye/monitoring-types',
-            value=kv_value,
+            value={'data': kv_value},  # ✅ Estrutura correta: {data: {...}}
             metadata={'auto_updated': True, 'source': 'prewarm_startup'}
         )
         

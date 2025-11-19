@@ -15,6 +15,7 @@ from datetime import datetime
 
 from core.multi_config_manager import MultiConfigManager
 from core.kv_manager import KVManager
+from core.monitoring_types_backup import get_backup_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"])
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"]
 # Instanciar managers
 multi_config = MultiConfigManager()
 kv_manager = KVManager()
+backup_manager = get_backup_manager()
 
 
 # ============================================================================
@@ -791,6 +793,14 @@ async def update_type_form_schema(
 
         # PASSO 4: Atualizar metadata
         kv_data['last_updated'] = datetime.now().isoformat()
+
+        # PASSO 4.5: ✅ CRIAR BACKUP antes de salvar (preservar histórico de changes)
+        logger.info(f"[UPDATE-FORM-SCHEMA] Criando backup antes de salvar tipo '{type_id}'...")
+        backup_success = await backup_manager.create_backup(kv_data)
+        if backup_success:
+            logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Backup criado para tipo '{type_id}'")
+        else:
+            logger.warning(f"[UPDATE-FORM-SCHEMA] ⚠️ Falha ao criar backup para '{type_id}' (continuando salvamento)")
 
         # PASSO 5: Salvar de volta no KV
         success = await kv_manager.put_json(
