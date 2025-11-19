@@ -142,11 +142,22 @@ class MonitoringTypesBackupManager:
                 logger.warning("[MONITORING-TYPES-BACKUP] ⚠️ Nenhum backup encontrado para restaurar")
                 return None
 
-            # Extrair dados dos tipos
-            types_data = backup_data.get('types_data')
+            # ✅ BUGFIX: KVManager pode retornar {data: {...}, meta: {...}} ou estrutura direta
+            # Tentar ambas estruturas para compatibilidade
+            if 'data' in backup_data and 'types_data' in backup_data['data']:
+                # Estrutura envolvida pelo KVManager: {data: {types_data: ...}, meta: ...}
+                types_data = backup_data['data']['types_data']
+                backup_timestamp = backup_data['data'].get('backup_timestamp')
+            elif 'types_data' in backup_data:
+                # Estrutura direta: {types_data: ..., backup_timestamp: ...}
+                types_data = backup_data['types_data']
+                backup_timestamp = backup_data.get('backup_timestamp')
+            else:
+                logger.error(f"[MONITORING-TYPES-BACKUP] ❌ Backup corrompido: estrutura inválida. Chaves: {list(backup_data.keys())}")
+                return None
 
             if not types_data:
-                logger.error("[MONITORING-TYPES-BACKUP] ❌ Backup corrompido: sem 'types_data'")
+                logger.error("[MONITORING-TYPES-BACKUP] ❌ Backup corrompido: types_data vazio")
                 return None
 
             # Validar integridade
@@ -160,7 +171,7 @@ class MonitoringTypesBackupManager:
                 types_data,
                 metadata={
                     'restored_from_backup': True,
-                    'backup_timestamp': backup_data.get('backup_timestamp'),
+                    'backup_timestamp': backup_timestamp,
                     'restored_at': datetime.utcnow().isoformat() + 'Z',
                 }
             )
@@ -171,7 +182,7 @@ class MonitoringTypesBackupManager:
 
             logger.info(
                 f"[MONITORING-TYPES-BACKUP] ✅ Backup restaurado: {types_data.get('total_types', 0)} tipos "
-                f"(backup de {backup_data.get('backup_timestamp', 'desconhecido')})"
+                f"(backup de {backup_timestamp or 'desconhecido'})"
             )
 
             return types_data
@@ -248,7 +259,7 @@ class MonitoringTypesBackupManager:
         Valida integridade dos dados do backup
 
         Args:
-            types_data: Dados para validar
+            types_data: Dados para validar (estrutura direta do KV, não wrapped)
 
         Returns:
             True se dados são válidos
@@ -259,16 +270,12 @@ class MonitoringTypesBackupManager:
                 logger.error("[MONITORING-TYPES-BACKUP-VALIDATION] ❌ Dados não são dict")
                 return False
 
-            # Verificar estrutura 'data'
-            data = types_data.get('data', {})
-            if not isinstance(data, dict):
-                logger.error("[MONITORING-TYPES-BACKUP-VALIDATION] ❌ 'data' não é um dict")
-                return False
-
-            # Verificar se tem all_types
-            all_types = data.get('all_types', [])
+            # ✅ BUGFIX: types_data já é a estrutura direta, não precisa de .get('data')
+            # A estrutura esperada é: {version, last_updated, all_types, servers, ...}
+            # Verificar se tem all_types diretamente
+            all_types = types_data.get('all_types', [])
             if not isinstance(all_types, list):
-                logger.error("[MONITORING-TYPES-BACKUP-VALIDATION] ❌ 'all_types' não é uma lista")
+                logger.error(f"[MONITORING-TYPES-BACKUP-VALIDATION] ❌ 'all_types' não é uma lista. Chaves disponíveis: {list(types_data.keys())}")
                 return False
 
             if len(all_types) == 0:
