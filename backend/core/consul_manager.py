@@ -1299,3 +1299,184 @@ class ConsulManager:
                 results[service_id] = False
 
         return results
+
+    async def generate_dynamic_service_id(self, meta: Dict[str, Any]) -> str:
+        """
+        Gera ID de serviço dinamicamente baseado nos campos obrigatórios do KV.
+
+        Usa abordagem híbrida:
+        - Tenta ler campos obrigatórios do KV
+        - Se falhar, usa padrão hardcoded como fallback
+
+        Args:
+            meta: Dicionário com metadata do serviço
+
+        Returns:
+            ID gerado no formato: campo1/campo2/.../campoN@name
+
+        Raises:
+            ValueError: Se campos obrigatórios estiverem faltando
+        """
+        try:
+            # Tentar obter campos obrigatórios do KV
+            required_fields = await self._get_required_fields_from_kv()
+
+            if required_fields:
+                logger.info(f"[GENERATE-ID] Usando campos dinâmicos do KV: {required_fields}")
+            else:
+                # Fallback: campos hardcoded
+                required_fields = ['module', 'company', 'project', 'env', 'name']
+                logger.warning("[GENERATE-ID] KV indisponível, usando campos hardcoded como fallback")
+
+            # Separar 'name' que vai após o @
+            name_field = 'name'
+            prefix_fields = [f for f in required_fields if f != name_field]
+
+            # Validar campos obrigatórios
+            missing = []
+            for field in required_fields:
+                if field not in meta or not meta[field]:
+                    missing.append(field)
+
+            if missing:
+                raise ValueError(f"Campos obrigatórios faltando: {', '.join(missing)}")
+
+            # Gerar ID
+            prefix_parts = [self._sanitize_id_part(meta[f]) for f in prefix_fields]
+            name_part = self._sanitize_id_part(meta[name_field])
+
+            service_id = f"{'/'.join(prefix_parts)}@{name_part}"
+
+            logger.info(f"[GENERATE-ID] ID gerado: {service_id}")
+            return service_id
+
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"[GENERATE-ID] Erro ao gerar ID dinâmico: {e}")
+            # Fallback completo
+            return self._generate_fallback_id(meta)
+
+    async def _get_required_fields_from_kv(self) -> List[str]:
+        """
+        Obtém lista de campos obrigatórios do KV metadata-fields.
+
+        Returns:
+            Lista de nomes de campos obrigatórios ordenados por 'order'
+        """
+        try:
+            # Buscar configuração do KV
+            kv_key = "skills-eye/config/metadata-fields"
+            value = await self.get_kv_json(kv_key)
+
+            if not value:
+                return []
+
+            fields = value if isinstance(value, list) else value.get('fields', [])
+
+            # Filtrar campos obrigatórios e ordenar
+            required_with_order = [
+                (f.get('name'), f.get('order', 999))
+                for f in fields
+                if f.get('required', False) and f.get('enabled', True)
+            ]
+            required_with_order.sort(key=lambda x: x[1])
+
+            return [name for name, _ in required_with_order]
+
+        except Exception as e:
+            logger.warning(f"[GENERATE-ID] Erro ao ler campos do KV: {e}")
+            return []
+
+    @staticmethod
+    def _sanitize_id_part(value: str) -> str:
+        """
+        Sanitiza parte do ID removendo caracteres especiais.
+        """
+        # Remover caracteres não alfanuméricos exceto - e _
+        sanitized = re.sub(r'[^a-zA-Z0-9\-_]', '', str(value))
+        return sanitized.lower()
+
+    def _generate_fallback_id(self, meta: Dict[str, Any]) -> str:
+        """
+        Gera ID usando padrão hardcoded (fallback).
+        """
+        parts = [
+            meta.get('module', 'unknown'),
+            meta.get('company', 'unknown'),
+            meta.get('project', 'unknown'),
+            meta.get('env', 'unknown'),
+        ]
+        name = meta.get('name', 'unnamed')
+
+        sanitized_parts = [self._sanitize_id_part(p) for p in parts]
+        sanitized_name = self._sanitize_id_part(name)
+
+        return f"{'/'.join(sanitized_parts)}@{sanitized_name}"
+
+    async def check_duplicate_service(
+        self,
+        meta: Dict[str, Any] = None,
+        module: str = None,
+        company: str = None,
+        project: str = None,
+        env: str = None,
+        name: str = None,
+        exclude_sid: str = None,
+        target_node_addr: str = None
+    ) -> bool:
+        """
+        Verifica se já existe um serviço com a mesma combinação de chaves.
+
+        Suporta duas assinaturas:
+        1. check_duplicate_service(meta=..., target_node_addr=...)
+        2. check_duplicate_service(module=..., company=..., project=..., env=..., name=..., target_node_addr=...)
+
+        Args:
+            meta: Dicionário com metadata (ou None se usando argumentos individuais)
+            module: Módulo do serviço (ignorado se meta fornecido)
+            company: Empresa
+            project: Projeto
+            env: Ambiente
+            name: Nome
+            exclude_sid: ID de serviço para excluir da verificação (útil em updates)
+            target_node_addr: Endereço do nó alvo para verificar
+
+        Returns:
+            True se encontrou duplicata, False caso contrário
+        """
+        try:
+            # Se meta foi fornecido, extrair campos
+            if meta is not None:
+                module = meta.get('module')
+                company = meta.get('company')
+                project = meta.get('project')
+                env = meta.get('env')
+                name = meta.get('name')
+
+            # Validar que todos os campos necessários estão presentes
+            if not all([module, company, project, env, name]):
+                logger.warning("[CHECK-DUPLICATE] Campos obrigatórios incompletos")
+                return False
+
+            services = await self.get_services(target_node_addr)
+
+            for sid, svc in services.items():
+                # Pular o próprio serviço se estivermos atualizando
+                if exclude_sid and sid == exclude_sid:
+                    continue
+
+                svc_meta = svc.get("Meta", {})
+
+                # Verificar se todos os campos chave correspondem
+                if (svc_meta.get("module") == module and
+                    svc_meta.get("company") == company and
+                    svc_meta.get("project") == project and
+                    svc_meta.get("env") == env and
+                    svc_meta.get("name") == name):
+                    return True
+
+            return False
+        except Exception as e:
+            logger.error(f"[CHECK-DUPLICATE] Erro ao verificar duplicatas: {e}")
+            return False

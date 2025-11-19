@@ -1107,6 +1107,20 @@ export const consulAPI = {
     }),
 
   /**
+   * ✅ NOVO: Obter todos os tipos de monitoramento disponíveis
+   */
+  getMonitoringTypes: () =>
+    api.get<{
+      success: boolean;
+      types: Array<{
+        id: string;
+        display_name: string;
+        job_name: string;
+        category?: string;
+      }>;
+    }>('/monitoring-types-dynamic/from-prometheus'),
+
+  /**
    * ✅ SOLUÇÃO PRAGMÁTICA: Atualizar form_schema de um tipo
    */
   updateTypeFormSchema: (typeId: string, formSchema: any) =>
