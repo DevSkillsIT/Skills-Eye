@@ -672,23 +672,77 @@ async def get_types_from_prometheus(
         
         # PASSO 2: KV vazio ou force_refresh: Extrair do Prometheus
         logger.info(f"[MONITORING-TYPES] 🔄 Extraindo tipos do Prometheus via SSH (force_refresh={force_refresh})...")
-        
+
         # Limpar cache interno do multi_config se forçar refresh
         if force_refresh:
             multi_config.clear_cache(close_connections=True)
-        
+
         # Extrair tipos usando função helper
         result = await _extract_types_from_all_servers(server=server)
         logger.info(f"[MONITORING-TYPES] ✅ Extração concluída: {result['total_types']} tipos de {result['successful_servers']}/{result['total_servers']} servidores")
-        
+
         # PASSO 3: Enriquecer servidores com dados de sites do KV
         logger.info("[MONITORING-TYPES] 🔄 Enriquecendo servidores com dados de sites...")
         logger.info(f"[MONITORING-TYPES] Servidores antes do enriquecimento: {list(result['servers'].keys())}")
         enriched_servers = await _enrich_servers_with_sites_data(result['servers'])
         logger.info(f"[MONITORING-TYPES] ✅ Enriquecimento concluído. Servidores enriquecidos: {list(enriched_servers.keys())}")
-        
-        # PASSO 4: Salvar no KV (sobrescrever - não precisa merge como metadata-fields)
-        # ✅ CORREÇÃO: Salvar COM fields para que o cache tenha os dados completos!
+
+        # PASSO 3.5: ✅ MERGE de form_schema (preservar customizações manuais)
+        # Buscar KV existente para preservar form_schema customizados
+        existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
+        existing_form_schemas = {}
+        if existing_kv and existing_kv.get('all_types'):
+            for existing_type in existing_kv['all_types']:
+                if existing_type.get('form_schema'):
+                    existing_form_schemas[existing_type['id']] = existing_type['form_schema']
+                    logger.debug(f"[MONITORING-TYPES] Preservando form_schema customizado: {existing_type['id']}")
+
+        if existing_form_schemas:
+            logger.info(f"[MONITORING-TYPES] 🔄 Preservando {len(existing_form_schemas)} form_schema customizados...")
+
+        # Aplicar merge em all_types
+        for type_def in result['all_types']:
+            if type_def['id'] in existing_form_schemas:
+                type_def['form_schema'] = existing_form_schemas[type_def['id']]
+
+        # Aplicar merge em servers
+        for server_host, server_data in enriched_servers.items():
+            if 'types' in server_data:
+                for type_def in server_data['types']:
+                    if type_def['id'] in existing_form_schemas:
+                        type_def['form_schema'] = existing_form_schemas[type_def['id']]
+
+        # Aplicar merge em categories
+        for category in result['categories']:
+            for type_def in category.get('types', []):
+                if type_def['id'] in existing_form_schemas:
+                    type_def['form_schema'] = existing_form_schemas[type_def['id']]
+
+        # PASSO 4: Salvar no KV SEM 'fields' (fields são obtidos via SSH, não salvos no KV)
+        # ⚠️ CRÍTICO: 'fields' é apenas para display no frontend, não deve ser persistido no KV
+        # A fonte de verdade para campos metadata é metadata-fields KV
+
+        # Limpar 'fields' de all_types para salvar no KV
+        all_types_for_kv = []
+        for type_def in result['all_types']:
+            type_clean = {k: v for k, v in type_def.items() if k != 'fields'}
+            all_types_for_kv.append(type_clean)
+
+        # Limpar 'fields' de servers para salvar no KV
+        servers_for_kv = {}
+        for server_host, server_data in enriched_servers.items():
+            if 'types' in server_data:
+                types_clean = [{k: v for k, v in t.items() if k != 'fields'} for t in server_data['types']]
+                servers_for_kv[server_host] = {**server_data, 'types': types_clean}
+            else:
+                servers_for_kv[server_host] = server_data
+
+        # Limpar 'fields' de categories para salvar no KV
+        categories_for_kv = []
+        for category in result['categories']:
+            types_clean = [{k: v for k, v in t.items() if k != 'fields'} for t in category.get('types', [])]
+            categories_for_kv.append({**category, 'types': types_clean})
+
         kv_value = {
             'version': '1.0.0',
             'last_updated': datetime.now().isoformat(),
@@ -696,12 +750,20 @@ async def get_types_from_prometheus(
             'total_types': result['total_types'],
             'total_servers': result['total_servers'],
             'successful_servers': result['successful_servers'],
-            'servers': enriched_servers,        # ✅ COM fields!
-            'all_types': result['all_types'],   # ✅ COM fields!
-            'categories': result['categories'], # ✅ COM fields!
+            'servers': servers_for_kv,           # ❌ SEM fields (para KV)
+            'all_types': all_types_for_kv,       # ❌ SEM fields (para KV)
+            'categories': categories_for_kv,     # ❌ SEM fields (para KV)
             'server_status': result['server_status']
         }
-        
+
+        # PASSO 4.5: ✅ CRIAR BACKUP antes de salvar (preservar form_schemas customizados)
+        logger.info("[MONITORING-TYPES] Criando backup antes de salvar...")
+        backup_success = await backup_manager.create_backup(kv_value)
+        if backup_success:
+            logger.info("[MONITORING-TYPES] ✅ Backup criado com sucesso")
+        else:
+            logger.warning("[MONITORING-TYPES] ⚠️ Falha ao criar backup (continuando salvamento)")
+
         await kv_manager.put_json(
             key='skills/eye/monitoring-types',
             value=kv_value,
