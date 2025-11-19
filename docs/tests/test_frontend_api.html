@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Frontend API Calls</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #2d2d30;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #0e639c;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1177bb;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #1e1e1e;
+            border-left: 3px solid #007acc;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            border-left-color: #f48771;
+            color: #f48771;
+        }
+        .success {
+            border-left-color: #89d185;
+            color: #89d185;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Skills Eye Frontend API Tester</h1>
+    
+    <div class="section">
+        <h2>1. Test /categorization-rules</h2>
+        <button onclick="testCategorizationRules()">Test Categorization Rules</button>
+        <div id="categorization-result" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. Test /monitoring/data?category=network-probes</h2>
+        <button onclick="testMonitoringData('network-probes')">Test Network Probes</button>
+        <div id="monitoring-network-result" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. Test /monitoring/data?category=web-probes</h2>
+        <button onclick="testMonitoringData('web-probes')">Test Web Probes</button>
+        <div id="monitoring-web-result" class="result"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. Test /metadata-fields/</h2>
+        <button onclick="testMetadataFields()">Test Metadata Fields</button>
+        <div id="metadata-result" class="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api/v1';
+
+        function displayResult(elementId, data, isError = false) {
+            const el = document.getElementById(elementId);
+            el.className = `result ${isError ? 'error' : 'success'}`;
+            el.textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function testCategorizationRules() {
+            try {
+                console.log('Testing /categorization-rules...');
+                const response = await fetch(`${API_URL}/categorization-rules`);
+                const data = await response.json();
+                console.log('Response:', data);
+                
+                displayResult('categorization-result', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    success: data.success,
+                    total_rules: data.data?.total_rules,
+                    default_category: data.data?.default_category,
+                    categories_count: data.data?.categories?.length,
+                    rules_count: data.data?.rules?.length
+                }, !response.ok);
+            } catch (error) {
+                console.error('Error:', error);
+                displayResult('categorization-result', {
+                    error: error.message,
+                    stack: error.stack
+                }, true);
+            }
+        }
+
+        async function testMonitoringData(category) {
+            const resultId = `monitoring-${category.split('-')[0]}-result`;
+            try {
+                console.log(`Testing /monitoring/data?category=${category}...`);
+                const response = await fetch(`${API_URL}/monitoring/data?category=${category}`);
+                const data = await response.json();
+                console.log('Response:', data);
+                
+                displayResult(resultId, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    success: data.success,
+                    category: data.category,
+                    total: data.total,
+                    data_count: data.data?.length,
+                    fields_count: data.available_fields?.length
+                }, !response.ok);
+            } catch (error) {
+                console.error('Error:', error);
+                displayResult(resultId, {
+                    error: error.message,
+                    stack: error.stack
+                }, true);
+            }
+        }
+
+        async function testMetadataFields() {
+            try {
+                console.log('Testing /metadata-fields/...');
+                const response = await fetch(`${API_URL}/metadata-fields/`);
+                const data = await response.json();
+                console.log('Response:', data);
+                
+                displayResult('metadata-result', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    success: data.success,
+                    total: data.total,
+                    fields_count: data.fields?.length
+                }, !response.ok);
+            } catch (error) {
+                console.error('Error:', error);
+                displayResult('metadata-result', {
+                    error: error.message,
+                    stack: error.stack
+                }, true);
+            }
+        }
+
+        // Auto-run all tests on load
+        window.addEventListener('load', () => {
+            console.log('🧪 Running auto-tests...');
+            setTimeout(() => {
+                testCategorizationRules();
+                testMonitoringData('network-probes');
+                testMonitoringData('web-probes');
+                testMetadataFields();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
