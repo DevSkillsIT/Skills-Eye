@@ -187,6 +187,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const [form] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
   const [availableTypes, setAvailableTypes] = useState<Array<{ id: string; display_name: string; job_name: string }>>([]);
+  const [selectedTypeId, setSelectedTypeId] = useState<string>('');
 
   // ✅ NOVO: Snapshot para exportação CSV
   const [tableSnapshot, setTableSnapshot] = useState<MonitoringDataItem[]>([]);
