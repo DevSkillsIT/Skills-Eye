@@ -172,6 +172,7 @@ async def extract_types_from_prometheus_jobs(
             "fields": fields,
             "metrics_path": job.get('metrics_path', '/metrics'),
             "server": server_host,
+            "job_config": job,  # ✅ NOVO: Salvar job completo do prometheus.yml
         }
 
         types.append(type_schema)

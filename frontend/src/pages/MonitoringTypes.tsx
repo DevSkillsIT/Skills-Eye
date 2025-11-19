@@ -47,6 +47,7 @@ import {
   SyncOutlined,
   CodeOutlined,
   EditOutlined,
+  FileTextOutlined, // ✅ NOVO: Ícone para ver job do Prometheus
 } from '@ant-design/icons';
 import axios from 'axios';
 import Editor from '@monaco-editor/react';
@@ -91,6 +92,7 @@ interface MonitoringType {
   server?: string;
   servers?: string[];
   form_schema?: FormSchema; // ✅ NOVO: Form schema do tipo
+  job_config?: any; // ✅ NOVO: Job completo extraído do prometheus.yml
 }
 
 interface CategoryData {
@@ -148,12 +150,13 @@ export default function MonitoringTypes() {
     { key: 'module', title: 'Módulo', visible: true, width: 120 },
     { key: 'fields', title: 'Campos Metadata', visible: true, width: 300 },
     { key: 'servers', title: 'Servidores', visible: true, width: 200 },
-    { key: 'actions', title: 'Ações', visible: true, width: 200 },
+    { key: 'actions', title: 'Ações', visible: true, width: 280 }, // ✅ Aumentado para 3 botões
   ]);
 
   // ✅ NOVO: Estados para modais de ações
   const [jsonModalVisible, setJsonModalVisible] = useState(false);
   const [formSchemaModalVisible, setFormSchemaModalVisible] = useState(false);
+  const [jobConfigModalVisible, setJobConfigModalVisible] = useState(false); // ✅ NOVO: Modal para job_config
   const [selectedType, setSelectedType] = useState<MonitoringType | null>(null);
   const [formSchemaJson, setFormSchemaJson] = useState('');
 
@@ -280,6 +283,12 @@ export default function MonitoringTypes() {
   const handleViewJSON = (type: MonitoringType) => {
     setSelectedType(type);
     setJsonModalVisible(true);
+  };
+
+  // ✅ NOVO: Handler para ver job_config do Prometheus
+  const handleViewJobConfig = (type: MonitoringType) => {
+    setSelectedType(type);
+    setJobConfigModalVisible(true);
   };
 
   // ✅ NOVO: Handler para editar form_schema
@@ -421,11 +430,11 @@ export default function MonitoringTypes() {
     {
       key: 'actions',
       title: 'Ações',
-      width: 200,
+      width: 280, // ✅ Aumentado para acomodar 3 botões
       fixed: 'right' as 'right',
       render: (_: any, record: MonitoringType) => (
         <Space size="small">
-          <Tooltip title="Ver JSON do Job">
+          <Tooltip title="Ver JSON Completo do Tipo">
             <Button
               type="link"
               size="small"
@@ -433,6 +442,17 @@ export default function MonitoringTypes() {
               onClick={() => handleViewJSON(record)}
             >
               JSON
+            </Button>
+          </Tooltip>
+          <Tooltip title="Ver Job Extraído do Prometheus">
+            <Button
+              type="link"
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => handleViewJobConfig(record)}
+              disabled={!record.job_config}
+            >
+              Job
             </Button>
           </Tooltip>
           <Tooltip title="Editar Form Schema">
@@ -843,6 +863,48 @@ export default function MonitoringTypes() {
               style={{ fontFamily: 'monospace', fontSize: '12px' }}
             />
           </div>
+        )}
+      </Modal>
+
+      {/* ✅ NOVO: Modal para ver Job Config do Prometheus */}
+      <Modal
+        title={`Job Extraído do Prometheus: ${selectedType?.display_name}`}
+        open={jobConfigModalVisible}
+        onCancel={() => setJobConfigModalVisible(false)}
+        footer={[
+          <Button key="close" onClick={() => setJobConfigModalVisible(false)}>
+            Fechar
+          </Button>,
+        ]}
+        width={900}
+      >
+        {selectedType && selectedType.job_config ? (
+          <div>
+            <Alert
+              message="Configuração exata extraída do prometheus.yml"
+              description="Este é o job completo como foi extraído do arquivo prometheus.yml do servidor. É apenas para visualização, não pode ser editado aqui."
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+            <Input.TextArea
+              value={JSON.stringify(selectedType.job_config, null, 2)}
+              readOnly
+              rows={25}
+              style={{
+                fontFamily: 'monospace',
+                fontSize: '12px',
+                backgroundColor: '#f5f5f5'
+              }}
+            />
+          </div>
+        ) : (
+          <Alert
+            message="Job Config não disponível"
+            description="O job_config não foi extraído para este tipo. Isso pode ocorrer se o tipo foi criado antes da funcionalidade de extração de job_config ser implementada."
+            type="warning"
+            showIcon
+          />
         )}
       </Modal>
 
