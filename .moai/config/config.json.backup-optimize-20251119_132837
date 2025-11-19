@@ -15,57 +15,9 @@
     "owner": "SKILLS IT",
     "created_at": "2025-11-19 01:27:37",
     "initialized": true,
-    "optimized": true,
-    "optimized_at": "2025-11-19T04:45:00Z",
-    "_notes": "optimized=false: Template updated, config merge required. optimized=true: Configuration fully merged and verified.",
-    "monitoring_types": [
-      "NetworkProbes",
-      "WebProbes",
-      "SystemExporters",
-      "CustomExporters",
-      "DatabaseExporters"
-    ]
-  },
-  "architecture": {
-    "backend": {
-      "framework": "FastAPI",
-      "database": "Consul KV",
-      "heavy_processing": true,
-      "existing_patterns": [
-        "monitoring_types_dynamic.py",
-        "reference_values.py",
-        "metadata_fields.py"
-      ]
-    },
-    "frontend": {
-      "framework": "React",
-      "ui_library": "Ant Design Pro",
-      "lightweight_only": true,
-      "existing_components": [
-        "ProTable",
-        "ColumnSelector",
-        "MetadataFilterBar"
-      ]
-    }
-  },
-  "memory": {
-    "persistent_context": {
-      "monitoring_stack": [
-        "Consul",
-        "Prometheus",
-        "AlertManager",
-        "Blackbox Exporter",
-        "SNMP Exporter",
-        "Windows Exporter",
-        "Node Exporter"
-      ],
-      "no_hardcode_rule": true,
-      "dynamic_extraction": true,
-      "restart_frontend_backend": "usar sempre restart-all.sh que esta dentro da pasta scripts/deployment do projeto",
-      "ssh_credentials": "verificar no arquivo .env",
-      "consul_server": "verificar no arquivo .env, mas sao varios, se for pra testes pode usar o master/default que deve estar no env tambem",
-      "consul_token": "verificar no arquivo .env"
-    }
+    "optimized": false,
+    "optimized_at": null,
+    "_notes": "optimized=false: Template updated, config merge required. optimized=true: Configuration fully merged and verified."
   },
   "language": {
     "conversation_language": "pt-BR",
@@ -123,7 +75,6 @@
       "develop_branch": "dev-adriano",
       "main_branch": "main",
       "prevent_branch_creation": false,
-      "work_on_current_branch": true,
       "work_on_main": false
     },
     "team": {
@@ -163,13 +114,7 @@
     },
     "labels": {
       "auto_suggest": true,
-      "default_labels": [
-        "bug",
-        "feature",
-        "docs",
-        "enhancement",
-        "question"
-      ]
+      "default_labels": ["bug", "feature", "docs", "enhancement", "question"]
     },
     "ci_cd": {
       "github_actions": false,
@@ -180,6 +125,6 @@
   },
   "user": {
     "name": "Adriano Fante",
-    "company": "SKILLS IT - Soluções em TI"
+    "company": "SKILLS IT"
   }
 }

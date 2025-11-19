@@ -1,7 +1,7 @@
 {
   "branch": "main",
-  "last_commit": "2d50a95 fix: corrigir acesso ao KV no merge de form_schemas",
-  "commit_time": "12 hours ago",
-  "changes": 20,
-  "last_check": "2025-11-19T12:40:01.624749"
+  "last_commit": "3e3eb74 draft(spec): WIP SPEC-DOCS-001 - Reorganiza\u00e7\u00e3o da Documenta\u00e7\u00e3o",
+  "commit_time": "48 seconds ago",
+  "changes": 265,
+  "last_check": "2025-11-19T14:21:55.533489"
 }

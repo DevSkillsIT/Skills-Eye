@@ -142,7 +142,10 @@
       "WebSearch",
       "Bash(PYTHONPATH=/home/adrianofante/projetos/Skills-Eye/backend python3:*)",
       "Bash(bash scripts/deployment/restart-all.sh:*)",
-      "Bash(\"http://172.16.1.26:8500/v1/kv/skills/eye/metadata/fields\")"
+      "Bash(\"http://172.16.1.26:8500/v1/kv/skills/eye/metadata/fields\")",
+      "Bash(/dev/null)",
+      "Bash(for dir in features developer/corrections developer/architecture guides api performance planning obsolete)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []
