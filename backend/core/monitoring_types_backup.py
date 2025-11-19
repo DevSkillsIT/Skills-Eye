@@ -142,19 +142,27 @@ class MonitoringTypesBackupManager:
                 logger.warning("[MONITORING-TYPES-BACKUP] ⚠️ Nenhum backup encontrado para restaurar")
                 return None
 
-            # ✅ BUGFIX: KVManager pode retornar {data: {...}, meta: {...}} ou estrutura direta
-            # Tentar ambas estruturas para compatibilidade
+            # ✅ BUGFIX: KVManager envolve em {data: ..., meta: ...} quando há metadata
+            # Precisamos desembrulhar em DOIS níveis:
+            # 1. O backup inteiro foi wrapped ao salvar
+            # 2. O types_data dentro também foi wrapped (era do KV original)
+
+            # Nível 1: Desembrulhar backup
             if 'data' in backup_data and 'types_data' in backup_data['data']:
-                # Estrutura envolvida pelo KVManager: {data: {types_data: ...}, meta: ...}
                 types_data = backup_data['data']['types_data']
                 backup_timestamp = backup_data['data'].get('backup_timestamp')
             elif 'types_data' in backup_data:
-                # Estrutura direta: {types_data: ..., backup_timestamp: ...}
                 types_data = backup_data['types_data']
                 backup_timestamp = backup_data.get('backup_timestamp')
             else:
                 logger.error(f"[MONITORING-TYPES-BACKUP] ❌ Backup corrompido: estrutura inválida. Chaves: {list(backup_data.keys())}")
                 return None
+
+            # Nível 2: types_data também pode estar wrapped!
+            # Se types_data tem só a chave 'data', precisa desembrulhar
+            if isinstance(types_data, dict) and list(types_data.keys()) == ['data']:
+                logger.debug("[MONITORING-TYPES-BACKUP] Desembrulhando types_data (wrapped pelo KVManager)")
+                types_data = types_data['data']
 
             if not types_data:
                 logger.error("[MONITORING-TYPES-BACKUP] ❌ Backup corrompido: types_data vazio")
@@ -369,6 +377,10 @@ class MonitoringTypesBackupManager:
         try:
             backup_data = await self.kv.get_json(KV_BACKUP_KEY)
             history = await self.kv.get_json(KV_BACKUP_HISTORY_KEY, default=[])
+
+            # ✅ BUGFIX: Desembrulhar backup se wrapped pelo KVManager
+            if backup_data and 'data' in backup_data:
+                backup_data = backup_data['data']
 
             return {
                 'has_backup': backup_data is not None,
