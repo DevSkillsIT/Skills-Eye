@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Body
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import logging
+import asyncio
 from datetime import datetime
 
 from core.multi_config_manager import MultiConfigManager
@@ -33,6 +34,7 @@ backup_manager = get_backup_manager()
 class FormSchemaUpdateRequest(BaseModel):
     """Request para atualizar form_schema de um tipo"""
     form_schema: Optional[Dict[str, Any]] = None
+    server: Optional[str] = None  # ✅ NOVO: Servidor específico (opcional - se não fornecido, atualiza em todos)
 
 
 async def _enrich_servers_with_sites_data(servers_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -691,32 +693,71 @@ async def get_types_from_prometheus(
         # Buscar KV existente para preservar form_schema customizados
         existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
         existing_form_schemas = {}
-        if existing_kv and existing_kv.get('all_types'):
-            for existing_type in existing_kv['all_types']:
-                if existing_type.get('form_schema'):
-                    existing_form_schemas[existing_type['id']] = existing_type['form_schema']
-                    logger.debug(f"[MONITORING-TYPES] Preservando form_schema customizado: {existing_type['id']}")
+        if existing_kv:
+            # Buscar form_schema de servers (específico por servidor) - PRIORIDADE
+            if existing_kv.get('servers'):
+                for server_host, server_data in existing_kv['servers'].items():
+                    if 'types' in server_data:
+                        for type_def in server_data.get('types', []):
+                            if type_def.get('form_schema'):
+                                type_id = type_def['id']
+                                # Usar chave composta: type_id + servidor
+                                key = f"{type_id}::{server_host}"
+                                existing_form_schemas[key] = type_def['form_schema']
+                                logger.debug(f"[MONITORING-TYPES] Preservando form_schema: {key}")
+            
+            # Buscar form_schema de all_types (fallback)
+            if existing_kv.get('all_types'):
+                for existing_type in existing_kv['all_types']:
+                    if existing_type.get('form_schema'):
+                        type_id = existing_type['id']
+                        # Se não tem form_schema específico por servidor, usar o global
+                        has_server_specific = any(k.startswith(f"{type_id}::") for k in existing_form_schemas.keys())
+                        if not has_server_specific:
+                            existing_form_schemas[type_id] = existing_type['form_schema']
+                            logger.debug(f"[MONITORING-TYPES] Preservando form_schema global: {type_id}")
 
         if existing_form_schemas:
             logger.info(f"[MONITORING-TYPES] 🔄 Preservando {len(existing_form_schemas)} form_schema customizados...")
 
-        # Aplicar merge em all_types
-        for type_def in result['all_types']:
-            if type_def['id'] in existing_form_schemas:
-                type_def['form_schema'] = existing_form_schemas[type_def['id']]
-
-        # Aplicar merge em servers
+        # Aplicar merge em servers (usar form_schema específico do servidor)
         for server_host, server_data in enriched_servers.items():
             if 'types' in server_data:
                 for type_def in server_data['types']:
-                    if type_def['id'] in existing_form_schemas:
-                        type_def['form_schema'] = existing_form_schemas[type_def['id']]
+                    type_id = type_def['id']
+                    # Tentar chave específica por servidor primeiro
+                    server_key = f"{type_id}::{server_host}"
+                    if server_key in existing_form_schemas:
+                        type_def['form_schema'] = existing_form_schemas[server_key]
+                    elif type_id in existing_form_schemas:
+                        # Fallback: usar form_schema global
+                        type_def['form_schema'] = existing_form_schemas[type_id]
 
-        # Aplicar merge em categories
+        # Aplicar merge em all_types (priorizar global > primeiro servidor)
+        for type_def in result['all_types']:
+            type_id = type_def['id']
+            if type_id in existing_form_schemas:
+                # Encontrou schema global (exato)
+                type_def['form_schema'] = existing_form_schemas[type_id]
+            else:
+                # Fallback: primeiro específico encontrado
+                for key, schema in existing_form_schemas.items():
+                    if key.startswith(f"{type_id}::"):
+                        type_def['form_schema'] = schema
+                        break
+
+        # Aplicar merge em categories (priorizar global > primeiro servidor)
         for category in result['categories']:
             for type_def in category.get('types', []):
-                if type_def['id'] in existing_form_schemas:
-                    type_def['form_schema'] = existing_form_schemas[type_def['id']]
+                type_id = type_def['id']
+                if type_id in existing_form_schemas:
+                    type_def['form_schema'] = existing_form_schemas[type_id]
+                else:
+                    # Fallback: primeiro específico encontrado
+                    for key, schema in existing_form_schemas.items():
+                        if key.startswith(f"{type_id}::"):
+                            type_def['form_schema'] = schema
+                            break
 
         # PASSO 4: Salvar no KV SEM 'fields' (fields são obtidos via SSH, não salvos no KV)
         # ⚠️ CRÍTICO: 'fields' é apenas para display no frontend, não deve ser persistido no KV
@@ -821,68 +862,100 @@ async def update_type_form_schema(
         }
     """
     try:
-        logger.info(f"[UPDATE-FORM-SCHEMA] Atualizando form_schema para tipo: {type_id}")
+        logger.info(f"[UPDATE-FORM-SCHEMA] Atualizando form_schema para tipo: {type_id}, servidor: {request.server}")
 
         # PASSO 1: Buscar KV atual
         kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
-
+        
         if not kv_data or not kv_data.get('all_types'):
             raise HTTPException(
                 status_code=404,
                 detail="KV monitoring-types não encontrado. Execute force_refresh=true primeiro."
             )
 
-        # PASSO 2: Encontrar tipo no all_types
-        type_found = False
-        for type_def in kv_data['all_types']:
-            if type_def.get('id') == type_id:
-                # ✅ ATUALIZAR form_schema diretamente
-                type_def['form_schema'] = request.form_schema
-                type_found = True
-                logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Tipo '{type_id}' atualizado com form_schema")
-                break
+        target_server = request.server
+        servers_updated = 0
 
-        if not type_found:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Tipo '{type_id}' não encontrado. Tipos disponíveis: {[t['id'] for t in kv_data['all_types'][:10]]}"
-            )
-
-        # PASSO 3: Atualizar também em servers (para consistência)
-        for server_host, server_data in kv_data.get('servers', {}).items():
+        # PASSO 2: Atualizar form_schema
+        if target_server and target_server != 'ALL':
+            # Servidor específico: atualizar apenas nele
+            if target_server not in kv_data.get('servers', {}):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Servidor '{target_server}' não encontrado."
+                )
+            
+            server_data = kv_data['servers'][target_server]
+            type_found = False
             for type_def in server_data.get('types', []):
                 if type_def.get('id') == type_id:
                     type_def['form_schema'] = request.form_schema
+                    type_found = True
+                    servers_updated = 1
+                    logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Tipo '{type_id}' atualizado no servidor '{target_server}'")
+                    break
+            
+            if not type_found:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Tipo '{type_id}' não encontrado no servidor '{target_server}'."
+                )
+        else:
+            # Sem servidor específico: atualizar em todos os servidores que têm este tipo
+            for server_host, server_data in kv_data.get('servers', {}).items():
+                for type_def in server_data.get('types', []):
+                    if type_def.get('id') == type_id:
+                        type_def['form_schema'] = request.form_schema
+                        servers_updated += 1
+                        logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Tipo '{type_id}' atualizado no servidor '{server_host}'")
+            
+            # ✅ ATUALIZAR GLOBAIS (all_types/categories) para refletir mudança imediatamente
+            if kv_data.get('all_types'):
+                for type_def in kv_data['all_types']:
+                    if type_def.get('id') == type_id:
+                        type_def['form_schema'] = request.form_schema
+            
+            if kv_data.get('categories'):
+                for category in kv_data['categories']:
+                    if 'types' in category:
+                        for type_def in category['types']:
+                            if type_def.get('id') == type_id:
+                                type_def['form_schema'] = request.form_schema
 
-        # PASSO 4: Atualizar metadata
+        # PASSO 3: Atualizar metadata
         kv_data['last_updated'] = datetime.now().isoformat()
 
-        # PASSO 4.5: ✅ CRIAR BACKUP antes de salvar (preservar histórico de changes)
-        logger.info(f"[UPDATE-FORM-SCHEMA] Criando backup antes de salvar tipo '{type_id}'...")
+        # PASSO 4: Criar backup
         backup_success = await backup_manager.create_backup(kv_data)
         if backup_success:
-            logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Backup criado para tipo '{type_id}'")
+            logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Backup criado")
         else:
-            logger.warning(f"[UPDATE-FORM-SCHEMA] ⚠️ Falha ao criar backup para '{type_id}' (continuando salvamento)")
+            logger.warning(f"[UPDATE-FORM-SCHEMA] ⚠️ Falha ao criar backup (continuando)")
 
-        # PASSO 5: Salvar de volta no KV
+        # PASSO 5: Salvar no KV
         success = await kv_manager.put_json(
             key='skills/eye/monitoring-types',
-            value=kv_data
+            value=kv_data,
+            metadata={
+                'auto_updated': False,
+                'source': 'form_schema_update',
+                'updated_by': 'user',
+                'type_id': type_id,
+                'server': target_server if target_server and target_server != 'ALL' else 'all'
+            }
         )
 
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Erro ao salvar no KV Consul"
-            )
-
-        logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Form schema salvo no KV para tipo '{type_id}'")
+            raise HTTPException(status_code=500, detail="Erro ao salvar no KV Consul")
+        
+        logger.info(f"[UPDATE-FORM-SCHEMA] ✅ Form schema salvo no KV para tipo '{type_id}' (servidores atualizados: {servers_updated})")
 
         return {
             "success": True,
-            "message": f"Form schema atualizado para tipo '{type_id}'",
+            "message": f"Form schema atualizado para tipo '{type_id}'" + (f" no servidor '{target_server}'" if target_server and target_server != 'ALL' else " em todos os servidores"),
             "type_id": type_id,
+            "server": target_server,
+            "servers_updated": servers_updated,
             "last_updated": kv_data['last_updated']
         }
 

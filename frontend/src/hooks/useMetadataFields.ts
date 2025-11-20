@@ -222,21 +222,29 @@ export function useTableFields(context?: string): {
     // Filtrar por contexto e show_in_table
     const filtered = allFields
       .filter((f: MetadataFieldDynamic) => {
-        // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
-        // Categories: network-probes, web-probes, system-exporters, etc
-        // Backend fields: show_in_blackbox, show_in_exporters, show_in_services
-
+        // ✅ SPRINT 3: Mapear categorias para campos show_in específicos por página
         if (context === 'services') return f.show_in_services !== false;
         if (context === 'exporters') return f.show_in_exporters !== false;
         if (context === 'blackbox') return f.show_in_blackbox !== false;
 
-        // Mapear categorias dinâmicas para campos base
-        if (context === 'network-probes' || context === 'web-probes') {
-          return f.show_in_blackbox !== false;  // ← probes = blackbox
+        // Categorias dinâmicas com campos específicos
+        if (context === 'network-probes') {
+          return (f as any).show_in_network_probes !== false;
         }
-        if (context === 'system-exporters' || context === 'database-exporters' ||
-            context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-          return f.show_in_exporters !== false;  // ← exporters categories
+        if (context === 'web-probes') {
+          return (f as any).show_in_web_probes !== false;
+        }
+        if (context === 'system-exporters') {
+          return (f as any).show_in_system_exporters !== false;
+        }
+        if (context === 'database-exporters') {
+          return (f as any).show_in_database_exporters !== false;
+        }
+        if (context === 'infrastructure-exporters') {
+          return (f as any).show_in_infrastructure_exporters !== false;
+        }
+        if (context === 'hardware-exporters') {
+          return (f as any).show_in_hardware_exporters !== false;
         }
 
         return true;  // Sem filtro específico
@@ -270,20 +278,32 @@ export function useFormFields(context?: string): {
 
   const formFields = allFields
     .filter((f: MetadataFieldDynamic) => {
-      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+      // ✅ SPRINT 3: Mapear categorias para campos show_in específicos por página
+      // Cada categoria tem seu próprio campo show_in_xxx
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      
-      // Mapear categorias dinâmicas
-      if (context === 'network-probes' || context === 'web-probes') {
-        return f.show_in_blackbox !== false;
+
+      // Categorias dinâmicas com campos específicos
+      if (context === 'network-probes') {
+        return (f as any).show_in_network_probes !== false;
       }
-      if (context === 'system-exporters' || context === 'database-exporters' || 
-          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-        return f.show_in_exporters !== false;
+      if (context === 'web-probes') {
+        return (f as any).show_in_web_probes !== false;
       }
-      
+      if (context === 'system-exporters') {
+        return (f as any).show_in_system_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        return (f as any).show_in_database_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        return (f as any).show_in_infrastructure_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        return (f as any).show_in_hardware_exporters !== false;
+      }
+
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_form === true)
@@ -305,20 +325,31 @@ export function useFilterFields(context?: string): {
 
   const filterFields = allFields
     .filter((f: MetadataFieldDynamic) => {
-      // ✅ CORREÇÃO: Mapear categorias para campos show_in corretos
+      // ✅ SPRINT 3: Mapear categorias para campos show_in específicos por página
       if (context === 'services') return f.show_in_services !== false;
       if (context === 'exporters') return f.show_in_exporters !== false;
       if (context === 'blackbox') return f.show_in_blackbox !== false;
-      
-      // Mapear categorias dinâmicas
-      if (context === 'network-probes' || context === 'web-probes') {
-        return f.show_in_blackbox !== false;
+
+      // Categorias dinâmicas com campos específicos
+      if (context === 'network-probes') {
+        return (f as any).show_in_network_probes !== false;
       }
-      if (context === 'system-exporters' || context === 'database-exporters' || 
-          context === 'infrastructure-exporters' || context === 'hardware-exporters') {
-        return f.show_in_exporters !== false;
+      if (context === 'web-probes') {
+        return (f as any).show_in_web_probes !== false;
       }
-      
+      if (context === 'system-exporters') {
+        return (f as any).show_in_system_exporters !== false;
+      }
+      if (context === 'database-exporters') {
+        return (f as any).show_in_database_exporters !== false;
+      }
+      if (context === 'infrastructure-exporters') {
+        return (f as any).show_in_infrastructure_exporters !== false;
+      }
+      if (context === 'hardware-exporters') {
+        return (f as any).show_in_hardware_exporters !== false;
+      }
+
       return true;
     })
     .filter((f: MetadataFieldDynamic) => f.enabled === true && f.show_in_filter === true)

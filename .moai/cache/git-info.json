@@ -1,7 +1,7 @@
 {
-  "branch": "main",
-  "last_commit": "3e3eb74 draft(spec): WIP SPEC-DOCS-001 - Reorganiza\u00e7\u00e3o da Documenta\u00e7\u00e3o",
-  "commit_time": "48 seconds ago",
-  "changes": 265,
-  "last_check": "2025-11-19T14:21:55.533489"
+  "branch": "feature/SPEC-SPRINT-003",
+  "last_commit": "79fe687 fix(monitoring-types): preservar form_schema em force_refresh e n\u00e3o persistir fields no KV",
+  "commit_time": "2 hours ago",
+  "changes": 6,
+  "last_check": "2025-11-19T21:09:25.315662"
 }

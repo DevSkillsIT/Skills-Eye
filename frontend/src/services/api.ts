@@ -1109,9 +1109,10 @@ export const consulAPI = {
   /**
    * ✅ SOLUÇÃO PRAGMÁTICA: Atualizar form_schema de um tipo
    */
-  updateTypeFormSchema: (typeId: string, formSchema: any) =>
+  updateTypeFormSchema: (typeId: string, formSchema: any, server?: string) =>
     api.put(`/monitoring-types-dynamic/type/${typeId}/form-schema`, {
-      form_schema: formSchema
+      form_schema: formSchema,
+      server: server  // ✅ NOVO: Servidor específico (opcional)
     }),
 };
 

@@ -1409,6 +1409,15 @@ const MetadataFieldsPage: React.FC = () => {
         show_in_form: values.show_in_form,
         editable: values.editable,
         available_for_registration: values.available_for_registration ?? false,  // NOVO: Auto-cadastro em Reference Values
+        placeholder: values.placeholder, // ✅ NOVO: Placeholder do campo
+        
+        // ✅ PRESERVAR campos que podem não estar no formulário mas existem no objeto original
+        // Isso evita que configurações avançadas (regex, validation, options) sejam perdidas ao editar
+        validation_regex: values.validation_regex !== undefined ? values.validation_regex : editingField.validation_regex,
+        validation: values.validation !== undefined ? values.validation : editingField.validation,
+        default_value: values.default_value !== undefined ? values.default_value : editingField.default_value,
+        options: values.options !== undefined ? values.options : editingField.options,
+        
         // show_in_* para filtros de página (Services, Exporters, Blackbox, futuras...)
         show_in_services: values.show_in_services ?? true,
         show_in_exporters: values.show_in_exporters ?? true,
@@ -3021,6 +3030,14 @@ DEFAULT_SITE=${config.default_site || 'null (nenhum site padrão)'}`}
                       />
                     </Col>
                   </Row>
+
+                  {/* LINHA 1.5: Placeholder (NOVO) */}
+                  <ProFormText
+                    name="placeholder"
+                    label="Placeholder do Campo"
+                    placeholder="Ex: Selecione o centro de custo..."
+                    tooltip="Texto de ajuda que aparece dentro do campo quando vazio (apenas para formulários)"
+                  />
 
                   {/* LINHA 2: Descrição (campo grande, ocupa linha inteira) */}
                   <ProFormTextArea
