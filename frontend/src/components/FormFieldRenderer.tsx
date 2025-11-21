@@ -30,15 +30,10 @@
  */
 
 import React from 'react';
-import { Form } from 'antd';
+import { Input, Select, InputNumber } from 'antd';
 import type { Rule } from 'antd/es/form';
-import {
-  ProFormText,
-  ProFormSelect,
-  ProFormTextArea,
-  ProFormDigit
-} from '@ant-design/pro-components';
 import ReferenceValueInput from './ReferenceValueInput';
+import FloatingFormField from './FloatingFormField';
 import type { MetadataFieldDynamic } from '../services/api';
 
 export interface FormFieldRendererProps {
@@ -68,6 +63,8 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
   className,
   forceStandardInput = false
 }) => {
+  // Cast field to any to avoid TS errors with missing properties in interface
+  const fieldAny = field as any;
   /**
    * Construir regras de validação baseadas na configuração do campo
    */
@@ -92,15 +89,15 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
     }
 
     // REGEX VALIDATION
-    if (field.validation_regex) {
+    if (fieldAny.validation_regex) {
       rules.push({
-        pattern: new RegExp(field.validation_regex),
+        pattern: new RegExp(fieldAny.validation_regex),
         message: `Formato inválido para ${field.display_name}`
       });
     }
 
     // URL VALIDATION (para field_type: url)
-    if (field.field_type === 'url') {
+    if (fieldAny.field_type === 'url') {
       rules.push({
         type: 'url',
         message: 'URL inválida'
@@ -145,16 +142,17 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
   const shouldUseAutocomplete =
     !forceStandardInput &&
     field.available_for_registration &&
-    field.field_type === 'string' &&
+    fieldAny.field_type === 'string' &&
     !EXCLUDE_FROM_AUTOCOMPLETE.includes(field.name);
 
   if (shouldUseAutocomplete) {
     return (
-      <Form.Item
+      <FloatingFormField
         name={field.name}
         label={field.display_name}
+        helper={field.description}
+        required={field.required}
         rules={rules}
-        tooltip={field.description}
         style={style}
         className={className}
       >
@@ -163,80 +161,90 @@ const FormFieldRenderer: React.FC<FormFieldRendererProps> = ({
           placeholder={field.placeholder || `Selecione ou digite ${field.display_name.toLowerCase()}`}
           required={field.required}
         />
-      </Form.Item>
+      </FloatingFormField>
     );
   }
 
   // CASO 2: Select com opções pré-definidas
-  if (field.field_type === 'select' && field.options && field.options.length > 0) {
+  if (fieldAny.field_type === 'select' && field.options && field.options.length > 0) {
     return (
-      <ProFormSelect
+      <FloatingFormField
         name={field.name}
         label={field.display_name}
-        placeholder={field.placeholder || `Selecione ${field.display_name.toLowerCase()}`}
-        tooltip={field.description}
-        options={field.options.map((opt) => ({ label: opt, value: opt }))}
+        helper={field.description}
+        required={field.required}
         rules={rules}
-        fieldProps={{
-          allowClear: !field.required
-        }}
         style={style}
         className={className}
-      />
+      >
+        <Select
+          placeholder={field.placeholder || `Selecione ${field.display_name.toLowerCase()}`}
+          options={field.options.map((opt) => ({ label: opt, value: opt }))}
+          allowClear={!field.required}
+        />
+      </FloatingFormField>
     );
   }
 
   // CASO 3: Textarea para campos de texto longo
-  if (field.field_type === 'text') {
+  if (fieldAny.field_type === 'text') {
     return (
-      <ProFormTextArea
+      <FloatingFormField
         name={field.name}
         label={field.display_name}
-        placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
-        tooltip={field.description}
+        helper={field.description}
+        required={field.required}
         rules={rules}
-        fieldProps={{
-          rows: 4,
-          maxLength: field.validation?.max_length || 1000
-        }}
         style={style}
         className={className}
-      />
+        fixedHeight={false}
+      >
+        <Input.TextArea
+          placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          maxLength={fieldAny.validation?.max_length || 1000}
+        />
+      </FloatingFormField>
     );
   }
 
   // CASO 4: Número
-  if (field.field_type === 'number') {
+  if (fieldAny.field_type === 'number') {
     return (
-      <ProFormDigit
+      <FloatingFormField
         name={field.name}
         label={field.display_name}
-        placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
-        tooltip={field.description}
+        helper={field.description}
+        required={field.required}
         rules={rules}
-        fieldProps={{
-          min: 0
-        }}
         style={style}
         className={className}
-      />
+      >
+        <InputNumber
+          placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
+          min={0}
+          style={{ width: '100%' }}
+        />
+      </FloatingFormField>
     );
   }
 
   // CASO 5: String padrão (sem auto-cadastro)
   return (
-    <ProFormText
+    <FloatingFormField
       name={field.name}
       label={field.display_name}
-      placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
-      tooltip={field.description}
+      helper={field.description}
+      required={field.required}
       rules={rules}
-      fieldProps={{
-        maxLength: field.validation?.max_length || 200
-      }}
       style={style}
       className={className}
-    />
+    >
+      <Input
+        placeholder={field.placeholder || `Digite ${field.display_name.toLowerCase()}`}
+        maxLength={fieldAny.validation?.max_length || 200}
+      />
+    </FloatingFormField>
   );
 };
 
