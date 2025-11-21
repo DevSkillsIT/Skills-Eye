@@ -2,11 +2,14 @@
 Categorization Rule Engine - Motor de Regras Baseado em JSON
 
 RESPONSABILIDADES:
-- Carregar regras do Consul KV
+- Carregar regras do Consul KV (ÚNICA FONTE DE VERDADE)
 - Aplicar regras em ordem de prioridade
 - Categorizar jobs Prometheus automaticamente
 - Suportar regex patterns para job_name e módulos
-- Usar fallback hardcoded quando KV está vazio/indisponível
+
+✅ SPEC-ARCH-001: REMOVIDO BUILTIN_RULES
+   O KV é a ÚNICA fonte de verdade. Quando KV está vazio, o sistema
+   retorna apenas default_category para forçar configuração correta.
 
 AUTOR: Sistema de Refatoração Skills Eye v2.0
 DATA: 2025-11-13
@@ -17,144 +20,6 @@ from typing import Dict, List, Optional, Any
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-# =============================================================================
-# BUILTIN_RULES: Regras padrão usadas quando KV está vazio ou indisponível
-# =============================================================================
-# Estas regras garantem categorização mínima mesmo sem acesso ao Consul KV.
-# Cobrem os tipos mais comuns do ecossistema Prometheus/Blackbox.
-# Quando KV está disponível, essas regras são IGNORADAS em favor do KV.
-# =============================================================================
-
-BUILTIN_RULES = {
-    "version": "builtin-1.0.0",
-    "last_updated": "2025-11-21",
-    "description": "Regras builtin para fallback quando KV indisponível",
-    "default_category": "custom-exporters",
-    "rules": [
-        # Probes de Rede (Blackbox)
-        {
-            "id": "builtin_icmp",
-            "priority": 100,
-            "category": "network-probes",
-            "display_name": "ICMP (Ping)",
-            "exporter_type": "blackbox",
-            "conditions": {
-                "job_name_pattern": "^(icmp|ping).*",
-                "metrics_path": "/probe",
-                "module_pattern": "^(icmp|ping)$"
-            }
-        },
-        {
-            "id": "builtin_tcp",
-            "priority": 100,
-            "category": "network-probes",
-            "display_name": "TCP Connect",
-            "exporter_type": "blackbox",
-            "conditions": {
-                "job_name_pattern": "^tcp.*",
-                "metrics_path": "/probe",
-                "module_pattern": "^tcp"
-            }
-        },
-        {
-            "id": "builtin_dns",
-            "priority": 100,
-            "category": "network-probes",
-            "display_name": "DNS Query",
-            "exporter_type": "blackbox",
-            "conditions": {
-                "job_name_pattern": "^dns.*",
-                "metrics_path": "/probe",
-                "module_pattern": "^dns"
-            }
-        },
-        # Probes Web (Blackbox)
-        {
-            "id": "builtin_http_2xx",
-            "priority": 100,
-            "category": "web-probes",
-            "display_name": "HTTP 2xx",
-            "exporter_type": "blackbox",
-            "conditions": {
-                "job_name_pattern": "^http.*2xx.*",
-                "metrics_path": "/probe",
-                "module_pattern": "^http.*2xx"
-            }
-        },
-        {
-            "id": "builtin_https",
-            "priority": 100,
-            "category": "web-probes",
-            "display_name": "HTTPS",
-            "exporter_type": "blackbox",
-            "conditions": {
-                "job_name_pattern": "^https.*",
-                "metrics_path": "/probe",
-                "module_pattern": "^https"
-            }
-        },
-        # Exporters de Sistema
-        {
-            "id": "builtin_node_exporter",
-            "priority": 90,
-            "category": "system-exporters",
-            "display_name": "Node Exporter",
-            "exporter_type": "node",
-            "conditions": {
-                "job_name_pattern": "^node.*exporter.*",
-                "metrics_path": "/metrics"
-            }
-        },
-        {
-            "id": "builtin_windows_exporter",
-            "priority": 90,
-            "category": "system-exporters",
-            "display_name": "Windows Exporter",
-            "exporter_type": "windows",
-            "conditions": {
-                "job_name_pattern": "^windows.*exporter.*",
-                "metrics_path": "/metrics"
-            }
-        },
-        # Exporters de Banco de Dados
-        {
-            "id": "builtin_mysql_exporter",
-            "priority": 85,
-            "category": "database-exporters",
-            "display_name": "MySQL Exporter",
-            "exporter_type": "mysql",
-            "conditions": {
-                "job_name_pattern": "^mysql.*exporter.*",
-                "metrics_path": "/metrics"
-            }
-        },
-        {
-            "id": "builtin_postgres_exporter",
-            "priority": 85,
-            "category": "database-exporters",
-            "display_name": "PostgreSQL Exporter",
-            "exporter_type": "postgres",
-            "conditions": {
-                "job_name_pattern": "^postgres.*exporter.*",
-                "metrics_path": "/metrics"
-            }
-        },
-        # Exporters de Infraestrutura
-        {
-            "id": "builtin_snmp_exporter",
-            "priority": 80,
-            "category": "infrastructure-exporters",
-            "display_name": "SNMP Exporter",
-            "exporter_type": "snmp",
-            "conditions": {
-                "job_name_pattern": "^snmp.*",
-                "metrics_path": "/snmp"
-            }
-        },
-    ]
-}
 
 
 class CategorizationRule:
@@ -327,15 +192,19 @@ class CategorizationRuleEngine:
         self.rules: List[CategorizationRule] = []
         self.default_category = 'custom-exporters'
         self.rules_loaded = False
-        self._using_builtin = False  # Flag para indicar se está usando BUILTIN_RULES como fallback
+        # ✅ SPEC-ARCH-001: REMOVIDO _using_builtin - KV é única fonte de verdade
 
     async def load_rules(self, force_reload: bool = False) -> bool:
         """
-        Carrega regras do Consul KV ou usa fallback builtin
+        Carrega regras do Consul KV (ÚNICA FONTE DE VERDADE)
+
+        ✅ SPEC-ARCH-001: KV é a única fonte de verdade para regras.
+           Quando KV está vazio, retorna False para forçar configuração correta.
+           O sistema usará apenas default_category até que as regras sejam populadas.
 
         Fluxo:
         1. Busca JSON do KV: skills/eye/monitoring-types/categorization/rules
-        2. Se KV vazio/indisponível: Usa BUILTIN_RULES como fallback
+        2. Se KV vazio: Retorna False e loga warning
         3. Cria objetos CategorizationRule para cada regra
         4. Ordena por prioridade (maior primeiro)
         5. Armazena categoria padrão
@@ -344,10 +213,7 @@ class CategorizationRuleEngine:
             force_reload: Se True, recarrega mesmo se já carregado
 
         Returns:
-            True se carregou com sucesso (KV ou fallback)
-
-        Raises:
-            Não lança exceção - retorna True mesmo com fallback
+            True se carregou com sucesso do KV, False se KV vazio
         """
         # Se já carregou e não é force_reload, skip
         if self.rules_loaded and not force_reload:
@@ -361,16 +227,16 @@ class CategorizationRuleEngine:
                 use_cache=not force_reload
             )
 
-            # Se KV vazio, usar fallback builtin
+            # ✅ SPEC-ARCH-001: Se KV vazio, retornar False (não usar fallback)
             if not rules_data:
                 logger.warning(
-                    "[RULES] KV vazio - usando BUILTIN_RULES como fallback. "
-                    "Execute migrate_categorization_to_json.py para popular KV."
+                    "[RULES] ⚠️ KV vazio - nenhuma regra carregada. "
+                    "Execute migrate_categorization_to_json.py para popular KV. "
+                    "Sistema usará apenas default_category para categorização."
                 )
-                rules_data = BUILTIN_RULES
-                self._using_builtin = True
-            else:
-                self._using_builtin = False
+                self.rules = []
+                self.rules_loaded = False
+                return False
 
             # Criar objetos de regra
             self.rules = []
@@ -390,41 +256,17 @@ class CategorizationRuleEngine:
 
             self.rules_loaded = True
 
-            source = "BUILTIN" if self._using_builtin else "KV"
             logger.info(
-                f"[RULES] {len(self.rules)} regras carregadas de {source} "
+                f"[RULES] ✅ {len(self.rules)} regras carregadas do KV "
                 f"(default_category: {self.default_category})"
             )
             return True
 
         except Exception as e:
-            # Em caso de erro, tentar usar builtin como fallback de emergência
-            logger.error(f"[RULES] Erro ao carregar regras do KV: {e}")
-            logger.warning("[RULES] Usando BUILTIN_RULES como fallback de emergência")
-
-            try:
-                self.rules = []
-                for rule_data in BUILTIN_RULES.get('rules', []):
-                    try:
-                        rule = CategorizationRule(rule_data)
-                        self.rules.append(rule)
-                    except Exception as rule_error:
-                        logger.error(f"[RULES] Erro ao criar regra builtin {rule_data.get('id', '?')}: {rule_error}")
-                        continue
-
-                self.rules.sort(key=lambda r: r.priority, reverse=True)
-                self.default_category = BUILTIN_RULES.get('default_category', 'custom-exporters')
-                self.rules_loaded = True
-                self._using_builtin = True
-
-                logger.info(f"[RULES] {len(self.rules)} regras BUILTIN carregadas como fallback de emergência")
-                return True
-            except Exception as fallback_error:
-                logger.error(f"[RULES] Falha crítica ao carregar BUILTIN: {fallback_error}", exc_info=True)
-                self.rules = []
-                self.rules_loaded = False
-                self._using_builtin = False
-                return False
+            logger.error(f"[RULES] ❌ Erro ao carregar regras do KV: {e}", exc_info=True)
+            self.rules = []
+            self.rules_loaded = False
+            return False
 
     def categorize(self, job_data: Dict) -> tuple:
         """
@@ -533,33 +375,18 @@ class CategorizationRuleEngine:
         """
         Formata nome para exibição
 
+        ✅ SPEC-ARCH-001: REMOVIDO mapeamento hardcoded.
+           Display names devem vir das regras no KV.
+           Esta função apenas formata o nome técnico para formato amigável.
+
         Args:
             name: Nome técnico (ex: 'icmp', 'node_exporter')
 
         Returns:
-            Nome formatado (ex: 'ICMP', 'Node Exporter')
+            Nome formatado usando capitalização (ex: 'Icmp', 'Node Exporter')
         """
-        # Mapeamento de nomes conhecidos
-        mapping = {
-            'icmp': 'ICMP (Ping)',
-            'ping': 'ICMP (Ping)',
-            'tcp': 'TCP Connect',
-            'tcp_connect': 'TCP Connect',
-            'dns': 'DNS Query',
-            'ssh': 'SSH Banner',
-            'ssh_banner': 'SSH Banner',
-            'http_2xx': 'HTTP 2xx',
-            'http_4xx': 'HTTP 4xx',
-            'http_5xx': 'HTTP 5xx',
-            'https': 'HTTPS',
-            'http_post_2xx': 'HTTP POST 2xx',
-        }
-
-        name_lower = name.lower()
-        if name_lower in mapping:
-            return mapping[name_lower]
-
-        # Fallback: capitalizar e substituir separadores
+        # ✅ SPEC-ARCH-001: Apenas capitalizar, sem mapeamento hardcoded
+        # Display names específicos devem estar nas regras do KV
         return name.replace('-', ' ').replace('_', ' ').title()
 
     def get_rules_summary(self) -> Dict[str, Any]:
@@ -567,7 +394,7 @@ class CategorizationRuleEngine:
         Retorna resumo das regras carregadas
 
         Returns:
-            Dicionário com estatísticas das regras (incluindo fonte: builtin vs consul_kv)
+            Dicionário com estatísticas das regras
         """
         categories = {}
         for rule in self.rules:
@@ -577,7 +404,7 @@ class CategorizationRuleEngine:
             "total_rules": len(self.rules),
             "rules_loaded": self.rules_loaded,
             "default_category": self.default_category,
-            "source": "builtin" if self._using_builtin else "consul_kv",  # Indica fonte das regras
+            "source": "consul_kv",  # ✅ SPEC-ARCH-001: KV é única fonte de verdade
             "categories": categories,
             "priority_range": {
                 "min": min([r.priority for r in self.rules]) if self.rules else None,

@@ -199,7 +199,9 @@ class TestSPECARCH001:
         self._assert('total_rules' in summary, "Resumo contém 'total_rules'")
         self._assert('categories' in summary, "Resumo contém 'categories'")
         self._assert('default_category' in summary, "Resumo contém 'default_category'")
-        self._assert('source' in summary, "Resumo contém 'source' (builtin ou consul_kv)")
+        self._assert('source' in summary, "Resumo contém 'source'")
+        # ✅ SPEC-ARCH-001: source é sempre 'consul_kv' (KV é única fonte de verdade)
+        self._assert(summary.get('source') == 'consul_kv', "Source é 'consul_kv' (KV é única fonte)")
 
         logger.info(f"   Total de regras: {summary.get('total_rules')}")
         logger.info(f"   Categorias: {list(summary.get('categories', {}).keys())}")
@@ -240,12 +242,13 @@ class TestSPECARCH001:
     async def test_empty_kv_fallback(self):
         """Teste 10: Engine retorna categoria padrão quando KV está vazio"""
         logger.info("\n" + "=" * 60)
-        logger.info("TEST 10: Engine funciona quando KV está vazio (usa BUILTIN_RULES)")
+        logger.info("TEST 10: Engine retorna default_category quando sem regras carregadas")
         logger.info("=" * 60)
 
+        # ✅ SPEC-ARCH-001: KV é única fonte de verdade, não há BUILTIN_RULES
         # Criar engine novo sem carregar regras
         empty_engine = CategorizationRuleEngine(self.config_manager)
-        # Não chamar load_rules() - simula KV vazio
+        # Não chamar load_rules() - simula cenário sem regras
 
         job_data = {
             'job_name': 'any_job',
@@ -265,6 +268,7 @@ class TestSPECARCH001:
         )
 
         logger.info(f"   Resultado: category={category}, display_name={type_info.get('display_name')}")
+        logger.info("   ✅ SPEC-ARCH-001: Sistema deve ter regras no KV para categorização correta")
 
     async def test_performance_1000_types(self):
         """Teste 11: Performance de categorização com 1000+ tipos"""

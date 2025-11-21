@@ -246,20 +246,13 @@ def _format_category_display_name(category: str) -> str:
     """
     Formata nome da categoria para exibição
 
-    ✅ SPEC-ARCH-001: Esta função permanece como fallback para agrupamento
-    de categorias na resposta. Futuramente pode buscar do KV categories.
+    ✅ SPEC-ARCH-001: REMOVIDO mapeamento hardcoded.
+       Display names de categorias devem vir do KV categories.
+       Esta função apenas formata o slug para formato amigável.
     """
-    mapping = {
-        'network-probes': 'Network Probes (Rede)',
-        'web-probes': 'Web Probes (Aplicações)',
-        'system-exporters': 'Exporters: Sistemas',
-        'database-exporters': 'Exporters: Bancos de Dados',
-        'infrastructure-exporters': 'Exporters: Infraestrutura',
-        'hardware-exporters': 'Exporters: Hardware',
-        'network-devices': 'Dispositivos de Rede',
-        'custom-exporters': 'Exporters: Customizados',
-    }
-    return mapping.get(category, category.replace('-', ' ').title())
+    # ✅ SPEC-ARCH-001: Apenas capitalizar, sem mapeamento hardcoded
+    # Display names de categorias devem estar no KV categories
+    return category.replace('-', ' ').title()
 
 
 async def _process_single_server(
@@ -635,8 +628,55 @@ async def get_types_from_prometheus(
         enriched_servers = await _enrich_servers_with_sites_data(result['servers'])
         logger.info(f"[MONITORING-TYPES] ✅ Enriquecimento concluído. Servidores enriquecidos: {list(enriched_servers.keys())}")
         
-        # PASSO 4: Salvar no KV (sobrescrever - não precisa merge como metadata-fields)
-        # ✅ CORREÇÃO: Salvar COM fields para que o cache tenha os dados completos!
+        # PASSO 4: Merge seletivo para preservar form_schema existente
+        # ✅ SPEC-ARCH-001: form_schema existe APENAS em monitoring-types e deve ser preservado
+        logger.info("[MONITORING-TYPES] 🔄 Realizando merge seletivo para preservar form_schema...")
+
+        # 4.1: Buscar KV atual para preservar form_schema
+        existing_kv = await kv_manager.get_json('skills/eye/monitoring-types')
+
+        # 4.2: Criar mapeamento de form_schema existentes por type_id
+        existing_form_schemas = {}
+        if existing_kv:
+            # Preservar form_schema de all_types
+            for type_data in existing_kv.get('all_types', []):
+                type_id = type_data.get('id')
+                if type_id and 'form_schema' in type_data:
+                    existing_form_schemas[type_id] = type_data['form_schema']
+
+            # Também verificar em servers
+            for server_name, server_data in existing_kv.get('servers', {}).items():
+                for type_data in server_data.get('types', []):
+                    type_id = type_data.get('id')
+                    if type_id and 'form_schema' in type_data:
+                        existing_form_schemas[type_id] = type_data['form_schema']
+
+        # 4.3: Aplicar form_schema existente nos novos tipos
+        preserved_count = 0
+        for type_data in result['all_types']:
+            type_id = type_data.get('id')
+            if type_id in existing_form_schemas:
+                type_data['form_schema'] = existing_form_schemas[type_id]
+                preserved_count += 1
+
+        # 4.4: Aplicar form_schema nos tipos dentro de servers
+        for server_name, server_data in enriched_servers.items():
+            for type_data in server_data.get('types', []):
+                type_id = type_data.get('id')
+                if type_id in existing_form_schemas:
+                    type_data['form_schema'] = existing_form_schemas[type_id]
+
+        # 4.5: Aplicar form_schema nos tipos dentro de categories
+        for category_data in result['categories']:
+            for type_data in category_data.get('types', []):
+                type_id = type_data.get('id')
+                if type_id in existing_form_schemas:
+                    type_data['form_schema'] = existing_form_schemas[type_id]
+
+        if preserved_count > 0:
+            logger.info(f"[MONITORING-TYPES] ✅ Preservados {preserved_count} form_schema existentes")
+
+        # 4.6: Salvar no KV com form_schema preservado
         kv_value = {
             'version': '1.0.0',
             'last_updated': datetime.now().isoformat(),
@@ -644,12 +684,12 @@ async def get_types_from_prometheus(
             'total_types': result['total_types'],
             'total_servers': result['total_servers'],
             'successful_servers': result['successful_servers'],
-            'servers': enriched_servers,        # ✅ COM fields!
-            'all_types': result['all_types'],   # ✅ COM fields!
-            'categories': result['categories'], # ✅ COM fields!
+            'servers': enriched_servers,        # ✅ COM fields E form_schema!
+            'all_types': result['all_types'],   # ✅ COM fields E form_schema!
+            'categories': result['categories'], # ✅ COM fields E form_schema!
             'server_status': result['server_status']
         }
-        
+
         await kv_manager.put_json(
             key='skills/eye/monitoring-types',
             value=kv_value,

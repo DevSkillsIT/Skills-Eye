@@ -1020,7 +1020,7 @@ export const consulAPI = {
       metrics_path?: string;
       module_pattern?: string;
     };
-    form_schema?: any;  // ✅ SPRINT 1
+    // ✅ SPEC-ARCH-001: form_schema REMOVIDO - existe apenas em monitoring-types
     observations?: string;
   }) =>
     api.post<{
@@ -1044,7 +1044,7 @@ export const consulAPI = {
         metrics_path?: string;
         module_pattern?: string;
       };
-      form_schema?: any;  // ✅ SPRINT 1
+      // ✅ SPEC-ARCH-001: form_schema REMOVIDO - existe apenas em monitoring-types
       observations?: string;
     }
   ) =>
