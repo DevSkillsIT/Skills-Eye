@@ -145,7 +145,10 @@
       "Bash(\"http://172.16.1.26:8500/v1/kv/skills/eye/metadata/fields\")",
       "Bash(/dev/null)",
       "Bash(for dir in features developer/corrections developer/architecture guides api performance planning obsolete)",
-      "Bash(git mv:*)"
+      "Bash(git mv:*)",
+      "Bash(pgrep:*)",
+      "Bash(ss -tlnp:*)",
+      "Bash(./venv/bin/python3:*)"
     ],
     "deny": [],
     "ask": []

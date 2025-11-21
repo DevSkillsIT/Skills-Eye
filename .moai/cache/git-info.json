@@ -1,7 +1,7 @@
 {
-  "branch": "feature/SPEC-SPRINT-003",
-  "last_commit": "efe16bd WIP: Committing pending changes for SPEC-SPRINT-003 including fix for server role display and debug scripts",
-  "commit_time": "13 minutes ago",
-  "changes": 1,
-  "last_check": "2025-11-20T23:22:18.612716"
+  "branch": "feature/SPEC-ARCH-001",
+  "last_commit": "01b3f01 feat(spec): adicionar SPEC-ARCH-001 com detalhes t\u00e9cnicos espec\u00edficos",
+  "commit_time": "3 minutes ago",
+  "changes": 0,
+  "last_check": "2025-11-20T23:29:41.475435"
 }
