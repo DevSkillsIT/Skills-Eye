@@ -262,137 +262,148 @@ def _format_category_display_name(category: str) -> str:
     return mapping.get(category, category.replace('-', ' ').title())
 
 
-async def _extract_types_from_all_servers(server: Optional[str] = None) -> Dict[str, Any]:
+async def _process_single_server(
+    host,
+    multi_config,
+    rule_engine
+) -> Dict[str, Any]:
     """
-    Função helper para extrair tipos de monitoramento de todos os servidores
-    
-    Esta função é reutilizada tanto pelo endpoint quanto pelo prewarm.
-    
+    Processa um único servidor e extrai seus tipos de monitoramento
+
     Args:
-        server: Hostname do servidor específico (None para todos)
-    
+        host: Objeto host com hostname
+        multi_config: Instância de MultiConfigManager
+        rule_engine: Instância de CategorizationRuleEngine
+
     Returns:
         Dict com estrutura:
         {
-            "servers": {...},
-            "all_types": [...],
-            "categories": {...},
-            "total_types": int,
-            "total_servers": int,
-            "server_status": [...]
+            "hostname": str,
+            "success": bool,
+            "types": List[Dict],
+            "total": int,
+            "prometheus_file": str | None,
+            "error": str | None,
+            "duration_ms": int,
+            "fields_count": int
         }
     """
-    result_servers = {}
-    all_types_dict = {}  # Usar dict para deduplicar por id
-    server_status = []  # Status de cada servidor (para modal)
-    
-    # Iterar por hosts configurados
-    for host in multi_config.hosts:
-        server_host = host.hostname
-        
-        # Filtrar por servidor se especificado
-        if server and server != 'ALL' and server != server_host:
-            continue
-        
-        start_time = datetime.now()
-        try:
-            logger.info(f"[EXTRACT-TYPES] Processando servidor {server_host}...")
-            
-            # Buscar arquivo prometheus.yml
-            prom_files = multi_config.list_config_files(service='prometheus', hostname=server_host)
-            
-            if not prom_files:
-                logger.warning(f"[EXTRACT-TYPES] Nenhum prometheus.yml encontrado em {server_host}")
-                duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-                result_servers[server_host] = {
-                    "error": "prometheus.yml não encontrado",
-                    "types": [],
-                    "total": 0
-                }
-                server_status.append({
-                    "hostname": server_host,
-                    "success": False,
-                    "from_cache": False,
-                    "files_count": 0,
-                    "fields_count": 0,
-                    "error": "prometheus.yml não encontrado",
-                    "duration_ms": duration_ms
-                })
-                continue
-            
-            # Usar o primeiro arquivo encontrado
-            prom_file = prom_files[0]
-            
-            # Ler conteúdo do arquivo
-            config = multi_config.read_config_file(prom_file)
-            
-            # Extrair tipos dos jobs
-            scrape_configs = config.get('scrape_configs', [])
-            types = await extract_types_from_prometheus_jobs(scrape_configs, server_host)
-            
+    server_host = host.hostname
+    start_time = datetime.now()
+
+    try:
+        logger.info(f"[EXTRACT-TYPES] Processando servidor {server_host}...")
+
+        # Buscar arquivo prometheus.yml
+        prom_files = multi_config.list_config_files(service='prometheus', hostname=server_host)
+
+        if not prom_files:
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            
-            result_servers[server_host] = {
-                "types": types,
-                "total": len(types),
-                "prometheus_file": prom_file.path
-            }
-            
-            # Contar campos únicos (fields de todos os tipos)
-            all_fields = set()
-            for type_def in types:
-                all_fields.update(type_def.get('fields', []))
-            
-            server_status.append({
-                "hostname": server_host,
-                "success": True,
-                "from_cache": False,
-                "files_count": 1,  # 1 arquivo prometheus.yml
-                "fields_count": len(all_fields),
-                "error": None,
-                "duration_ms": duration_ms
-            })
-            
-            logger.info(f"[EXTRACT-TYPES] Servidor {server_host}: {len(types)} tipos extraídos em {duration_ms}ms")
-            
-            # Adicionar ao all_types (deduplicar por id)
-            # ✅ CORREÇÃO: Manter 'fields' no dict para retornar ao frontend!
-            # Fields serão removidos apenas ao salvar no KV (mais abaixo)
-            for type_def in types:
-                type_id = type_def['id']
-                
-                if type_id not in all_types_dict:
-                    # Primeira vez que vemos este tipo - MANTER COM FIELDS!
-                    all_types_dict[type_id] = type_def.copy()
-                else:
-                    # Tipo já existe, adicionar à lista de servidores
-                    existing = all_types_dict[type_id]
-                    if 'servers' not in existing:
-                        # Converter single server para array
-                        existing['servers'] = [existing.pop('server')]
-                    if server_host not in existing['servers']:
-                        existing['servers'].append(server_host)
-        
-        except Exception as e:
-            duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-            logger.error(f"[EXTRACT-TYPES] Erro ao extrair tipos de {server_host}: {e}", exc_info=True)
-            result_servers[server_host] = {
-                "error": str(e),
-                "types": [],
-                "total": 0
-            }
-            server_status.append({
+            logger.warning(f"[EXTRACT-TYPES] Nenhum prometheus.yml encontrado em {server_host}")
+            return {
                 "hostname": server_host,
                 "success": False,
-                "from_cache": False,
-                "files_count": 0,
-                "fields_count": 0,
-                "error": str(e),
-                "duration_ms": duration_ms
-            })
-    
-    # Agrupar por categoria
+                "types": [],
+                "total": 0,
+                "prometheus_file": None,
+                "error": "prometheus.yml não encontrado",
+                "duration_ms": duration_ms,
+                "fields_count": 0
+            }
+
+        # Usar o primeiro arquivo encontrado
+        prom_file = prom_files[0]
+
+        # Ler conteúdo do arquivo
+        config = multi_config.read_config_file(prom_file)
+
+        # Extrair tipos dos jobs
+        scrape_configs = config.get('scrape_configs', [])
+        types = await extract_types_from_prometheus_jobs(scrape_configs, server_host)
+
+        duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
+        # Contar campos únicos
+        all_fields = set()
+        for type_def in types:
+            all_fields.update(type_def.get('fields', []))
+
+        logger.info(f"[EXTRACT-TYPES] Servidor {server_host}: {len(types)} tipos extraídos em {duration_ms}ms")
+
+        return {
+            "hostname": server_host,
+            "success": True,
+            "types": types,
+            "total": len(types),
+            "prometheus_file": prom_file.path,
+            "error": None,
+            "duration_ms": duration_ms,
+            "fields_count": len(all_fields)
+        }
+
+    except Exception as e:
+        duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+        logger.error(f"[EXTRACT-TYPES] Erro ao extrair tipos de {server_host}: {e}", exc_info=True)
+        return {
+            "hostname": server_host,
+            "success": False,
+            "types": [],
+            "total": 0,
+            "prometheus_file": None,
+            "error": str(e),
+            "duration_ms": duration_ms,
+            "fields_count": 0
+        }
+
+
+def _aggregate_types(server_results: List[Dict[str, Any]]) -> Dict[str, Dict]:
+    """
+    Agrega tipos de todos os servidores, deduplicando por ID
+
+    Args:
+        server_results: Lista de resultados de _process_single_server()
+
+    Returns:
+        Dict[type_id, type_def] com tipos agregados
+    """
+    all_types_dict = {}
+
+    for result in server_results:
+        if not result['success']:
+            continue
+
+        server_host = result['hostname']
+
+        for type_def in result['types']:
+            type_id = type_def['id']
+
+            if type_id not in all_types_dict:
+                # Primeira vez que vemos este tipo
+                all_types_dict[type_id] = type_def.copy()
+            else:
+                # Tipo já existe, adicionar à lista de servidores
+                existing = all_types_dict[type_id]
+                if 'servers' not in existing:
+                    # Converter single server para array
+                    existing['servers'] = [existing.pop('server')]
+                if server_host not in existing['servers']:
+                    existing['servers'].append(server_host)
+
+    return all_types_dict
+
+
+def _group_by_category(all_types_dict: Dict[str, Dict]) -> List[Dict[str, Any]]:
+    """
+    Agrupa tipos por categoria para retorno na API
+
+    Args:
+        all_types_dict: Dict[type_id, type_def]
+
+    Returns:
+        Lista de categorias com seus tipos
+    """
     categories = {}
+
     for type_def in all_types_dict.values():
         category = type_def['category']
         if category not in categories:
@@ -402,24 +413,99 @@ async def _extract_types_from_all_servers(server: Optional[str] = None) -> Dict[
                 "types": []
             }
         categories[category]['types'].append(type_def)
-    
+
     # Ordenar tipos dentro de cada categoria
     for category_data in categories.values():
         category_data['types'].sort(key=lambda x: x['display_name'])
-    
-    successful_servers = len([s for s in result_servers.values() if 'error' not in s])
-    total_servers = len(result_servers)
-    
+
+    return list(categories.values())
+
+
+async def _extract_types_from_all_servers(server: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Função helper para extrair tipos de monitoramento de todos os servidores
+
+    Orquestra a extração de tipos através de funções especializadas:
+    1. _process_single_server() - processa 1 servidor
+    2. _aggregate_types() - deduplica tipos
+    3. _group_by_category() - agrupa por categoria
+
+    Esta função é reutilizada tanto pelo endpoint quanto pelo prewarm.
+
+    Args:
+        server: Hostname do servidor específico (None para todos)
+
+    Returns:
+        Dict com estrutura:
+        {
+            "servers": {...},
+            "all_types": [...],
+            "categories": {...},
+            "total_types": int,
+            "total_servers": int,
+            "successful_servers": int,
+            "server_status": [...]
+        }
+    """
+    result_servers = {}
+    server_status = []
+    server_results = []
+
+    # PASSO 1: Processar cada servidor
+    for host in multi_config.hosts:
+        server_host = host.hostname
+
+        # Filtrar por servidor se especificado
+        if server and server != 'ALL' and server != server_host:
+            continue
+
+        result = await _process_single_server(host, multi_config, rule_engine)
+        server_results.append(result)
+
+        # Montar estrutura de retorno
+        if result['success']:
+            result_servers[server_host] = {
+                "types": result['types'],
+                "total": result['total'],
+                "prometheus_file": result['prometheus_file']
+            }
+        else:
+            result_servers[server_host] = {
+                "error": result['error'],
+                "types": [],
+                "total": 0
+            }
+
+        server_status.append({
+            "hostname": server_host,
+            "success": result['success'],
+            "from_cache": False,
+            "files_count": 1 if result['success'] else 0,
+            "fields_count": result['fields_count'],
+            "error": result['error'],
+            "duration_ms": result['duration_ms']
+        })
+
+    # PASSO 2: Agregar tipos de todos os servidores
+    all_types_dict = _aggregate_types(server_results)
+
+    # PASSO 3: Agrupar por categoria
+    categories = _group_by_category(all_types_dict)
+
+    # PASSO 4: Calcular estatísticas
+    successful_servers = len([r for r in server_results if r['success']])
+    total_servers = len(server_results)
+
     logger.info(
         f"[EXTRACT-TYPES] Extração concluída: "
         f"{len(categories)} categorias, {len(all_types_dict)} tipos únicos, "
         f"{successful_servers}/{total_servers} servidores OK"
     )
-    
+
     return {
         "servers": result_servers,
         "all_types": list(all_types_dict.values()),
-        "categories": list(categories.values()),
+        "categories": categories,
         "total_types": len(all_types_dict),
         "total_servers": total_servers,
         "successful_servers": successful_servers,

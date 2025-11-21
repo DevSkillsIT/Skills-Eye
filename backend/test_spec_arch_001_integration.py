@@ -199,9 +199,115 @@ class TestSPECARCH001:
         self._assert('total_rules' in summary, "Resumo contém 'total_rules'")
         self._assert('categories' in summary, "Resumo contém 'categories'")
         self._assert('default_category' in summary, "Resumo contém 'default_category'")
+        self._assert('source' in summary, "Resumo contém 'source' (builtin ou consul_kv)")
 
         logger.info(f"   Total de regras: {summary.get('total_rules')}")
         logger.info(f"   Categorias: {list(summary.get('categories', {}).keys())}")
+        logger.info(f"   Fonte: {summary.get('source')}")
+
+    async def test_invalid_regex_in_rule(self):
+        """Teste 9: Engine trata regex inválida graciosamente"""
+        logger.info("\n" + "=" * 60)
+        logger.info("TEST 9: Engine trata regex inválida graciosamente")
+        logger.info("=" * 60)
+
+        # Criar regra com regex inválida
+        from core.categorization_rule_engine import CategorizationRule
+
+        invalid_rule_data = {
+            'id': 'test_invalid_regex',
+            'priority': 100,
+            'category': 'test-category',
+            'display_name': 'Test Invalid',
+            'conditions': {
+                'job_name_pattern': '[invalid(regex',  # Regex inválida
+                'metrics_path': '/metrics'
+            }
+        }
+
+        # Engine não deve lançar exceção ao criar regra com regex inválida
+        try:
+            rule = CategorizationRule(invalid_rule_data)
+            # Pattern inválido não deve estar compilado
+            has_compiled = 'job_name_pattern' in rule._compiled_patterns
+            self._assert(
+                not has_compiled,
+                "Pattern inválido não foi compilado (comportamento esperado)"
+            )
+        except Exception as e:
+            self._assert(False, f"Engine lançou exceção com regex inválida: {e}")
+
+    async def test_empty_kv_fallback(self):
+        """Teste 10: Engine retorna categoria padrão quando KV está vazio"""
+        logger.info("\n" + "=" * 60)
+        logger.info("TEST 10: Engine funciona quando KV está vazio (usa BUILTIN_RULES)")
+        logger.info("=" * 60)
+
+        # Criar engine novo sem carregar regras
+        empty_engine = CategorizationRuleEngine(self.config_manager)
+        # Não chamar load_rules() - simula KV vazio
+
+        job_data = {
+            'job_name': 'any_job',
+            'metrics_path': '/metrics',
+            'module': None
+        }
+
+        category, type_info = empty_engine.categorize(job_data)
+
+        self._assert(
+            category == 'custom-exporters',
+            f"Sem regras, usa default 'custom-exporters' (got: {category})"
+        )
+        self._assert(
+            'display_name' in type_info,
+            "type_info tem display_name mesmo sem regras"
+        )
+
+        logger.info(f"   Resultado: category={category}, display_name={type_info.get('display_name')}")
+
+    async def test_performance_1000_types(self):
+        """Teste 11: Performance de categorização com 1000+ tipos"""
+        logger.info("\n" + "=" * 60)
+        logger.info("TEST 11: Performance com 1000+ tipos")
+        logger.info("=" * 60)
+
+        import time
+
+        # Gerar 1000 jobs para categorizar
+        jobs = []
+        categories_test = ['icmp', 'tcp', 'http_2xx', 'node_exporter', 'mysql_exporter', 'unknown']
+
+        for i in range(1000):
+            base = categories_test[i % len(categories_test)]
+            jobs.append({
+                'job_name': f'{base}_{i}',
+                'metrics_path': '/probe' if base in ['icmp', 'tcp', 'http_2xx'] else '/metrics',
+                'module': base if base in ['icmp', 'tcp', 'http_2xx'] else None
+            })
+
+        # Medir tempo de categorização
+        start_time = time.time()
+
+        for job in jobs:
+            category, type_info = self.engine.categorize(job)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        avg_ms = elapsed_ms / len(jobs)
+
+        logger.info(f"   Tempo total: {elapsed_ms:.2f}ms para {len(jobs)} tipos")
+        logger.info(f"   Média por tipo: {avg_ms:.4f}ms")
+
+        # Critério: deve processar 1000 tipos em menos de 500ms (0.5ms por tipo)
+        self._assert(
+            elapsed_ms < 500,
+            f"Performance OK: {elapsed_ms:.2f}ms < 500ms para 1000 tipos"
+        )
+
+        self._assert(
+            avg_ms < 0.5,
+            f"Média por tipo OK: {avg_ms:.4f}ms < 0.5ms"
+        )
 
     async def run_all_tests(self):
         """Executa todos os testes"""
@@ -218,6 +324,10 @@ class TestSPECARCH001:
             self.test_form_schema_not_in_rules,
             self.test_categorization_default,
             self.test_engine_summary,
+            # Novos testes de edge cases
+            self.test_invalid_regex_in_rule,
+            self.test_empty_kv_fallback,
+            self.test_performance_1000_types,
         ]
 
         for test in tests:
