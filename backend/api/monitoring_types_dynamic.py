@@ -62,7 +62,11 @@ async def _enrich_servers_with_sites_data(servers_data: Dict[str, Any]) -> Dict[
         logger.info(f"[ENRICH-SITES] ✅ KV sites encontrado: {type(sites_kv)}")
         
         # Estrutura pode ter wrapper 'data' ou ser direta
-        if 'data' in sites_kv:
+        # FIX: KV pode retornar data.data.sites (aninhamento duplo)
+        if 'data' in sites_kv and isinstance(sites_kv['data'], dict) and 'data' in sites_kv['data']:
+             sites = sites_kv['data']['data'].get('sites', [])
+             logger.info(f"[ENRICH-SITES] Sites encontrados em 'data.data.sites': {len(sites)}")
+        elif 'data' in sites_kv:
             sites = sites_kv.get('data', {}).get('sites', [])
             logger.info(f"[ENRICH-SITES] Sites encontrados em 'data.sites': {len(sites)}")
         else:
