@@ -17,6 +17,8 @@ from datetime import datetime
 from core.multi_config_manager import MultiConfigManager
 from core.kv_manager import KVManager
 from core.monitoring_types_backup import get_backup_manager
+from core.consul_kv_config_manager import ConsulKVConfigManager
+from core.categorization_rule_engine import CategorizationRuleEngine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"])
@@ -25,6 +27,11 @@ router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"]
 multi_config = MultiConfigManager()
 kv_manager = KVManager()
 backup_manager = get_backup_manager()
+
+# ✅ SPEC-ARCH-001: Instanciar engine de categorização dinâmica
+# O engine usa regras do KV como FONTE ÚNICA DA VERDADE para categorização
+consul_kv_manager = ConsulKVConfigManager()
+rule_engine = CategorizationRuleEngine(consul_kv_manager)
 
 
 # ============================================================================
@@ -131,6 +138,9 @@ async def extract_types_from_prometheus_jobs(
     """
     Extrai tipos de monitoramento dos jobs do Prometheus
 
+    ✅ SPEC-ARCH-001: Usa CategorizationRuleEngine para categorizar
+    ao invés de código hardcoded. As regras do KV são a FONTE ÚNICA DA VERDADE.
+
     Cada job vira um tipo de monitoramento.
 
     Args:
@@ -141,6 +151,9 @@ async def extract_types_from_prometheus_jobs(
         Lista de tipos com schema simplificado
     """
     types = []
+
+    # ✅ SPEC-ARCH-001: Carregar regras do KV (engine faz cache)
+    await rule_engine.load_rules()
 
     for job in scrape_configs:
         job_name = job.get('job_name', 'unknown')
@@ -165,15 +178,27 @@ async def extract_types_from_prometheus_jobs(
             if target_label and target_label != '__address__' and not target_label.startswith('__'):
                 fields.append(target_label)
 
-        # Determinar categoria e tipo baseado no job_name
-        category, type_info = _infer_category_and_type(job_name, job)
+        # ✅ SPEC-ARCH-001: Usar engine dinâmico para categorização
+        # Extrair módulo blackbox para enviar ao engine
+        module = _extract_blackbox_module(job)
+
+        # Montar dados do job para o engine
+        job_data = {
+            'job_name': job_name,
+            'metrics_path': job.get('metrics_path', '/metrics'),
+            'module': module,
+            'relabel_configs': relabel_configs
+        }
+
+        # Categorizar usando regras dinâmicas do KV
+        category, type_info = rule_engine.categorize(job_data)
 
         type_schema = {
             "id": job_name,
-            "display_name": type_info['display_name'],
+            "display_name": type_info.get('display_name', job_name),
             "category": category,
             "job_name": job_name,
-            "exporter_type": type_info['exporter_type'],
+            "exporter_type": type_info.get('exporter_type', 'custom'),
             "module": type_info.get('module'),
             "fields": fields,
             "metrics_path": job.get('metrics_path', '/metrics'),
