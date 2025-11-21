@@ -54,33 +54,21 @@ async def get_nodes():
 
         # OTIMIZAÇÃO: Enriquecer em paralelo usando asyncio.gather para evitar timeouts
         async def get_service_count(member: dict) -> dict:
-            """
-            Conta servicos de um no especifico usando Catalog API
-
-            SPEC-PERF-001: Otimizacoes implementadas:
-            - Timeout reduzido de 5s para 2s (suficiente para LAN)
-            - Usa Catalog API centralizada ao inves de Agent API
-            - Catalog API eh muito mais rapida (50-200ms vs 500-5000ms)
-            """
+            """Conta serviços de um nó específico com timeout de 5s"""
             member["services_count"] = 0
             # Adicionar site_name baseado no IP do sites.json
-            # Se nao encontrar no mapeamento, usa "Nao mapeado" ao inves de mostrar IP
+            # Se não encontrar no mapeamento, usa "Não mapeado" ao invés de mostrar IP
             member["site_name"] = sites_map.get(member["addr"], "Não mapeado")
             try:
-                # SPEC-PERF-001: Usar Catalog API centralizada (muito mais rapida)
-                # /catalog/node/{node_name} retorna servicos registrados no no
-                # Timeout reduzido de 5s para 2s - suficiente para conexao em datacenter
-                node_data = await asyncio.wait_for(
-                    consul.get_node_services(member["name"]),
-                    timeout=2.0  # SPEC-PERF-001: Reduzido de 5s para 2s
+                temp_consul = ConsulManager(host=member["addr"])
+                # Timeout individual de 5s por nó (aumentado de 3s)
+                services = await asyncio.wait_for(
+                    temp_consul.get_services(),
+                    timeout=5.0
                 )
-                services = node_data.get("Services", {})
-                # Excluir servico "consul" da contagem
-                services_count = sum(1 for s in services.values() if s.get("Service") != "consul")
-                member["services_count"] = services_count
+                member["services_count"] = len(services)
             except Exception as e:
                 # Silencioso - se falhar, deixa services_count = 0
-                # Um no com problema nao deve impedir a listagem dos demais
                 pass
             return member
 
@@ -94,9 +82,8 @@ async def get_nodes():
             "main_server": Config.MAIN_SERVER
         }
 
-        # SPEC-PERF-001: Atualizar LocalCache global (TTL aumentado de 30s para 60s)
-        # Nos raramente mudam em menos de 60s, reduz cache misses de 2/min para 1/min
-        await cache.set(cache_key, result, ttl=60)
+        # SPRINT 2: Atualizar LocalCache global (TTL 30s)
+        await cache.set(cache_key, result, ttl=30)
 
         return result
     except Exception as e:
