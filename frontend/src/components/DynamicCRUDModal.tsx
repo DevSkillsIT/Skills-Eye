@@ -35,29 +35,37 @@ import {
   InputNumber,
   Button,
   Space,
-  Tabs,
   message,
   Alert,
   Spin,
   Tooltip,
   Typography,
+  Row,
+  Col,
+  Switch,
+  Steps,
+  theme,
+  Divider,
+  Tag,
 } from 'antd';
 import {
   InfoCircleOutlined,
   LoadingOutlined,
-  CheckCircleOutlined,
+  ArrowLeftOutlined,
+  CloudServerOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import axios from 'axios';
 import { consulAPI } from '../services/api';
-import { useFilterFields } from '../hooks/useMetadataFields';
+import { useFormFields } from '../hooks/useMetadataFields';
 import { useBatchEnsure } from '../hooks/useReferenceValues';
 import { useServiceTags } from '../hooks/useServiceTags';
 import FormFieldRenderer from './FormFieldRenderer';
+import TagsInput from './TagsInput';
 import { NodeSelector } from './NodeSelector';
 import type { MonitoringDataItem } from '../pages/DynamicMonitoringPage';
 
 const { Text } = Typography;
-const { TabPane } = Tabs;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
 
 // ============================================================================
@@ -81,14 +89,15 @@ interface MonitoringType {
   module?: string;
   category: string;
   fields?: string[];
-  servers?: string[];
-  form_schema?: FormSchema;  // ✅ NOVO: form_schema direto no tipo
+  server?: string;         // Servidor único (retornado pelo backend)
+  servers?: string[];      // Array de servidores (quando tipo está em múltiplos servidores)
+  form_schema?: FormSchema;  // form_schema direto no tipo
 }
 
 interface FormSchemaField {
   name: string;
   label?: string;
-  type: 'text' | 'number' | 'select' | 'password' | 'textarea';
+  type: 'text' | 'number' | 'select' | 'password' | 'textarea' | 'tags' | 'checkbox';
   required?: boolean;
   default?: any;
   placeholder?: string;
@@ -97,10 +106,14 @@ interface FormSchemaField {
     min?: number;
     max?: number;
     pattern?: string;
+    message?: string;
+    type?: 'string' | 'number' | 'boolean' | 'method' | 'regexp' | 'integer' | 'float' | 'object' | 'enum' | 'date' | 'url' | 'hex' | 'email';
   };
   options?: Array<{ value: string; label: string } | string>;
   min?: number;
   max?: number;
+  depends_on?: string; // Campo que este campo depende (para campos condicionais)
+  col_span?: number;
 }
 
 interface FormSchema {
@@ -123,7 +136,8 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'node' | 'type' | 'form'>('node');
+  // ✅ SPRINT 3: Fluxo de 4 steps sequenciais
+  const [step, setStep] = useState<'node' | 'type' | 'exporter' | 'metadata'>('node');
   const [selectedNode, setSelectedNode] = useState<string>('');
   const [availableTypes, setAvailableTypes] = useState<MonitoringType[]>([]);
   const [selectedType, setSelectedType] = useState<string>('');
@@ -131,14 +145,49 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
   const [loadingTypes, setLoadingTypes] = useState(false);
   const [loadingSchema, setLoadingSchema] = useState(false);
   const [typeError, setTypeError] = useState<string | null>(null);
+  const [selectedNodeData, setSelectedNodeData] = useState<any>(null);
+  const [submittable, setSubmittable] = useState(false);
+
+  // ✅ SPRINT 3: Mapeamento de Steps
+  const STEPS = [
+    {
+      title: 'Selecionar Nó',
+      key: 'node',
+      description: 'Escolha o servidor',
+    },
+    {
+      title: 'Tipo',
+      key: 'type',
+      description: 'Selecione o tipo',
+    },
+    {
+      title: 'Configuração',
+      key: 'exporter',
+      description: 'Dados do exporter',
+    },
+    {
+      title: 'Detalhes',
+      key: 'metadata',
+      description: 'Metadados e Info',
+    },
+  ];
+
+  // Mapeamento reverso para índice do Steps
+  const currentStepIndex = STEPS.findIndex(s => s.key === step);
+
+  // Tokens de tema para estilização
+  const { token } = theme.useToken();
+
+  // Watch all values for validation
+  const formValues = Form.useWatch([], form);
   
   // ✅ REF para rastrear se é seleção automática inicial do NodeSelector
   const isInitialAutoSelect = useRef(true);
   // ✅ REF para rastrear o último nó que foi selecionado automaticamente
   const lastAutoSelectedNode = useRef<string | null>(null);
 
-  // Hooks para auto-cadastro
-  const { filterFields } = useFilterFields(category);
+  // Hooks para campos do formulário (usando useFormFields que filtra por show_in_form=true)
+  const { formFields } = useFormFields(category);
   const { batchEnsure } = useBatchEnsure();
   const { ensureTags } = useServiceTags({ autoLoad: false });
 
@@ -167,16 +216,17 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
                             service.Service;
         
         // Detectar categoria do serviço (pode estar no meta ou inferir)
-        const serviceCategory = meta.category || category;
+        // const serviceCategory = meta.category || category;
         
         if (exporterType) {
           setSelectedType(exporterType);
-          setStep('form');
-          // Carregar form_schema diretamente
+          // Em modo edição, ir direto para metadata (último step)
+          setStep('metadata');
+          // Carregar form_schema para ter os campos disponíveis
           loadFormSchema(exporterType);
         } else {
-          // Se não tem exporter_type, ir direto para form
-          setStep('form');
+          // Se não tem exporter_type, ir direto para metadata
+          setStep('metadata');
         }
       } else {
         // ✅ Modo criação: SEMPRE começar no passo 'node' (seleção de nó Consul)
@@ -214,24 +264,75 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     setTypeError(null);
 
     try {
-      // ✅ SPRINT 2: Mapear nó Consul → servidor Prometheus (100% dinâmico do KV)
-      // Tipos estão no KV, não precisa fallback de servidores
+      // ✅ SPRINT 3: Buscar todos os tipos do KV filtrado por servidor específico
+      // O backend já faz o filtro por servidor quando passamos o parâmetro server
       const response = await axios.get(`${API_URL}/monitoring-types-dynamic/from-prometheus`, {
-        params: {
-          consul_node: nodeAddr, // Mapeia nó Consul para servidor Prometheus
-        },
+        params: { server: nodeAddr },
         timeout: 30000, // 30s timeout (busca do KV é rápida)
       });
 
       if (response.data.success) {
-        // Filtrar tipos pela categoria atual
+        // O backend já filtra por servidor, agora filtrar por categoria no frontend
         const allTypes: MonitoringType[] = response.data.all_types || [];
-        const filteredTypes = allTypes.filter(
-          (type) => type.category === category
-        );
+        const serverInfo = response.data.servers?.[nodeAddr];
+
+        // DEBUG: Verificar estrutura exata recebida
+        console.log(`[DynamicCRUDModal] 🔍 ServerInfo para ${nodeAddr}:`, serverInfo);
+        console.log(`[DynamicCRUDModal] 🔍 Site Data:`, serverInfo?.site);
+
+        // ✅ ENRIQUECIMENTO DE DADOS DO NÓ
+        // Atualizar selectedNodeData com informações precisas do site vindas do backend
+        if (serverInfo && serverInfo.site) {
+            const isDefault = serverInfo.site.is_default === true; // Garantir booleano
+            console.log(`[DynamicCRUDModal] 🌍 Site: ${serverInfo.site.name}, Default/Master: ${isDefault}`);
+            
+            setSelectedNodeData((prev: any) => ({
+                ...prev, // Manter dados anteriores (addr, tags originais, etc)
+                site_name: serverInfo.site.name, 
+                isMaster: isDefault, // Sobrescrever com a verdade do backend
+                type: isDefault ? 'master' : 'slave', // Atualizar tipo para compatibilidade
+                tags: {
+                    ...prev?.tags,
+                    role: isDefault ? 'master' : 'slave'
+                }
+            }));
+        } else {
+            console.warn(`[DynamicCRUDModal] ⚠️ Nenhuma info de site encontrada no backend para ${nodeAddr}. Mantendo dados locais.`);
+            // Não resetar selectedNodeData aqui, manter o que veio do NodeSelector
+        }
+
+        // DEBUG: Log detalhado dos tipos recebidos
+        console.log(`[DynamicCRUDModal] Total tipos recebidos do servidor ${nodeAddr}: ${allTypes.length}`);
+        console.log(`[DynamicCRUDModal] Filtrando por categoria='${category}'`);
+
+        // Listar todas as categorias disponíveis para debug
+        const availableCategories = [...new Set(allTypes.map(t => t.category))];
+        console.log(`[DynamicCRUDModal] Categorias disponíveis neste servidor:`, availableCategories);
+
+        console.log(`[DynamicCRUDModal] Tipos da categoria '${category}':`,
+          allTypes.filter(t => t.category === category).map(t => ({
+            id: t.id,
+            display_name: t.display_name,
+            server: t.server,
+            servers: t.servers,
+            hasSchema: !!t.form_schema
+          })));
+
+        // Filtrar apenas por categoria (servidor já filtrado pelo backend)
+        const filteredTypes = allTypes.filter((type) => {
+          return type.category === category;
+        });
+
+        console.log(`[DynamicCRUDModal] ✅ Tipos filtrados para categoria '${category}':`,
+          filteredTypes.map(t => ({
+            id: t.id,
+            display_name: t.display_name,
+            hasSchema: !!t.form_schema,
+            schemaFields: t.form_schema?.fields?.length || 0
+          })));
 
         if (filteredTypes.length === 0) {
-          setTypeError(`Nenhum tipo de monitoramento encontrado para a categoria "${category}" no servidor selecionado`);
+          setTypeError(`Nenhum tipo de monitoramento encontrado para a categoria "${category}" no servidor "${nodeAddr}". Categorias disponíveis: ${availableCategories.join(', ')}`);
         } else {
           setAvailableTypes(filteredTypes);
           setStep('type');
@@ -256,92 +357,107 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 
     try {
       // ✅ NOVO: Buscar form_schema diretamente do tipo selecionado em availableTypes
-      const selectedTypeData = availableTypes.find(t => t.id === typeId || t.exporter_type === typeId);
+      console.log(`[DynamicCRUDModal] loadFormSchema chamado para typeId='${typeId}'`);
+      console.log(`[DynamicCRUDModal] availableTypes (${availableTypes.length} tipos):`,
+        availableTypes.map(t => ({
+          id: t.id,
+          display_name: t.display_name,
+          hasSchema: !!t.form_schema,
+          schemaFields: t.form_schema?.fields?.length || 0
+        })));
 
-      if (selectedTypeData && selectedTypeData.form_schema) {
-        // Tipo tem form_schema configurado
-        setFormSchema(selectedTypeData.form_schema as FormSchema);
-        setStep('form');
-      } else {
-        // Tipo não tem form_schema: usar formulário vazio
-        console.warn(`[DynamicCRUDModal] Tipo '${typeId}' não tem form_schema configurado`);
-        message.info('Este tipo não tem campos customizados. Usando apenas metadata.');
+      // Buscar tipo por id, job_name ou exporter_type (múltiplos critérios para garantir match)
+      const selectedTypeData = availableTypes.find(t =>
+        t.id === typeId ||
+        t.job_name === typeId ||
+        t.exporter_type === typeId
+      );
+
+      if (!selectedTypeData) {
+        console.error(`[DynamicCRUDModal] ❌ Tipo '${typeId}' NÃO ENCONTRADO em availableTypes!`);
+        console.log(`[DynamicCRUDModal] IDs disponíveis:`, availableTypes.map(t => t.id));
+        message.warning(`Tipo '${typeId}' não encontrado. Usando formulário padrão.`);
         setFormSchema({ fields: [] });
         setStep('form');
+        return;
+      }
+
+      console.log(`[DynamicCRUDModal] ✅ Tipo encontrado:`, {
+        id: selectedTypeData.id,
+        display_name: selectedTypeData.display_name,
+        exporter_type: selectedTypeData.exporter_type,
+        module: selectedTypeData.module,
+        form_schema: selectedTypeData.form_schema,
+        hasFields: selectedTypeData.form_schema?.fields?.length || 0
+      });
+
+      if (selectedTypeData.form_schema && selectedTypeData.form_schema.fields?.length > 0) {
+        // Tipo tem form_schema configurado com campos
+        console.log(`[DynamicCRUDModal] ✅ form_schema encontrado para '${typeId}': ${selectedTypeData.form_schema.fields.length} campos`);
+        console.log(`[DynamicCRUDModal] Campos do schema:`, selectedTypeData.form_schema.fields.map(f => ({
+          name: f.name,
+          label: f.label,
+          type: f.type,
+          required: f.required
+        })));
+        setFormSchema(selectedTypeData.form_schema as FormSchema);
+        // ✅ SPRINT 3: Ir para step 'exporter' (campos do schema)
+        setStep('exporter');
+      } else {
+        // Tipo não tem form_schema: pular direto para metadata
+        console.log(`[DynamicCRUDModal] ⚠️ Tipo '${typeId}' sem form_schema configurado`);
+        console.log(`[DynamicCRUDModal] ℹ️ Pulando para step metadata (sem campos de exporter)`);
+        setFormSchema({ fields: [] });
+        // ✅ SPRINT 3: Pular direto para metadata se não tem campos de exporter
+        setStep('metadata');
       }
     } catch (error: any) {
       console.error('[DynamicCRUDModal] Erro ao carregar form_schema:', error);
       message.warning('Usando formulário padrão (schema não encontrado)');
       setFormSchema({ fields: [] });
-      setStep('form');
+      // ✅ SPRINT 3: Ir direto para metadata em caso de erro
+      setStep('metadata');
     } finally {
       setLoadingSchema(false);
     }
   }, [availableTypes]);  // ✅ Dependência corrigida
 
-  // Handler: Nó selecionado
+  // Handler: Nó selecionado - APENAS atualiza o estado, NÃO avança automaticamente
   const handleNodeSelect = useCallback((nodeAddr: string, node?: any) => {
-    console.log('[DynamicCRUDModal] handleNodeSelect chamado:', {
-      nodeAddr,
-      step,
-      selectedNode,
-      isInitialAutoSelect: isInitialAutoSelect.current
-    });
-    
-    // ✅ CORREÇÃO CRÍTICA: Ignorar primeira seleção automática do NodeSelector
-    // O NodeSelector seleciona automaticamente quando carrega (useEffect linhas 59-77)
-    // Mas não queremos que isso avance o passo automaticamente
-    if (isInitialAutoSelect.current) {
-      console.log('[DynamicCRUDModal] Ignorando seleção automática inicial do NodeSelector:', nodeAddr);
-      isInitialAutoSelect.current = false;
-      lastAutoSelectedNode.current = nodeAddr; // Guardar qual nó foi selecionado automaticamente
-      // ✅ CRÍTICO: Não atualizar selectedNode nem avançar passo
-      // Manter selectedNode vazio para que o usuário tenha que selecionar manualmente
-      return;
-    }
-    
-    // ✅ CORREÇÃO ADICIONAL: Se o nó selecionado é o mesmo que foi selecionado automaticamente
-    // E selectedNode ainda está vazio, significa que é uma segunda chamada da seleção automática
-    // Ignorar também
-    if (!selectedNode && lastAutoSelectedNode.current === nodeAddr) {
-      console.log('[DynamicCRUDModal] Ignorando segunda chamada da seleção automática:', nodeAddr);
-      return;
-    }
-    
-    // ✅ Validações normais
-    if (!nodeAddr || nodeAddr === 'all') {
+    console.log('[DynamicCRUDModal] handleNodeSelect chamado:', { nodeAddr, node });
+
+    // Apenas atualizar o selectedNode - o botão "Avançar" é quem carrega os tipos
+    if (nodeAddr && nodeAddr !== 'all') {
+      setSelectedNode(nodeAddr);
+      // Se node for passado (do Select.Option), guardamos para o header
+      // O NodeSelector geralmente passa { value, label, ... }
+      setSelectedNodeData(node);
+      setTypeError(null);
+    } else {
       setSelectedNode('');
+      setSelectedNodeData(null);
+    }
+  }, []);
+
+  // Handler: Avançar do passo node para type (chamado pelo botão "Avançar")
+  const handleAdvanceFromNode = useCallback(async () => {
+    if (!selectedNode || selectedNode === 'all') {
       setTypeError('Por favor, selecione um nó específico do Consul');
       return;
     }
-    
-    // ✅ Só processar se estiver no passo 'node'
-    if (step !== 'node') {
-      console.log('[DynamicCRUDModal] Ignorando seleção - não está no passo node, step atual:', step);
-      return;
-    }
-    
-    // ✅ CRÍTICO: Só processar se selectedNode estava vazio (primeira seleção real do usuário)
-    // Se já tinha um nó selecionado, não fazer nada (evita múltiplas chamadas)
-    if (selectedNode && selectedNode === nodeAddr) {
-      console.log('[DynamicCRUDModal] Ignorando seleção - mesmo nó já selecionado');
-      return;
-    }
-    
-    // ✅ Processar seleção do usuário (selectedNode estava vazio)
-    console.log('[DynamicCRUDModal] ✅ Processando seleção do usuário:', nodeAddr);
-    setSelectedNode(nodeAddr);
-    loadAvailableTypes(nodeAddr);
-  }, [loadAvailableTypes, step, selectedNode]);
+
+    // Carregar tipos e avançar para próximo passo
+    await loadAvailableTypes(selectedNode);
+  }, [selectedNode, loadAvailableTypes]);
 
   // Handler: Tipo selecionado
+  // ✅ CORREÇÃO: Apenas define o selectedType, não avança automaticamente
+  // O botão "Avançar" é responsável por carregar o form_schema e avançar para o passo 'form'
   const handleTypeSelect = useCallback((typeId: string) => {
+    console.log('[DynamicCRUDModal] handleTypeSelect chamado:', { typeId });
     setSelectedType(typeId);
-    const type = availableTypes.find((t) => t.id === typeId || t.job_name === typeId);
-    if (type) {
-      loadFormSchema(type.exporter_type);
-    }
-  }, [availableTypes, loadFormSchema]);
+    // NÃO chama loadFormSchema aqui - o botão "Avançar" faz isso
+  }, []);
 
   // Handler: Submit do formulário
   const handleSubmit = useCallback(async () => {
@@ -363,7 +479,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       // 1B) Auto-cadastrar METADATA FIELDS
       const metadataValues: Array<{ fieldName: string; value: string }> = [];
       
-      filterFields.forEach((field) => {
+      formFields.forEach((field) => {
         if (field.available_for_registration) {
           const fieldValue = values[field.name];
           if (fieldValue && typeof fieldValue === 'string' && fieldValue.trim()) {
@@ -393,18 +509,22 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       const exporterFields: Record<string, any> = {};
       const metadataFields: Record<string, any> = {};
 
-      if (formSchema) {
+      // Identificar campos do formSchema dinamicamente
+      const formSchemaFieldNames = new Set<string>();
+      if (formSchema && formSchema.fields) {
         formSchema.fields.forEach((field) => {
-          if (values[field.name] !== undefined) {
-            exporterFields[field.name] = values[field.name];
-          }
+          formSchemaFieldNames.add(field.name);
         });
       }
 
-      // Metadata genéricos (todos os outros campos exceto os básicos)
-      const basicFields = ['node', 'service_name', 'address', 'port', 'tags'];
+      // Separar campos: formSchema → exporterFields, outros → metadataFields
+      // Tudo que vem de values vai para Meta (formSchema → exporterFields, outros → metadataFields)
       Object.keys(values).forEach((key) => {
-        if (!basicFields.includes(key) && !exporterFields.hasOwnProperty(key)) {
+        if (formSchemaFieldNames.has(key)) {
+          // Campo do formSchema → exporterFields
+          exporterFields[key] = values[key];
+        } else {
+          // Campo não está no formSchema → metadataFields
           metadataFields[key] = values[key];
         }
       });
@@ -416,21 +536,54 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         return;
       }
 
+      // ✅ OPÇÃO 1: Remover campos duplicados de metadataFields (formSchema tem prioridade)
+      // Isso evita que campos do formSchema sejam sobrescritos por campos genéricos
+      const filteredMetadataFields = { ...metadataFields };
+      Object.keys(exporterFields).forEach((key) => {
+        delete filteredMetadataFields[key];
+      });
+
       const payload: any = {
-        name: values.name || metadataFields.name || selectedTypeObj?.job_name || 'service',
-        service: selectedTypeObj?.job_name || values.service_name || 'blackbox',
-        address: values.address || '',
-        port: values.port || 9115,
+        name: values.name || metadataFields.name || selectedTypeObj?.job_name,
+        service: selectedTypeObj?.job_name || values.service_name,
+        address: values.address,
+        port: values.port,
         node_addr: selectedNode,
-        tags: values.tags || [],
+        tags: values.tags,
         Meta: {
-          ...exporterFields,
-          ...metadataFields,
-          name: values.name || metadataFields.name, // Garantir que name está no Meta
+          ...exporterFields,           // Prioridade: campos do formSchema
+          ...filteredMetadataFields,    // Campos genéricos (sem duplicatas)
+          name: values.name || metadataFields.name,
           exporter_type: selectedTypeObj?.exporter_type,
           module: selectedTypeObj?.module || exporterFields.module,
         },
       };
+
+      // Montar Check do Consul dinamicamente baseado nos campos do schema
+      // O Check será montado apenas se enable_check estiver ativo e houver campos de check
+      if (formSchema && values.enable_check === true) {
+        const checkConfig: any = {};
+        
+        // Buscar todos os campos que começam com "check_" do form_schema
+        // O schema define os nomes dos campos, não assumimos valores padrão
+        formSchema.fields.forEach((field) => {
+          if (field.name.startsWith('check_')) {
+            const checkKey = field.name.replace('check_', '');
+            // Converter check_interval -> Interval, check_timeout -> Timeout, etc.
+            const consulKey = checkKey.charAt(0).toUpperCase() + checkKey.slice(1);
+            const value = values[field.name];
+            // Apenas adicionar se o valor foi preenchido pelo usuário
+            if (value !== undefined && value !== null && value !== '') {
+              checkConfig[consulKey] = value;
+            }
+          }
+        });
+        
+        // Adicionar Check ao payload apenas se houver pelo menos um campo configurado
+        if (Object.keys(checkConfig).length > 0) {
+          payload.Check = checkConfig;
+        }
+      }
 
       // PASSO 3: SALVAR SERVIÇO
       if (mode === 'create') {
@@ -462,21 +615,67 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [form, mode, service, selectedNode, selectedType, availableTypes, formSchema, filterFields, batchEnsure, ensureTags, onSuccess]);
+  }, [form, mode, service, selectedNode, selectedType, availableTypes, formSchema, formFields, batchEnsure, ensureTags, onSuccess]);
 
-  // Renderizar campos do form_schema (exporter_fields)
+  // Renderizar campos do form_schema (exporter_fields) em layout de 2 colunas
   const renderExporterFields = useMemo(() => {
+    console.log('[DynamicCRUDModal] renderExporterFields useMemo executando, formSchema:', formSchema);
+
     if (!formSchema || !formSchema.fields || formSchema.fields.length === 0) {
+      console.log('[DynamicCRUDModal] renderExporterFields retornando null (sem campos)');
       return null;
     }
 
-    return formSchema.fields.map((field) => {
+    console.log('[DynamicCRUDModal] renderExporterFields renderizando', formSchema.fields.length, 'campos');
+    console.log('[DynamicCRUDModal] Campos a renderizar:', formSchema.fields);
+
+    const fieldItems = formSchema.fields.map((field) => {
+
+      // Regras de validação
       const rules: any[] = [];
+      
+      // Required
       if (field.required) {
         rules.push({
           required: true,
           message: `${field.label || field.name} é obrigatório`,
         });
+      }
+
+      // Regex Pattern
+      if (field.validation?.pattern) {
+        rules.push({
+          pattern: new RegExp(field.validation.pattern),
+          message: field.validation.message || `Formato inválido para ${field.label || field.name}`,
+        });
+      }
+
+      // Type Validation (URL, Email, etc)
+      if (field.validation?.type) {
+        rules.push({
+          type: field.validation.type,
+          message: field.validation.message || `Formato inválido para ${field.label || field.name}`,
+        });
+      }
+
+      // Min/Max Length (para strings) ou Value (para numbers)
+      if (field.validation?.min !== undefined || field.validation?.max !== undefined) {
+        if (field.type === 'number') {
+           // Para input number, min/max são controlados via props, mas regra ajuda
+           rules.push({
+             type: 'number',
+             min: field.validation.min,
+             max: field.validation.max,
+             message: `Valor deve estar entre ${field.validation.min} e ${field.validation.max}`,
+           });
+        } else {
+           // Para strings
+           rules.push({
+             min: field.validation.min,
+             max: field.validation.max,
+             message: `Deve ter entre ${field.validation.min} e ${field.validation.max} caracteres`,
+           });
+        }
       }
 
       let inputComponent: React.ReactNode;
@@ -515,7 +714,29 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
           inputComponent = (
             <Input.TextArea
               placeholder={field.placeholder}
-              rows={4}
+              rows={3}
+            />
+          );
+          break;
+
+        case 'tags':
+          // Usar TagsInput para campos de tags (multi-select com escrita e tags coloridas)
+          inputComponent = (
+            <TagsInput
+              placeholder={field.placeholder}
+              required={field.required}
+              helpText={field.help}
+            />
+          );
+          break;
+
+        case 'checkbox':
+          // Usar Switch para campos booleanos (checkbox)
+          // O valor será controlado pelo Form.Item, não pelo checked prop
+          inputComponent = (
+            <Switch
+              checkedChildren="Ativado"
+              unCheckedChildren="Desativado"
             />
           );
           break;
@@ -526,52 +747,123 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
           );
       }
 
+      // Normalizar initialValue para campos do tipo 'tags' (garantir que seja array)
+      // Normalizar initialValue para campos do tipo 'checkbox' (garantir que seja boolean)
+      let normalizedInitialValue = field.default;
+      if (field.type === 'tags') {
+        if (Array.isArray(field.default)) {
+          normalizedInitialValue = field.default;
+        } else if (typeof field.default === 'string') {
+          normalizedInitialValue = [field.default];
+        } else {
+          normalizedInitialValue = [];
+        }
+      } else if (field.type === 'checkbox') {
+        normalizedInitialValue = field.default === true || field.default === 'true';
+      }
+
+      // Verificar se campo tem dependência (depends_on)
+      const dependsOn = (field as any).depends_on;
+
       return (
-        <Form.Item
-          key={field.name}
-          name={field.name}
-          label={
-            <Space size="small">
-              <span>{field.label || field.name}</span>
-              {(field.help || field.required) && (
-                <Tooltip 
-                  title={
-                    <div>
-                      {field.help && <div>{field.help}</div>}
-                      {field.required && <div style={{ marginTop: 4, fontWeight: 'bold' }}>Campo obrigatório</div>}
-                      {field.validation?.pattern && (
-                        <div style={{ marginTop: 4, fontSize: '11px' }}>
-                          Validação: {field.validation.pattern}
-                        </div>
+        <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => {
+          if (!dependsOn) return false;
+          return prevValues[dependsOn] !== currentValues[dependsOn];
+        }}>
+          {({ getFieldValue }) => {
+            const dependsOnValue = dependsOn ? getFieldValue(dependsOn) : true;
+            const shouldShow = !dependsOn || dependsOnValue === true;
+
+            if (!shouldShow) {
+              return null;
+            }
+
+            // Determinar span: Prioriza col_span do schema > tipo tags/checkbox/textarea (24) > padrão (12)
+            let span = 12;
+            if (field.col_span) {
+              span = field.col_span;
+            } else if (field.type === 'textarea' || field.type === 'tags' || field.type === 'checkbox') {
+              span = 24;
+            }
+
+            return (
+              <Col 
+                span={span} 
+                key={field.name}
+              >
+                <Form.Item
+                  name={field.name}
+                  label={
+                    <Space size="small">
+                      <span>{field.label || field.name}</span>
+                      {(field.help || field.required) && (
+                        <Tooltip
+                          title={
+                            <div>
+                              {field.help && <div>{field.help}</div>}
+                              {field.required && <div style={{ marginTop: 4, fontWeight: 'bold' }}>Campo obrigatório</div>}
+                            </div>
+                          }
+                        >
+                          <InfoCircleOutlined style={{ color: field.required ? '#ff4d4f' : '#1890ff' }} />
+                        </Tooltip>
                       )}
-                    </div>
+                    </Space>
                   }
+                  rules={rules}
+                  initialValue={normalizedInitialValue}
                 >
-                  <InfoCircleOutlined style={{ color: field.required ? '#ff4d4f' : '#1890ff' }} />
-                </Tooltip>
-              )}
-            </Space>
-          }
-          rules={rules}
-          initialValue={field.default}
-          tooltip={field.help}
-        >
-          {inputComponent}
+                  {inputComponent}
+                </Form.Item>
+              </Col>
+            );
+          }}
         </Form.Item>
       );
     });
+
+    return <Row gutter={16}>{fieldItems}</Row>;
   }, [formSchema]);
 
-  // Renderizar campos metadata genéricos
+  // Renderizar campos metadata genéricos em layout de 2 colunas
+  // ✅ FILTRAR: Excluir campos que já estão no form_schema (evitar duplicação)
   const renderMetadataFields = useMemo(() => {
-    return filterFields.map((field) => (
-      <FormFieldRenderer
-        key={field.name}
-        field={field}
-        mode={mode}
-      />
-    ));
-  }, [filterFields, mode]);
+    // Criar Set com nomes dos campos do form_schema
+    const formSchemaFieldNames = new Set<string>();
+    if (formSchema && formSchema.fields) {
+      formSchema.fields.forEach((field) => {
+        formSchemaFieldNames.add(field.name);
+      });
+    }
+
+    // Filtrar formFields: excluir campos que estão no form_schema
+    const filteredFields = formFields.filter((field) => {
+      const isInFormSchema = formSchemaFieldNames.has(field.name);
+      if (isInFormSchema) {
+        console.log(`[DynamicCRUDModal] ⚠️ Campo '${field.name}' excluído de metadata (já está no form_schema)`);
+      }
+      return !isInFormSchema;
+    });
+
+    console.log(`[DynamicCRUDModal] 📊 Metadata fields: ${formFields.length} total, ${filteredFields.length} após filtro (${formFields.length - filteredFields.length} excluídos)`);
+
+    const fieldItems = filteredFields.map((field) => {
+      // Determinar span baseado no tipo: text/textarea ocupa linha inteira
+      // Usar type assertion porque o TypeScript pode não ter todos os tipos atualizados
+      const fieldType = (field as any).field_type || field.field_type;
+      const isFullWidth = fieldType === 'text' || fieldType === 'textarea';
+      return (
+        <Col span={isFullWidth ? 24 : 12} key={field.name}>
+          <FormFieldRenderer
+            field={field}
+            mode={mode}
+          />
+        </Col>
+      );
+    });
+
+    return <Row gutter={16}>{fieldItems}</Row>;
+  }, [formFields, formSchema, mode]);
 
   // Determinar título do modal
   const modalTitle = mode === 'create' ? 'Criar Novo Serviço' : 'Editar Serviço';
@@ -584,255 +876,495 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     console.log('[DynamicCRUDModal] Step atual:', step, 'Mode:', mode, 'Visible:', visible);
   }, [step, mode, visible]);
 
+  // Debug: log do formSchema
+  useEffect(() => {
+    console.log('[DynamicCRUDModal] formSchema atualizado:', formSchema);
+    if (formSchema) {
+      console.log('[DynamicCRUDModal] formSchema.fields:', formSchema.fields?.length, 'campos');
+      if (formSchema.fields && formSchema.fields.length > 0) {
+        console.log('[DynamicCRUDModal] ✅ CAMPOS DO SCHEMA:',
+          formSchema.fields.map(f => ({
+            name: f.name,
+            label: f.label,
+            type: f.type,
+            hasOptions: !!(f.options && f.options.length > 0)
+          }))
+        );
+      }
+    }
+  }, [formSchema]);
+
+  // Debug: log quando step muda para 'exporter' ou 'metadata'
+  useEffect(() => {
+    if (step === 'exporter') {
+      console.log('[DynamicCRUDModal] 🎯 STEP=exporter - Campos do form_schema:');
+      console.log('[DynamicCRUDModal]   - formSchema existe:', !!formSchema);
+      console.log('[DynamicCRUDModal]   - formSchema.fields.length:', formSchema?.fields?.length || 0);
+    }
+    if (step === 'metadata') {
+      console.log('[DynamicCRUDModal] 🎯 STEP=metadata - Campos genéricos do KV');
+      console.log('[DynamicCRUDModal]   - formFields.length:', formFields.length);
+    }
+  }, [step, formSchema, formFields]);
+
+  // Efeito para validar campos do passo atual em tempo real
+  useEffect(() => {
+    const validateCurrentStep = async () => {
+      let fieldsToCheck: string[] = [];
+
+      if (step === 'node') {
+        setSubmittable(!!selectedNode && selectedNode !== 'all');
+        return;
+      } 
+      
+      if (step === 'type') {
+        setSubmittable(!!selectedType);
+        return;
+      }
+
+      if (step === 'exporter') {
+        // Validar campos do form_schema
+        fieldsToCheck = formSchema?.fields?.map(f => f.name) || [];
+      } else if (step === 'metadata') {
+        // Validar campos de metadata + name (obrigatório)
+        // Filtrar campos que já foram preenchidos no step anterior (do form_schema)
+        const schemaFields = new Set(formSchema?.fields?.map(f => f.name) || []);
+        const metaFields = formFields
+          .filter(f => !schemaFields.has(f.name))
+          .map(f => f.name);
+        
+        // 'name' é sempre obrigatório e geralmente está nos metadados ou values
+        fieldsToCheck = [...metaFields, 'name'];
+      }
+
+      // Se não há campos para validar neste step, permite avançar
+      if (fieldsToCheck.length === 0) {
+        setSubmittable(true);
+        return;
+      }
+
+      try {
+        // validateOnly: true não mostra erro na UI, apenas verifica
+        // @ts-ignore - validateOnly disponível no AntD 5.x
+        await form.validateFields(fieldsToCheck, { validateOnly: true });
+        setSubmittable(true);
+      } catch (e) {
+        setSubmittable(false);
+      }
+    };
+
+    validateCurrentStep();
+  }, [formValues, step, selectedNode, selectedType, formSchema, formFields]);
+
+  // Handler para voltar ao passo anterior
+  const handleBack = () => {
+    if (step === 'type') setStep('node');
+    else if (step === 'exporter') setStep('type');
+    else if (step === 'metadata') {
+      if (formSchema && formSchema.fields && formSchema.fields.length > 0) {
+        setStep('exporter');
+      } else {
+        setStep('type'); // Pula exporter se vazio
+      }
+    }
+  };
+
+  // Renderiza o Header com informações do Nó
+  const renderHeader = () => {
+    if (step === 'node' || !selectedNode) return null;
+
+    // Tentar obter label amigável
+    // Suporta tanto objeto ConsulNode (do NodeSelector) quanto Option do Select
+    let nodeLabelRaw = '';
+    
+    if (selectedNodeData) {
+      if ('site_name' in selectedNodeData) {
+        nodeLabelRaw = selectedNodeData.site_name;
+      } else if ('name' in selectedNodeData) {
+        nodeLabelRaw = selectedNodeData.name;
+      } else if ('label' in selectedNodeData) {
+        nodeLabelRaw = selectedNodeData.label;
+      } else if ('children' in selectedNodeData) {
+        // children pode ser complexo (ReactNode), tentar extrair string se possível
+        if (typeof selectedNodeData.children === 'string') {
+            nodeLabelRaw = selectedNodeData.children;
+        }
+      }
+    }
+    
+    const nodeIp = selectedNode;
+    
+    // Se não tiver label, usa o IP como label
+    let displayLabel: string = nodeLabelRaw || nodeIp;
+    let displayIp: string | null = nodeIp;
+
+    // Limpeza básica
+    if (displayLabel && typeof displayLabel === 'string') {
+       const cleanLabel = displayLabel.trim();
+       const cleanIp = nodeIp.trim();
+
+       // Se o label for exatamente o IP, não mostra IP secundário
+       if (cleanLabel === cleanIp) {
+          displayIp = null;
+       }
+       // Se o label contiver " - IP" ou " (IP)", simplifica para mostrar só o nome
+       else if (cleanLabel.includes(cleanIp)) {
+          const possibleName = cleanLabel.replace(cleanIp, '').replace(/[()-]/g, '').trim();
+          if (possibleName) {
+             displayLabel = possibleName;
+          } else {
+             displayLabel = cleanIp;
+             displayIp = null;
+          }
+       }
+    }
+
+    // Lógica para determinar Master/Slave
+    let isMaster = false;
+    if (selectedNodeData) {
+        if (typeof selectedNodeData.isMaster === 'boolean') {
+            isMaster = selectedNodeData.isMaster;
+        } else if (selectedNodeData.type === 'master') {
+            isMaster = true;
+        } else if (selectedNodeData.tags?.role === 'master') {
+            isMaster = true;
+        }
+    }
+
+    return (
+      <div style={{ 
+        marginBottom: 24, 
+        background: '#fff',
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: token.borderRadiusLG,
+        padding: '16px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16
+      }}>
+        <div style={{ 
+          width: 40, 
+          height: 40, 
+          borderRadius: '50%', 
+          background: token.colorInfoBg, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          border: `1px solid ${token.colorInfoBorder}`
+        }}>
+          <CloudServerOutlined style={{ color: token.colorInfo, fontSize: 20 }} />
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>SERVIDOR SELECIONADO</Text>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text strong style={{ fontSize: 16 }}>
+              {displayLabel}
+            </Text>
+            
+            {displayIp && displayIp !== displayLabel && (
+              <Tag style={{ margin: 0, fontFamily: 'monospace' }}>
+                {displayIp}
+              </Tag>
+            )}
+            
+            {/* Badge Master/Slave */}
+            <Tag 
+              color={isMaster ? 'green' : 'blue'} 
+              style={{ margin: 0, textTransform: 'capitalize' }}
+            >
+              {isMaster ? 'Master' : 'Slave'}
+            </Tag>
+          </div>
+        </div>
+        
+        <Button 
+          type="text" 
+          icon={<EditOutlined />} 
+          onClick={() => setStep('node')}
+          title="Alterar servidor"
+        />
+      </div>
+    );
+  };
+
   return (
     <Modal
-      title={modalTitle}
+      title={
+        <Space>
+          {mode === 'create' ? 'Novo Serviço de Monitoramento' : 'Editar Serviço'}
+          {service && <Text type="secondary" style={{ fontSize: 14 }}>#{service.Service}</Text>}
+        </Space>
+      }
       open={visible}
       onCancel={onCancel}
       width={900}
       footer={null}
       destroyOnClose
+      maskClosable={false}
     >
+      {/* Stepper Visual */}
+      <div style={{ marginBottom: 32, marginTop: 16 }}>
+        <Steps 
+          current={currentStepIndex} 
+          items={STEPS} 
+          size="small"
+        />
+      </div>
+
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
       >
-        {/* PASSO 1: Seleção de Nó */}
-        {step === 'node' && (
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Alert
-              message="Seleção de Nó Consul"
-              description={
-                <div>
-                  <Text>
-                    Selecione o nó do Consul onde o serviço será registrado.
-                    <br />
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                      ⚠️ Tipos disponíveis variam por servidor Prometheus associado ao nó.
-                    </Text>
-                  </Text>
-                </div>
-              }
-              type="info"
-              showIcon
-            />
+        {/* Header com info do nó (exceto no passo 1) */}
+        {renderHeader()}
 
-            <Form.Item
-              name="node"
-              label="Nó do Consul"
-              rules={[{ required: true, message: 'Selecione um nó do Consul' }]}
-            >
-              <NodeSelector
-                value={selectedNode || undefined}
-                onChange={handleNodeSelect}
-                showAllNodesOption={false}
-                style={{ width: '100%' }}
-                placeholder="Selecione um nó do Consul"
-              />
-            </Form.Item>
+        {/* Container do conteúdo com transição suave */}
+        <div style={{ minHeight: 300 }}>
+
+          {/* PASSO 1: Seleção de Nó */}
+          <div style={{ display: step === 'node' ? 'block' : 'none' }}>
+            <div style={{ marginBottom: 24, textAlign: 'center', maxWidth: 600, margin: '0 auto 32px' }}>
+              <Typography.Title level={4}>Onde você quer monitorar?</Typography.Title>
+              <Text type="secondary">
+                Selecione o nó do Consul (servidor) onde este serviço será registrado.
+                Os tipos de monitoramento disponíveis dependem do servidor escolhido.
+              </Text>
+            </div>
+
+            <Row justify="center">
+              <Col span={16}>
+                <Form.Item
+                  name="node"
+                  rules={[{ required: true, message: 'Selecione um nó do Consul' }]}
+                >
+                  <NodeSelector
+                    value={selectedNode || undefined}
+                    onChange={handleNodeSelect}
+                    showAllNodesOption={false}
+                    style={{ width: '100%', height: 50 }}
+                    placeholder="Selecione ou busque um servidor..."
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
 
             {loadingTypes && (
-              <div style={{ textAlign: 'center', padding: '20px' }}>
-                <Spin indicator={<LoadingOutlined spin />} />
-                <div style={{ marginTop: 8 }}>Carregando tipos disponíveis...</div>
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+                <div style={{ marginTop: 16, color: token.colorTextSecondary }}>
+                  Carregando catálogo de tipos disponíveis...
+                </div>
               </div>
             )}
 
             {typeError && (
               <Alert
-                message="Erro ao carregar tipos"
+                message="Erro ao carregar catálogo"
                 description={typeError}
                 type="error"
                 showIcon
+                style={{ marginTop: 24 }}
               />
             )}
-          </Space>
-        )}
+          </div>
 
-        {/* PASSO 2: Seleção de Tipo */}
-        {step === 'type' && (
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            <Alert
-              message="Seleção de Tipo de Monitoramento"
-              description="Escolha o tipo de monitoramento que deseja criar."
-              type="info"
-              showIcon
-            />
+          {/* PASSO 2: Seleção de Tipo */}
+          <div style={{ display: step === 'type' ? 'block' : 'none' }}>
+            <div style={{ marginBottom: 24 }}>
+              <Typography.Title level={5}>Selecione o Tipo</Typography.Title>
+              <Text type="secondary">Escolha qual tipo de monitoramento deseja configurar neste servidor.</Text>
+            </div>
 
             <Form.Item
               name="service_name"
-              label="Tipo de Monitoramento"
               rules={[{ required: true, message: 'Selecione um tipo de monitoramento' }]}
             >
               <Select
-                placeholder="Selecione o tipo de monitoramento"
+                placeholder="Busque por nome, job ou tipo..."
                 value={selectedType}
                 onChange={handleTypeSelect}
                 loading={loadingTypes}
                 showSearch
-                filterOption={(input, option) =>
-                  (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                }
-                options={availableTypes.map((type) => ({
-                  value: type.id || type.job_name,
-                  label: (
-                    <Space>
-                      <span>{type.display_name}</span>
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        ({type.exporter_type})
-                      </Text>
-                    </Space>
-                  ),
-                }))}
-              />
+                size="large"
+                optionFilterProp="data-search"
+                optionLabelProp="label" // ✅ CORREÇÃO: Usar label simples quando selecionado
+                style={{ width: '100%' }}
+                listHeight={300}
+              >
+                {availableTypes.map((type) => (
+                  <Select.Option
+                    key={type.id || type.job_name}
+                    value={type.id || type.job_name}
+                    label={type.display_name} // ✅ Label simples para o input
+                    data-search={`${type.display_name} ${type.exporter_type} ${type.category}`}
+                  >
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      width: '100%', 
+                      padding: '4px 0'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: 12 }}>
+                        <Text strong style={{ fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {type.display_name}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{type.exporter_type}</Text>
+                      </div>
+                      <div style={{ 
+                        background: token.colorBgLayout, 
+                        padding: '2px 8px', 
+                        borderRadius: 4, 
+                        fontSize: 10, // Reduzido levemente
+                        color: token.colorTextTertiary,
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        marginLeft: 8, // Espaço fixo da esquerda
+                        maxWidth: '30%', // Limitar largura máxima
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        textAlign: 'right'
+                      }}>
+                        {type.category}
+                      </div>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
             </Form.Item>
 
             {loadingSchema && (
-              <div style={{ textAlign: 'center', padding: '20px' }}>
-                <Spin indicator={<LoadingOutlined spin />} />
-                <div style={{ marginTop: 8 }}>Carregando configuração do formulário...</div>
+              <div style={{ textAlign: 'center', padding: '60px' }}>
+                <Spin indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} />
+                <div style={{ marginTop: 16, color: token.colorTextSecondary }}>
+                  Carregando esquema do formulário...
+                </div>
               </div>
             )}
-          </Space>
-        )}
+          </div>
 
-        {/* PASSO 3: Formulário Completo */}
-        {step === 'form' && (
-          <Tabs defaultActiveKey="exporter">
-            {/* Aba: Campos Específicos do Exporter */}
-            <TabPane
-              tab={
-                <Space>
-                  <span>Configuração do Exporter</span>
-                  {formSchema && formSchema.fields.length > 0 && (
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  )}
-                </Space>
-              }
-              key="exporter"
-            >
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                {formSchema && formSchema.fields.length > 0 ? (
-                  <>
-                    <Alert
-                      message="Campos Específicos do Exporter"
-                      description="Configure os parâmetros específicos deste tipo de exporter."
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 16 }}
-                    />
-                    {renderExporterFields}
-                  </>
-                ) : (
-                  <Alert
-                    message="Nenhum campo específico"
-                    description="Este tipo de exporter não possui campos específicos configurados."
-                    type="info"
-                    showIcon
-                  />
-                )}
-              </Space>
-            </TabPane>
+          {/* PASSO 3: Configuração do Exporter */}
+          <div style={{ display: step === 'exporter' ? 'block' : 'none' }}>
+            <div style={{ marginBottom: 24 }}>
+              <Typography.Title level={5}>Configuração do Exporter</Typography.Title>
+              <Text type="secondary">
+                Preencha os campos específicos para <strong>{availableTypes.find(t => t.id === selectedType)?.display_name}</strong>.
+              </Text>
+            </div>
+            
+            <div style={{ 
+              background: token.colorBgLayout, 
+              padding: 24, 
+              borderRadius: token.borderRadiusLG,
+              border: `1px solid ${token.colorBorderSecondary}`
+            }}>
+              {formSchema && formSchema.fields && formSchema.fields.length > 0 ? (
+                renderExporterFields
+              ) : (
+                <div style={{ textAlign: 'center', padding: 24, color: token.colorTextSecondary }}>
+                  <InfoCircleOutlined style={{ fontSize: 24, marginBottom: 8, display: 'block' }} />
+                  Este tipo não requer configurações específicas. Pode avançar.
+                </div>
+              )}
+            </div>
+          </div>
 
-            {/* Aba: Metadata Genéricos */}
-            <TabPane
-              tab={
-                <Space>
-                  <span>Metadata</span>
-                  {filterFields.length > 0 && (
-                    <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                  )}
-                </Space>
-              }
-              key="metadata"
-            >
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Alert
-                  message="Campos de Metadata"
-                  description="Configure os campos de metadata genéricos do serviço."
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
-                {renderMetadataFields}
-              </Space>
-            </TabPane>
+          {/* PASSO 4: Metadata */}
+          <div style={{ display: step === 'metadata' ? 'block' : 'none' }}>
+            <div style={{ marginBottom: 24 }}>
+              <Typography.Title level={5}>Detalhes e Metadados</Typography.Title>
+              <Text type="secondary">Informações adicionais para categorização e filtros.</Text>
+            </div>
 
-            {/* Aba: Configurações Básicas */}
-            <TabPane tab="Configurações Básicas" key="basic">
-              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-                <Alert
-                  message="Configurações Básicas do Serviço"
-                  description="Configure os parâmetros básicos de conexão e identificação do serviço."
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                />
-                
-                <Form.Item
-                  name="address"
-                  label={
-                    <Space size="small">
-                      <span>Endereço IP ou Hostname</span>
-                      <Tooltip title="IP ou hostname do alvo a ser monitorado. Exemplo: 192.168.1.1 ou exemplo.com">
-                        <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                      </Tooltip>
-                    </Space>
-                  }
-                  rules={[{ required: true, message: 'Endereço é obrigatório' }]}
-                >
-                  <Input placeholder="192.168.1.1 ou exemplo.com" />
-                </Form.Item>
+            <div style={{ 
+              background: token.colorBgLayout, 
+              padding: 24, 
+              borderRadius: token.borderRadiusLG,
+              border: `1px solid ${token.colorBorderSecondary}`
+            }}>
+              {renderMetadataFields}
+            </div>
+          </div>
 
-                <Form.Item
-                  name="port"
-                  label={
-                    <Space size="small">
-                      <span>Porta</span>
-                      <Tooltip title="Porta do exporter. Padrões: Blackbox=9115, Node=9100, Windows=9182, SNMP=9116">
-                        <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                      </Tooltip>
-                    </Space>
-                  }
-                  rules={[{ required: true, message: 'Porta é obrigatória' }]}
-                >
-                  <InputNumber 
-                    min={1} 
-                    max={65535} 
-                    style={{ width: '100%' }}
-                    placeholder="9115"
-                  />
-                </Form.Item>
+        </div>
 
-                <Form.Item
-                  name="tags"
-                  label={
-                    <Space size="small">
-                      <span>Tags</span>
-                      <Tooltip title="Tags para organização e filtros no Prometheus. Exemplo: ['icmp', 'network', 'prod']. Tags são usadas para agrupar e filtrar serviços no Prometheus.">
-                        <InfoCircleOutlined style={{ color: '#1890ff' }} />
-                      </Tooltip>
-                    </Space>
-                  }
-                >
-                  <Select
-                    mode="tags"
-                    placeholder="Digite tags e pressione Enter"
-                    style={{ width: '100%' }}
-                  />
-                </Form.Item>
-              </Space>
-            </TabPane>
-          </Tabs>
-        )}
+        <Divider />
 
         {/* Footer com botões */}
-        <div style={{ marginTop: 24, textAlign: 'right' }}>
-          <Space>
-            <Button onClick={onCancel}>Cancelar</Button>
-            {step === 'form' && (
-              <Button type="primary" htmlType="submit" loading={loading}>
+        <div style={{ marginTop: 32, textAlign: 'right', borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
+          <Space size="middle"> {/* Aumentar espaçamento entre botões */}
+            <Button onClick={onCancel} size="large">Cancelar</Button>
+            
+            {/* Botão Voltar */}
+            {step !== 'node' && (
+              <Button 
+                onClick={handleBack}
+                icon={<ArrowLeftOutlined />}
+                size="large"
+              >
+                Voltar
+              </Button>
+            )}
+
+            {step === 'node' && (
+              <Button
+                type="primary"
+                onClick={handleAdvanceFromNode}
+                loading={loadingTypes}
+                disabled={!submittable}
+                size="large" // Botão grande
+                style={{ minWidth: 120 }} // Largura mínima
+              >
+                Avançar
+              </Button>
+            )}
+            {step === 'type' && (
+              <Button
+                type="primary"
+                disabled={!submittable}
+                loading={loadingSchema}
+                onClick={() => {
+                  if (selectedType) {
+                    const type = availableTypes.find((t) => t.id === selectedType || t.job_name === selectedType);
+                    if (type) {
+                      loadFormSchema(type.id);
+                    }
+                  }
+                }}
+                size="large"
+                style={{ minWidth: 120 }}
+              >
+                Avançar
+              </Button>
+            )}
+            {step === 'exporter' && (
+              <Button
+                type="primary"
+                htmlType="button"
+                disabled={!submittable}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setStep('metadata');
+                }}
+                size="large"
+                style={{ minWidth: 120 }}
+              >
+                Avançar
+              </Button>
+            )}
+            {step === 'metadata' && (
+              <Button 
+                type="primary" 
+                htmlType="submit" 
+                loading={loading}
+                disabled={!submittable}
+                size="large"
+                style={{ minWidth: 140 }} // Um pouco maior para o submit final
+              >
                 {submitButtonText}
               </Button>
             )}

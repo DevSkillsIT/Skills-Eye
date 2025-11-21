@@ -81,6 +81,7 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
+import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 3: Modal CRUD dinâmico
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -802,27 +803,78 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     setFormOpen(true);
   }, []);
 
-  // ✅ NOVO: Handler de deleção individual
+  // ✅ SPRINT 3: Handler de deleção individual com chamada API real
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      // TODO: Implementar API de deleção
-      message.success(`Serviço "${record.ID}" excluído com sucesso`);
-      actionRef.current?.reload();
+      const serviceId = record.ID;
+      const nodeAddr = record.node_ip; // IP do nó para deregister correto
+
+      // Chamar API de exclusão
+      const response = await consulAPI.deleteService(serviceId, { node_addr: nodeAddr });
+
+      if (response.data?.success) {
+        message.success(`Serviço "${serviceId}" excluído com sucesso`);
+        actionRef.current?.reload();
+      } else {
+        message.error(response.data?.error || 'Erro ao excluir serviço');
+      }
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.message || error));
+      // Tratamento de erros específicos
+      if (error.response?.status === 404) {
+        message.error('Serviço não encontrado');
+      } else if (error.response?.status === 409) {
+        message.error('Serviço em uso, não pode ser excluído');
+      } else {
+        message.error('Erro ao excluir: ' + (error.response?.data?.detail || error.message || error));
+      }
     }
   }, []);
 
-  // ✅ NOVO: Handler de batch delete
+  // ✅ SPRINT 3: Handler de batch delete com processamento em lotes paralelos
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) return;
 
     try {
-      // TODO: Implementar batch delete API
-      message.success(`${selectedRows.length} serviços excluídos com sucesso`);
+      // Limitar concorrência a 10 requisições paralelas (conforme SPEC)
+      const batchSize = 10;
+      const results: { success: string[]; failed: string[] } = { success: [], failed: [] };
+
+      // Processar em batches de 10
+      for (let i = 0; i < selectedRows.length; i += batchSize) {
+        const batch = selectedRows.slice(i, i + batchSize);
+
+        // Executar batch em paralelo
+        const promises = batch.map(async (record) => {
+          try {
+            const response = await consulAPI.deleteService(record.ID, {
+              node_addr: record.node_ip,
+            });
+            if (response.data?.success) {
+              results.success.push(record.ID);
+            } else {
+              results.failed.push(record.ID);
+            }
+          } catch {
+            results.failed.push(record.ID);
+          }
+        });
+
+        await Promise.all(promises);
+      }
+
+      // Mostrar resultado
+      if (results.failed.length === 0) {
+        message.success(`${results.success.length} serviços excluídos com sucesso`);
+      } else {
+        message.warning(`${results.success.length} excluídos, ${results.failed.length} falhas`);
+        console.error('Falhas na exclusão:', results.failed);
+      }
+
+      // Limpar seleção e recarregar
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
+
     } catch (error: any) {
       message.error('Erro ao excluir: ' + (error.message || error));
     }
@@ -1341,29 +1393,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ NOVO: Modal de criação/edição */}
-      <Modal
-        title={formMode === 'create' ? 'Novo registro' : 'Editar registro'}
-        open={formOpen}
+      {/* ✅ SPRINT 3: Modal CRUD dinâmico reutilizando componente existente */}
+      <DynamicCRUDModal
+        mode={formMode}
+        category={category}
+        service={currentRecord}
+        visible={formOpen}
+        onSuccess={() => {
+          setFormOpen(false);
+          setCurrentRecord(null);
+          actionRef.current?.reload();
+        }}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-        onOk={() => {
-          // TODO: Implementar submit
-          message.info('Funcionalidade de criar/editar será implementada');
-          setFormOpen(false);
-        }}
-        width={720}
-        destroyOnHidden
-      >
-        <p>Modal de criação/edição - A implementar</p>
-        {currentRecord && (
-          <pre style={{ background: '#f5f5f5', padding: 12, borderRadius: 4, fontSize: 11 }}>
-            {JSON.stringify(currentRecord, null, 2)}
-          </pre>
-        )}
-      </Modal>
+      />
     </PageContainer>
   );
 };

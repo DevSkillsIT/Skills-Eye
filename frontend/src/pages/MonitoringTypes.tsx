@@ -30,6 +30,7 @@ import {
   Tooltip,
   Modal,
   Input,
+  Select,
   message,
   type MenuProps,
 } from 'antd';
@@ -173,6 +174,8 @@ export default function MonitoringTypes() {
   const [jobConfigModalVisible, setJobConfigModalVisible] = useState(false); // ✅ NOVO: Modal para job_config
   const [selectedType, setSelectedType] = useState<MonitoringType | null>(null);
   const [formSchemaJson, setFormSchemaJson] = useState('');
+  const [selectedServerForSchema, setSelectedServerForSchema] = useState<string | undefined>(undefined); // ✅ NOVO: Servidor selecionado para editar schema
+  const [savingSchema, setSavingSchema] = useState(false); // ✅ NOVO: Estado de loading para salvar schema
 
   // ✅ OTIMIZAÇÃO: Usar ServersContext - não precisa mais fazer request próprio
   // Setar servidor master quando servidores carregarem do Context
@@ -308,8 +311,30 @@ export default function MonitoringTypes() {
   // ✅ NOVO: Handler para editar form_schema
   const handleEditFormSchema = (type: MonitoringType) => {
     setSelectedType(type);
-    const schemaJson = type.form_schema
-      ? JSON.stringify(type.form_schema, null, 2)
+    
+    // ✅ CORREÇÃO: Determinar servidor padrão e resetar seleção
+    let defaultServer: string | undefined;
+    if (type.server) {
+      defaultServer = type.server;
+    } else if (type.servers && type.servers.length === 1) {
+      defaultServer = type.servers[0];
+    } else if (type.servers && type.servers.length > 1) {
+      // Múltiplos servidores: não definir padrão, usuário precisa escolher
+      defaultServer = undefined;
+    }
+    setSelectedServerForSchema(defaultServer);
+    
+    // Buscar form_schema do servidor selecionado (ou primeiro disponível)
+    let schemaToEdit = type.form_schema;
+    if (!schemaToEdit && defaultServer && serverData[defaultServer]) {
+      const serverType = serverData[defaultServer].types?.find((t: MonitoringType) => t.id === type.id);
+      if (serverType?.form_schema) {
+        schemaToEdit = serverType.form_schema;
+      }
+    }
+    
+    const schemaJson = schemaToEdit
+      ? JSON.stringify(schemaToEdit, null, 2)
       : JSON.stringify({ fields: [], required_metadata: [], optional_metadata: [] }, null, 2);
     setFormSchemaJson(schemaJson);
     setFormSchemaModalVisible(true);
@@ -319,20 +344,66 @@ export default function MonitoringTypes() {
   const handleSaveFormSchema = async () => {
     if (!selectedType) return;
 
+    setSavingSchema(true);
     try {
       const formSchema = JSON.parse(formSchemaJson);
-      await consulAPI.updateTypeFormSchema(selectedType.id, formSchema);
-      message.success(`Form schema salvo para tipo '${selectedType.display_name}'!`);
+      
+      // ✅ CORREÇÃO: Determinar servidor a enviar
+      let server: string | undefined;
+      
+      // Se usuário selecionou um servidor no modal, usar esse
+      if (selectedServerForSchema) {
+        server = selectedServerForSchema;
+      } else if (selectedType.server) {
+        // Tipo tem apenas 1 servidor
+        server = selectedType.server;
+      } else if (selectedType.servers && selectedType.servers.length === 1) {
+        // Tipo tem apenas 1 servidor no array
+        server = selectedType.servers[0];
+      } else if (selectedType.servers && selectedType.servers.length > 1) {
+        // Tipo existe em múltiplos servidores mas usuário não selecionou qual
+        message.error('Por favor, selecione o servidor que deseja editar na lista acima.');
+        setSavingSchema(false);
+        return;
+      }
+      
+      if (!server) {
+        message.error('Não foi possível determinar o servidor. Por favor, selecione um servidor.');
+        setSavingSchema(false);
+        return;
+      }
+      
+      await consulAPI.updateTypeFormSchema(selectedType.id, formSchema, server);
+      message.success(`Form schema salvo para tipo '${selectedType.display_name}' no servidor '${server}'!`);
       setFormSchemaModalVisible(false);
 
-      // Recarregar tipos
-      await handleReload();
+      // ✅ CORREÇÃO: Aguardar um pouco para garantir que o backend processou a atualização
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // ✅ CORREÇÃO: Forçar refresh para garantir dados atualizados (não usar cache)
+      await loadTypes(true, false);
+      
+      // ✅ CORREÇÃO: Atualizar selectedType com os dados recém-carregados
+      // Buscar o tipo atualizado nas categorias recém-carregadas
+      const updatedType = categories
+        .flatMap(cat => cat.types || [])
+        .find(t => t.id === selectedType.id);
+      
+      if (updatedType) {
+        setSelectedType(updatedType);
+        // Atualizar também o formSchemaJson no editor
+        if (updatedType.form_schema) {
+          setFormSchemaJson(JSON.stringify(updatedType.form_schema, null, 2));
+        }
+      }
     } catch (e: any) {
       if (e instanceof SyntaxError) {
         message.error('JSON inválido! Corrija os erros de sintaxe.');
       } else {
         message.error('Erro ao salvar: ' + (e.message || e));
       }
+    } finally {
+      setSavingSchema(false);
     }
   };
 
@@ -980,8 +1051,12 @@ export default function MonitoringTypes() {
       <Modal
         title={`Editar Form Schema: ${selectedType?.display_name}`}
         open={formSchemaModalVisible}
-        onCancel={() => setFormSchemaModalVisible(false)}
+        onCancel={() => {
+          setFormSchemaModalVisible(false);
+          setSelectedServerForSchema(undefined);
+        }}
         onOk={handleSaveFormSchema}
+        confirmLoading={savingSchema} // ✅ NOVO: Loading no botão salvar
         width={800}
         okText="Salvar"
         cancelText="Cancelar"
@@ -994,6 +1069,42 @@ export default function MonitoringTypes() {
             showIcon
           />
         </div>
+
+        {/* ✅ NOVO: Seletor de servidor quando tipo existe em múltiplos servidores */}
+        {selectedType && (selectedType.servers?.length || 0) > 1 && (
+          <div style={{ marginBottom: 16 }}>
+            <Text strong style={{ display: 'block', marginBottom: 8 }}>
+              Servidor: <span style={{ color: '#ff4d4f' }}>*</span>
+            </Text>
+            <Select
+              style={{ width: '100%' }}
+              placeholder="Selecione o servidor que deseja editar"
+              value={selectedServerForSchema}
+              onChange={(value) => {
+                setSelectedServerForSchema(value);
+                // Carregar form_schema do servidor selecionado
+                if (value && serverData[value]) {
+                  const serverType = serverData[value].types?.find((t: MonitoringType) => t.id === selectedType.id);
+                  if (serverType?.form_schema) {
+                    setFormSchemaJson(JSON.stringify(serverType.form_schema, null, 2));
+                  } else {
+                    setFormSchemaJson(JSON.stringify({ fields: [], required_metadata: [], optional_metadata: [] }, null, 2));
+                  }
+                }
+              }}
+              required
+            >
+              {selectedType.servers?.map((srv: string) => (
+                <Select.Option key={srv} value={srv}>
+                  {srv}
+                </Select.Option>
+              ))}
+            </Select>
+            <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 4 }}>
+              Este tipo existe em {selectedType.servers?.length} servidor(es). Selecione qual deseja editar.
+            </Text>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <Text strong>Form Schema (JSON):</Text>
