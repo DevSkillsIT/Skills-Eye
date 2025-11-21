@@ -61,6 +61,7 @@ import {
   CheckCircleFilled,
 } from '@ant-design/icons';
 import { consulAPI } from '../services/api';
+import GlobalRegexValidator from '../components/GlobalRegexValidator';
 
 const { Text } = Typography;
 
@@ -233,6 +234,8 @@ const MonitoringRules: React.FC = () => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [rulesData, setRulesData] = useState<RulesData | null>(null);
   const [showModalInfo, setShowModalInfo] = useState(false);
+  // SPEC-REGEX-001: Estado para modal de teste global
+  const [globalValidatorVisible, setGlobalValidatorVisible] = useState(false);
 
   // Estados para controle de filtros e ordenação
   const [filteredInfo, setFilteredInfo] = useState<Record<string, FilterValue | null>>({});
@@ -661,6 +664,14 @@ const MonitoringRules: React.FC = () => {
         scroll={{ x: 1500 }}
         toolbar={{
           actions: [
+            // SPEC-REGEX-001: Botao para testar categorizacao global
+            <Button
+              key="test-global"
+              icon={<ExperimentOutlined />}
+              onClick={() => setGlobalValidatorVisible(true)}
+            >
+              Testar Categorizacao
+            </Button>,
             <Button
               key="add"
               type="primary"
@@ -1011,6 +1022,14 @@ const MonitoringRules: React.FC = () => {
           </Descriptions>
         )}
       </Modal>
+
+      {/* SPEC-REGEX-001: Modal de Validacao Global */}
+      <GlobalRegexValidator
+        visible={globalValidatorVisible}
+        onClose={() => setGlobalValidatorVisible(false)}
+        rules={rulesData?.rules || []}
+        categoryColors={CATEGORY_COLORS}
+      />
     </PageContainer>
   );
 };

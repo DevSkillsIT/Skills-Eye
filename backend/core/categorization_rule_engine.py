@@ -328,11 +328,39 @@ class CategorizationRuleEngine:
                     f"'{rule.category}' (regra: {rule.id}, prioridade: {rule.priority})"
                 )
 
+                # SPEC-REGEX-001: Determinar quais patterns fizeram match
+                job_name = job_data.get('job_name', '').lower()
+                module = job_data.get('module', '')
+
+                job_pattern_matched = False
+                module_pattern_matched = False
+
+                # Verificar job_name_pattern
+                if 'job_name_pattern' in rule.conditions:
+                    pattern = rule._compiled_patterns.get('job_name_pattern')
+                    if pattern and pattern.match(job_name):
+                        job_pattern_matched = True
+
+                # Verificar module_pattern
+                if 'module_pattern' in rule.conditions and module:
+                    pattern = rule._compiled_patterns.get('module_pattern')
+                    if pattern and pattern.match(module):
+                        module_pattern_matched = True
+
                 type_info = {
                     'id': job_data.get('module') or job_data.get('job_name'),
                     'display_name': rule.display_name or self._format_display_name(job_data.get('job_name', '')),
                     'exporter_type': rule.exporter_type or 'custom',
-                    'priority': rule.priority
+                    'priority': rule.priority,
+                    # SPEC-REGEX-001: Informacao detalhada do match
+                    'matched_rule': {
+                        'id': rule.id,
+                        'priority': rule.priority,
+                        'job_pattern_matched': job_pattern_matched,
+                        'module_pattern_matched': module_pattern_matched,
+                        'job_pattern': rule.conditions.get('job_name_pattern'),
+                        'module_pattern': rule.conditions.get('module_pattern')
+                    }
                 }
 
                 # Adicionar module se presente
@@ -363,7 +391,9 @@ class CategorizationRuleEngine:
         type_info = {
             'id': job_data.get('module') or job_name,
             'display_name': self._format_display_name(job_name),
-            'exporter_type': 'custom'
+            'exporter_type': 'custom',
+            # SPEC-REGEX-001: matched_rule nulo para categoria padrão
+            'matched_rule': None
         }
 
         if job_data.get('module'):

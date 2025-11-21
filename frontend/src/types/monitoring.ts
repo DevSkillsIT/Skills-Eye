@@ -80,6 +80,21 @@ export interface AdditionalFilter {
   values: any[];
 }
 
+/**
+ * SPEC-REGEX-001: Interface para informacoes de match da regra de categorizacao
+ *
+ * Contém detalhes sobre qual regra foi usada para categorizar um tipo
+ * e quais patterns especificos fizeram match.
+ */
+export interface MatchedRuleInfo {
+  id: string;                      // ID da regra que fez match
+  priority: number;                // Prioridade da regra
+  job_pattern_matched: boolean;    // Se job_name_pattern fez match
+  module_pattern_matched: boolean; // Se module_pattern fez match
+  job_pattern?: string;            // Pattern de job_name usado
+  module_pattern?: string;         // Pattern de module usado
+}
+
 export interface FormSchema {
   /** Campos do formulário */
   fields: FormField[];

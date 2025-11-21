@@ -80,6 +80,16 @@ interface FormSchema {
   optional_metadata?: string[];
 }
 
+// SPEC-REGEX-001: Interface para informacoes de match
+interface MatchedRuleInfo {
+  id: string;
+  priority: number;
+  job_pattern_matched: boolean;
+  module_pattern_matched: boolean;
+  job_pattern?: string;
+  module_pattern?: string;
+}
+
 interface MonitoringType {
   id: string;
   display_name: string;
@@ -87,12 +97,13 @@ interface MonitoringType {
   job_name: string;
   exporter_type: string;
   module?: string;
-  fields?: string[]; // ⚠️ Opcional: pode ser undefined quando vem do cache KV
+  fields?: string[]; // Opcional: pode ser undefined quando vem do cache KV
   metrics_path: string;
   server?: string;
   servers?: string[];
-  form_schema?: FormSchema; // ✅ NOVO: Form schema do tipo
-  job_config?: any; // ✅ NOVO: Job completo extraído do prometheus.yml
+  form_schema?: FormSchema; // Form schema do tipo
+  job_config?: any; // Job completo extraido do prometheus.yml
+  matched_rule?: MatchedRuleInfo; // SPEC-REGEX-001: Informacao do match
 }
 
 interface CategoryData {
@@ -142,15 +153,18 @@ export default function MonitoringTypes() {
     error: null,
   });
 
-  // Configuração de colunas
+  // Configuracao de colunas
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([
     { key: 'display_name', title: 'Nome', visible: true, width: 250 },
     { key: 'job_name', title: 'Job Name', visible: true, width: 200 },
     { key: 'exporter_type', title: 'Exporter Type', visible: true, width: 180 },
-    { key: 'module', title: 'Módulo', visible: true, width: 120 },
+    { key: 'module', title: 'Modulo', visible: true, width: 120 },
     { key: 'fields', title: 'Campos Metadata', visible: true, width: 300 },
     { key: 'servers', title: 'Servidores', visible: true, width: 200 },
-    { key: 'actions', title: 'Ações', visible: true, width: 280 }, // ✅ Aumentado para 3 botões
+    // SPEC-REGEX-001: Novas colunas de match
+    { key: 'matched_rule_job', title: 'Regra Job', visible: true, width: 150 },
+    { key: 'matched_rule_module', title: 'Regra Modulo', visible: true, width: 150 },
+    { key: 'actions', title: 'Acoes', visible: true, width: 280 },
   ]);
 
   // ✅ NOVO: Estados para modais de ações
@@ -427,10 +441,64 @@ export default function MonitoringTypes() {
         );
       },
     },
+    // SPEC-REGEX-001: Coluna Regra Job
+    {
+      key: 'matched_rule_job',
+      title: 'Regra Job',
+      width: 150,
+      render: (_: any, record: MonitoringType) => {
+        if (!record.matched_rule || !record.matched_rule.job_pattern_matched) {
+          return <Text type="secondary">-</Text>;
+        }
+        return (
+          <Tooltip
+            title={
+              <Space direction="vertical" size={0}>
+                <Text style={{ color: 'white' }}>
+                  Pattern: {record.matched_rule.job_pattern || 'N/A'}
+                </Text>
+                <Text style={{ color: 'white' }}>
+                  Prioridade: {record.matched_rule.priority}
+                </Text>
+              </Space>
+            }
+          >
+            <Tag color="blue">{record.matched_rule.id}</Tag>
+          </Tooltip>
+        );
+      },
+    },
+    // SPEC-REGEX-001: Coluna Regra Modulo
+    {
+      key: 'matched_rule_module',
+      title: 'Regra Modulo',
+      width: 150,
+      render: (_: any, record: MonitoringType) => {
+        if (!record.matched_rule || !record.matched_rule.module_pattern_matched) {
+          return <Text type="secondary">-</Text>;
+        }
+        return (
+          <Tooltip
+            title={
+              <Space direction="vertical" size={0}>
+                <Text style={{ color: 'white' }}>
+                  Pattern: {record.matched_rule.module_pattern || 'N/A'}
+                </Text>
+                <Text style={{ color: 'white' }}>
+                  Prioridade: {record.matched_rule.priority}
+                </Text>
+              </Space>
+            }
+          >
+            <Tag color="green">{record.matched_rule.id}</Tag>
+          </Tooltip>
+        );
+      },
+    },
     {
       key: 'actions',
-      title: 'Ações',
-      width: 280, // ✅ Aumentado para acomodar 3 botões
+      title: 'Acoes',
+      width: 280,
       fixed: 'right' as 'right',
       render: (_: any, record: MonitoringType) => (
         <Space size="small">
