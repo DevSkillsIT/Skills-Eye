@@ -61,60 +61,54 @@ class RuleConditions(BaseModel):
         return v
 
 
-class FormSchemaField(BaseModel):
-    """Campo do form_schema"""
-    name: str = Field(..., description="Nome do campo")
-    label: Optional[str] = Field(None, description="Label para exibição")
-    type: str = Field(..., description="Tipo do campo (text, number, select, etc)")
-    required: bool = Field(False, description="Campo obrigatório")
-    default: Optional[Any] = Field(None, description="Valor padrão")
-    placeholder: Optional[str] = Field(None, description="Placeholder")
-    help: Optional[str] = Field(None, description="Texto de ajuda")
-    validation: Optional[Dict[str, Any]] = Field(None, description="Regras de validação")
-    options: Optional[List[Dict[str, str]]] = Field(None, description="Opções para select")
-    min: Optional[float] = Field(None, description="Valor mínimo (para number)")
-    max: Optional[float] = Field(None, description="Valor máximo (para number)")
-
-
-class FormSchema(BaseModel):
-    """Schema de formulário para exporter_type"""
-    fields: Optional[List[FormSchemaField]] = Field(None, description="Campos específicos do exporter")
-    required_metadata: Optional[List[str]] = Field(None, description="Campos metadata obrigatórios")
-    optional_metadata: Optional[List[str]] = Field(None, description="Campos metadata opcionais")
+# ✅ SPEC-ARCH-001: Classes FormSchemaField e FormSchema REMOVIDAS
+# form_schema deve existir APENAS no KV monitoring-types, não nas regras de categorização.
+# Isso evita duplicação e estabelece monitoring-types como única fonte de form_schema.
 
 
 class CategorizationRuleModel(BaseModel):
-    """Modelo de regra de categorização"""
+    """
+    Modelo de regra de categorização
+
+    ✅ SPEC-ARCH-001: form_schema REMOVIDO
+    As regras determinam apenas categoria, display_name e exporter_type.
+    O form_schema existe APENAS em monitoring-types.
+    """
     id: str = Field(..., description="ID único da regra", pattern=r"^[a-z0-9_]+$")
     priority: int = Field(..., description="Prioridade (1-100)", ge=1, le=100)
     category: str = Field(..., description="Categoria de destino")
     display_name: str = Field(..., description="Nome amigável para exibição")
     exporter_type: Optional[str] = Field(None, description="Tipo de exporter (opcional)")
     conditions: RuleConditions = Field(..., description="Condições de matching")
-    form_schema: Optional[FormSchema] = Field(None, description="Schema de formulário para este exporter_type")
     observations: Optional[str] = Field(None, description="Observações sobre a regra")
 
 
 class RuleCreateRequest(BaseModel):
-    """Request para criar regra"""
+    """
+    Request para criar regra
+
+    ✅ SPEC-ARCH-001: form_schema REMOVIDO
+    """
     id: str = Field(..., pattern=r"^[a-z0-9_]+$")
     priority: int = Field(..., ge=1, le=100)
     category: str
     display_name: str
     exporter_type: Optional[str] = None
     conditions: RuleConditions
-    form_schema: Optional[FormSchema] = None
     observations: Optional[str] = None
 
 
 class RuleUpdateRequest(BaseModel):
-    """Request para atualizar regra (ID não pode mudar)"""
+    """
+    Request para atualizar regra (ID não pode mudar)
+
+    ✅ SPEC-ARCH-001: form_schema REMOVIDO
+    """
     priority: Optional[int] = Field(None, ge=1, le=100)
     category: Optional[str] = None
     display_name: Optional[str] = None
     exporter_type: Optional[str] = None
     conditions: Optional[RuleConditions] = None
-    form_schema: Optional[FormSchema] = None
     observations: Optional[str] = None
 
 
@@ -211,6 +205,7 @@ async def create_categorization_rule(request: RuleCreateRequest):
             )
 
         # PASSO 3: Criar nova regra
+        # ✅ SPEC-ARCH-001: form_schema REMOVIDO - existe apenas em monitoring-types
         new_rule = {
             "id": request.id,
             "priority": request.priority,
@@ -218,7 +213,6 @@ async def create_categorization_rule(request: RuleCreateRequest):
             "display_name": request.display_name,
             "exporter_type": request.exporter_type,
             "conditions": request.conditions.dict(exclude_none=True),
-            "form_schema": request.form_schema.dict(exclude_none=True) if request.form_schema else None,
             "observations": request.observations
         }
 
@@ -314,8 +308,7 @@ async def update_categorization_rule(rule_id: str, request: RuleUpdateRequest):
             current_rule['exporter_type'] = request.exporter_type
         if request.observations is not None:
             current_rule['observations'] = request.observations
-        if request.form_schema is not None:
-            current_rule['form_schema'] = request.form_schema.dict(exclude_none=True)
+        # ✅ SPEC-ARCH-001: form_schema REMOVIDO - existe apenas em monitoring-types
         if request.conditions is not None:
             # Merge conditions (manter campos não fornecidos)
             for key, value in request.conditions.dict(exclude_none=True).items():

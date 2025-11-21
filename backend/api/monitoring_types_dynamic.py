@@ -16,6 +16,8 @@ from datetime import datetime
 from core.multi_config_manager import MultiConfigManager
 from core.kv_manager import KVManager
 from core.monitoring_types_backup import get_backup_manager
+from core.consul_kv_config_manager import ConsulKVConfigManager
+from core.categorization_rule_engine import CategorizationRuleEngine
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"])
@@ -24,6 +26,11 @@ router = APIRouter(prefix="/monitoring-types-dynamic", tags=["Monitoring Types"]
 multi_config = MultiConfigManager()
 kv_manager = KVManager()
 backup_manager = get_backup_manager()
+
+# ✅ SPEC-ARCH-001: Instanciar engine de categorização dinâmica
+# O engine usa regras do KV como FONTE ÚNICA DA VERDADE para categorização
+consul_kv_manager = ConsulKVConfigManager()
+rule_engine = CategorizationRuleEngine(consul_kv_manager)
 
 
 # ============================================================================
@@ -125,6 +132,9 @@ async def extract_types_from_prometheus_jobs(
     """
     Extrai tipos de monitoramento dos jobs do Prometheus
 
+    ✅ SPEC-ARCH-001: Usa CategorizationRuleEngine para categorizar
+    ao invés de código hardcoded. As regras do KV são a FONTE ÚNICA DA VERDADE.
+
     Cada job vira um tipo de monitoramento.
 
     Args:
@@ -135,6 +145,9 @@ async def extract_types_from_prometheus_jobs(
         Lista de tipos com schema simplificado
     """
     types = []
+
+    # ✅ SPEC-ARCH-001: Carregar regras do KV (engine faz cache)
+    await rule_engine.load_rules()
 
     for job in scrape_configs:
         job_name = job.get('job_name', 'unknown')
@@ -159,16 +172,28 @@ async def extract_types_from_prometheus_jobs(
             if target_label and target_label != '__address__' and not target_label.startswith('__'):
                 fields.append(target_label)
 
-        # Determinar categoria e tipo baseado no job_name
-        category, type_info = _infer_category_and_type(job_name, job)
+        # ✅ SPEC-ARCH-001: Usar engine dinâmico para categorização
+        # Extrair módulo blackbox para enviar ao engine
+        module = _extract_blackbox_module(job)
+
+        # Montar dados do job para o engine
+        job_data = {
+            'job_name': job_name,
+            'metrics_path': job.get('metrics_path', '/metrics'),
+            'module': module,
+            'relabel_configs': relabel_configs
+        }
+
+        # Categorizar usando regras dinâmicas do KV
+        category, type_info = rule_engine.categorize(job_data)
 
         type_schema = {
             "id": job_name,
-            "display_name": type_info['display_name'],
+            "display_name": type_info.get('display_name', job_name),
             "category": category,
             "job_name": job_name,
-            "exporter_type": type_info['exporter_type'],
-            "module": type_info.get('module'),
+            "exporter_type": type_info.get('exporter_type', 'custom'),
+            "module": type_info.get('module') or module,
             "fields": fields,
             "metrics_path": job.get('metrics_path', '/metrics'),
             "server": server_host,
@@ -178,168 +203,16 @@ async def extract_types_from_prometheus_jobs(
         types.append(type_schema)
 
         logger.info(
-            f"[EXTRACT-TYPES] Extraído tipo '{job_name}' (categoria={category}, exporter={type_info['exporter_type']}, campos={len(fields)})"
+            f"[EXTRACT-TYPES] Extraído tipo '{job_name}' (categoria={category}, exporter={type_info.get('exporter_type')}, campos={len(fields)})"
         )
 
     return types
 
 
-def _infer_category_and_type(job_name: str, job_config: Dict) -> tuple:
-    """
-    Infere categoria e tipo baseado no job_name
-
-    Regras de inferência:
-    - blackbox-* → network-probes ou web-probes
-    - node-* ou *selfnode* → system-exporters (node)
-    - windows-* → system-exporters (windows)
-    - mysql-* → database-exporters (mysql)
-    - etc
-    """
-    job_lower = job_name.lower()
-    metrics_path = job_config.get('metrics_path', '/metrics')
-
-    # Blackbox Exporter - detecta por:
-    # 1. Palavra 'blackbox' no job_name
-    # 2. metrics_path = '/probe' (característico do blackbox)
-    # 3. Job name corresponde a módulos conhecidos (http_2xx, icmp, etc.)
-    is_blackbox = (
-        'blackbox' in job_lower or
-        metrics_path == '/probe' or
-        job_lower in ['http_2xx', 'http_4xx', 'http_5xx', 'https', 'http_post_2xx',
-                      'icmp', 'ping', 'tcp', 'tcp_connect', 'dns', 'ssh', 'ssh_banner']
-    )
-
-    if is_blackbox:
-        # Tentar extrair módulo do config
-        module = _extract_blackbox_module(job_config)
-
-        # Se não encontrou, inferir do job_name
-        if not module:
-            module = job_lower
-
-        # Categorizar como network ou web probe
-        if module in ['icmp', 'ping', 'tcp', 'tcp_connect', 'dns', 'ssh', 'ssh_banner']:
-            return 'network-probes', {
-                'display_name': _format_display_name(module),
-                'exporter_type': 'blackbox',
-                'module': module
-            }
-        else:
-            return 'web-probes', {
-                'display_name': _format_display_name(module),
-                'exporter_type': 'blackbox',
-                'module': module
-            }
-
-    # Node Exporter
-    if 'node' in job_lower or 'selfnode' in job_lower:
-        return 'system-exporters', {
-            'display_name': 'Node Exporter (Linux)',
-            'exporter_type': 'node_exporter'
-        }
-
-    # Windows Exporter
-    if 'windows' in job_lower:
-        return 'system-exporters', {
-            'display_name': 'Windows Exporter',
-            'exporter_type': 'windows_exporter'
-        }
-
-    # SNMP Exporter
-    if 'snmp' in job_lower:
-        return 'system-exporters', {
-            'display_name': 'SNMP Exporter',
-            'exporter_type': 'snmp_exporter'
-        }
-
-    # MySQL
-    if 'mysql' in job_lower:
-        return 'database-exporters', {
-            'display_name': 'MySQL Exporter',
-            'exporter_type': 'mysql_exporter'
-        }
-
-    # PostgreSQL
-    if 'postgres' in job_lower or 'pg' in job_lower:
-        return 'database-exporters', {
-            'display_name': 'PostgreSQL Exporter',
-            'exporter_type': 'postgres_exporter'
-        }
-
-    # Redis
-    if 'redis' in job_lower:
-        return 'database-exporters', {
-            'display_name': 'Redis Exporter',
-            'exporter_type': 'redis_exporter'
-        }
-
-    # MongoDB
-    if 'mongo' in job_lower:
-        return 'database-exporters', {
-            'display_name': 'MongoDB Exporter',
-            'exporter_type': 'mongodb_exporter'
-        }
-
-    # MKTXP (MikroTik Exporter) - detecta por job_name
-    if 'mktxp' in job_lower or 'mikrotik' in job_lower:
-        return 'network-devices', {
-            'display_name': 'MikroTik Exporter (MKTXP)',
-            'exporter_type': 'mktxp'
-        }
-
-    # Exporters conhecidos - baseado na lista oficial Prometheus + terceiros populares
-    # Formato: pattern: (categoria, display_name, exporter_type)
-    exporter_patterns = {
-        # Web Servers (Infrastructure)
-        'haproxy': ('infrastructure-exporters', 'HAProxy Exporter', 'haproxy_exporter'),
-        'nginx': ('infrastructure-exporters', 'Nginx Exporter', 'nginx_exporter'),
-        'apache': ('infrastructure-exporters', 'Apache Exporter', 'apache_exporter'),
-
-        # Message Queues (Infrastructure)
-        'kafka': ('infrastructure-exporters', 'Kafka Exporter', 'kafka_exporter'),
-        'rabbitmq': ('infrastructure-exporters', 'RabbitMQ Exporter', 'rabbitmq_exporter'),
-        'nats': ('infrastructure-exporters', 'NATS Exporter', 'nats_exporter'),
-
-        # Databases (Database-Exporters)
-        'elasticsearch': ('database-exporters', 'Elasticsearch Exporter', 'elasticsearch_exporter'),
-        'memcached': ('database-exporters', 'Memcached Exporter', 'memcached_exporter'),
-
-        # Service Discovery / Orchestration (Infrastructure)
-        'consul_exporter': ('infrastructure-exporters', 'Consul Exporter', 'consul_exporter'),
-        'consul': ('infrastructure-exporters', 'Consul Exporter', 'consul_exporter'),
-
-        # Other Monitoring Systems (Infrastructure)
-        'jmx': ('infrastructure-exporters', 'JMX Exporter', 'jmx_exporter'),
-        'collectd': ('infrastructure-exporters', 'Collectd Exporter', 'collectd_exporter'),
-        'statsd': ('infrastructure-exporters', 'StatsD Exporter', 'statsd_exporter'),
-        'graphite': ('infrastructure-exporters', 'Graphite Exporter', 'graphite_exporter'),
-        'influxdb': ('infrastructure-exporters', 'InfluxDB Exporter', 'influxdb_exporter'),
-
-        # Cloud Providers (Infrastructure)
-        'cloudwatch': ('infrastructure-exporters', 'AWS CloudWatch Exporter', 'cloudwatch_exporter'),
-
-        # Hardware (Hardware-Exporters)
-        'ipmi': ('hardware-exporters', 'IPMI Exporter', 'ipmi_exporter'),
-        'dellhw': ('hardware-exporters', 'Dell Hardware OMSA Exporter', 'dellhw_exporter'),
-
-        # APIs & Development Tools (Infrastructure)
-        'github': ('infrastructure-exporters', 'GitHub Exporter', 'github_exporter'),
-        'gitlab': ('infrastructure-exporters', 'GitLab Exporter', 'gitlab_exporter'),
-        'jenkins': ('infrastructure-exporters', 'Jenkins Exporter', 'jenkins_exporter'),
-    }
-
-    for pattern, (category, display, exporter_type) in exporter_patterns.items():
-        if pattern in job_lower:
-            return category, {
-                'display_name': display,
-                'exporter_type': exporter_type
-            }
-
-    # Default: custom exporter
-    return 'custom-exporters', {
-        'display_name': job_name.replace('-', ' ').replace('_', ' ').title(),
-        'exporter_type': 'custom'
-    }
+# ✅ SPEC-ARCH-001: Função _infer_category_and_type REMOVIDA
+# Agora usamos CategorizationRuleEngine.categorize() que usa regras do KV
+# como FONTE ÚNICA DA VERDADE. Isso permite que novas regras sejam
+# adicionadas via /monitoring/rules sem alterar código.
 
 
 def _extract_blackbox_module(job_config: Dict) -> Optional[str]:
@@ -365,28 +238,17 @@ def _extract_blackbox_module(job_config: Dict) -> Optional[str]:
     return None
 
 
-def _format_display_name(name: str) -> str:
-    """Formata nome para display"""
-    mapping = {
-        'icmp': 'ICMP (Ping)',
-        'ping': 'ICMP (Ping)',
-        'tcp': 'TCP Connect',
-        'tcp_connect': 'TCP Connect',
-        'dns': 'DNS Query',
-        'ssh': 'SSH Banner',
-        'ssh_banner': 'SSH Banner',
-        'http_2xx': 'HTTP 2xx',
-        'http_4xx': 'HTTP 4xx',
-        'http_5xx': 'HTTP 5xx',
-        'https': 'HTTPS',
-        'http_post_2xx': 'HTTP POST 2xx',
-    }
-
-    return mapping.get(name.lower(), name.replace('-', ' ').replace('_', ' ').title())
-
+# ✅ SPEC-ARCH-001: Funções _format_display_name e _format_category_display_name REMOVIDAS
+# Display names agora vêm 100% das regras dinâmicas do KV via CategorizationRuleEngine.
+# Isso permite que novos exporters sejam adicionados sem alterar código.
 
 def _format_category_display_name(category: str) -> str:
-    """Formata nome da categoria"""
+    """
+    Formata nome da categoria para exibição
+
+    ✅ SPEC-ARCH-001: Esta função permanece como fallback para agrupamento
+    de categorias na resposta. Futuramente pode buscar do KV categories.
+    """
     mapping = {
         'network-probes': 'Network Probes (Rede)',
         'web-probes': 'Web Probes (Aplicações)',

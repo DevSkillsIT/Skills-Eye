@@ -54,25 +54,8 @@ import { consulAPI } from '../services/api';
 // INTERFACES
 // ============================================================================
 
-interface FormSchemaField {
-  name: string;
-  label?: string;
-  type: string;
-  required?: boolean;
-  default?: any;
-  placeholder?: string;
-  help?: string;
-  validation?: any;
-  options?: Array<{ value: string; label: string }>;
-  min?: number;
-  max?: number;
-}
-
-interface FormSchema {
-  fields?: FormSchemaField[];
-  required_metadata?: string[];
-  optional_metadata?: string[];
-}
+// ✅ SPEC-ARCH-001: Interfaces FormSchemaField e FormSchema REMOVIDAS
+// form_schema existe APENAS em monitoring-types, não nas regras de categorização
 
 interface CategorizationRule {
   id: string;
@@ -85,7 +68,7 @@ interface CategorizationRule {
     metrics_path?: string;
     module_pattern?: string;
   };
-  form_schema?: FormSchema;  // ✅ SPRINT 1: Schema de formulário
+  // ✅ SPEC-ARCH-001: form_schema REMOVIDO - existe apenas em monitoring-types
   observations?: string;  // Campo de observações
 }
 

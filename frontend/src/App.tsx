@@ -116,10 +116,26 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
           name: 'Database Exporters',
           icon: <DatabaseOutlined />,
         },
+        // ✅ SPEC-ARCH-001: Novas rotas de categorias
         {
-          path: '/monitoring/rules',
-          name: 'Regras de Categorização',
-          icon: <SettingOutlined />,
+          path: '/monitoring/infrastructure-exporters',
+          name: 'Infrastructure Exporters',
+          icon: <CloudServerOutlined />,
+        },
+        {
+          path: '/monitoring/hardware-exporters',
+          name: 'Hardware Exporters',
+          icon: <HddOutlined />,
+        },
+        {
+          path: '/monitoring/network-devices',
+          name: 'Network Devices',
+          icon: <RadarChartOutlined />,
+        },
+        {
+          path: '/monitoring/custom-exporters',
+          name: 'Custom Exporters',
+          icon: <AppstoreAddOutlined />,
         },
       ],
     },
@@ -147,6 +163,12 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
           path: '/reference-values',
           name: 'Valores de Referência',
           icon: <DatabaseOutlined />,
+        },
+        // ✅ SPEC-ARCH-001: MonitoringRules movido para Configurações
+        {
+          path: '/settings/monitoring-rules',
+          name: 'Regras de Categorização',
+          icon: <SettingOutlined />,
         },
         // REMOVIDO: Settings (Sites e External Labels)
         // Funcionalidades agora disponíveis em:
@@ -240,7 +262,13 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
           <Route path="/monitoring/web-probes" element={<DynamicMonitoringPage category="web-probes" />} />
           <Route path="/monitoring/system-exporters" element={<DynamicMonitoringPage category="system-exporters" />} />
           <Route path="/monitoring/database-exporters" element={<DynamicMonitoringPage category="database-exporters" />} />
-          <Route path="/monitoring/rules" element={<MonitoringRules />} />
+          {/* ✅ SPEC-ARCH-001: Novas rotas de categorias */}
+          <Route path="/monitoring/infrastructure-exporters" element={<DynamicMonitoringPage category="infrastructure-exporters" />} />
+          <Route path="/monitoring/hardware-exporters" element={<DynamicMonitoringPage category="hardware-exporters" />} />
+          <Route path="/monitoring/network-devices" element={<DynamicMonitoringPage category="network-devices" />} />
+          <Route path="/monitoring/custom-exporters" element={<DynamicMonitoringPage category="custom-exporters" />} />
+          {/* ✅ SPEC-ARCH-001: MonitoringRules movido para Configurações */}
+          <Route path="/settings/monitoring-rules" element={<MonitoringRules />} />
           {/* <Route path="/settings" element={<Settings />} /> REMOVIDO */}
           {/* ⭐ SPRINT 2 (2025-11-15) - Observability & Cache */}
           <Route path="/cache-management" element={<CacheManagement />} />

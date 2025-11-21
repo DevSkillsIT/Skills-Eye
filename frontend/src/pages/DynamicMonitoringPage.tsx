@@ -93,6 +93,7 @@ import { NodeSelector } from '../components/NodeSelector';
 // Em produção (build), logs serão removidos automaticamente
 const DEBUG_PERFORMANCE = import.meta.env.DEV;
 
+// ✅ SPEC-ARCH-001: Mapa de display names e subtítulos para todas as categorias
 const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   'network-probes': 'Network Probes (Rede)',
   'web-probes': 'Web Probes (Aplicações)',
@@ -100,6 +101,20 @@ const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   'database-exporters': 'Exporters: Bancos de Dados',
   'infrastructure-exporters': 'Exporters: Infraestrutura',
   'hardware-exporters': 'Exporters: Hardware',
+  'network-devices': 'Dispositivos de Rede',
+  'custom-exporters': 'Exporters: Customizados',
+};
+
+// ✅ SPEC-ARCH-001: Subtítulos com exemplos específicos para cada categoria
+const CATEGORY_SUBTITLES: Record<string, string> = {
+  'network-probes': 'Monitoramento de conectividade de rede: ICMP Ping, TCP Connect, DNS, SSH Banner',
+  'web-probes': 'Monitoramento de aplicações web e APIs: HTTP 2xx/4xx/5xx, HTTPS, HTTP POST',
+  'system-exporters': 'Métricas de sistemas operacionais: Linux (Node), Windows, VMware ESXi',
+  'database-exporters': 'Monitoramento de bancos de dados: MySQL, PostgreSQL, MongoDB, Redis, Elasticsearch',
+  'infrastructure-exporters': 'Infraestrutura e serviços: HAProxy, Nginx, Apache, RabbitMQ, Kafka',
+  'hardware-exporters': 'Hardware físico e IPMI: iDRAC, HP iLO, IPMI, Dell OMSA',
+  'network-devices': 'Dispositivos de rede: MikroTik, Cisco (SNMP), Switches, Roteadores',
+  'custom-exporters': 'Exporters customizados: Exporters personalizados não categorizados',
 };
 
 interface DynamicMonitoringPageProps {
@@ -945,7 +960,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   return (
     <PageContainer
       title={CATEGORY_DISPLAY_NAMES[category] || category}
-      subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
+      subTitle={CATEGORY_SUBTITLES[category] || `Monitoramento de ${category.replace(/-/g, ' ')}`}
       loading={tableFieldsLoading || filterFieldsLoading}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
