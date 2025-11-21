@@ -204,6 +204,7 @@ async def extract_types_from_prometheus_jobs(
             "metrics_path": job.get('metrics_path', '/metrics'),
             "server": server_host,
             "job_config": job,  # ✅ NOVO: Salvar job completo do prometheus.yml
+            "matched_rule": type_info.get('matched_rule'),  # ✅ SPEC-REGEX-001: Informação do match
         }
 
         types.append(type_schema)
