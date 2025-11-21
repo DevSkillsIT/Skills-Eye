@@ -385,12 +385,19 @@ def _aggregate_types(server_results: List[Dict[str, Any]]) -> Dict[str, Dict]:
     return all_types_dict
 
 
-def _group_by_category(all_types_dict: Dict[str, Dict]) -> List[Dict[str, Any]]:
+def _group_by_category(
+    all_types_dict: Dict[str, Dict],
+    category_display_names: Optional[Dict[str, str]] = None
+) -> List[Dict[str, Any]]:
     """
     Agrupa tipos por categoria para retorno na API
 
+    ✅ SPEC-ARCH-001: Display names de categorias vêm do KV.
+       O parâmetro category_display_names permite passar os nomes do KV.
+
     Args:
         all_types_dict: Dict[type_id, type_def]
+        category_display_names: Dict[category_id, display_name] do KV (opcional)
 
     Returns:
         Lista de categorias com seus tipos
@@ -400,9 +407,16 @@ def _group_by_category(all_types_dict: Dict[str, Dict]) -> List[Dict[str, Any]]:
     for type_def in all_types_dict.values():
         category = type_def['category']
         if category not in categories:
+            # ✅ SPEC-ARCH-001: Usar display_name do KV se disponível
+            if category_display_names and category in category_display_names:
+                display_name = category_display_names[category]
+            else:
+                # Fallback: capitalizar slug
+                display_name = _format_category_display_name(category)
+
             categories[category] = {
                 "category": category,
-                "display_name": _format_category_display_name(category),
+                "display_name": display_name,
                 "types": []
             }
         categories[category]['types'].append(type_def)
@@ -482,10 +496,23 @@ async def _extract_types_from_all_servers(server: Optional[str] = None) -> Dict[
     # PASSO 2: Agregar tipos de todos os servidores
     all_types_dict = _aggregate_types(server_results)
 
-    # PASSO 3: Agrupar por categoria
-    categories = _group_by_category(all_types_dict)
+    # PASSO 3: Buscar display_name das categorias do KV
+    # ✅ SPEC-ARCH-001: Display names vêm do KV, não de código hardcoded
+    category_display_names = {}
+    try:
+        rules_data = await consul_kv_manager.get('monitoring-types/categorization/rules')
+        if rules_data and 'categories' in rules_data:
+            for cat in rules_data['categories']:
+                if 'id' in cat and 'display_name' in cat:
+                    category_display_names[cat['id']] = cat['display_name']
+            logger.debug(f"[EXTRACT-TYPES] Carregados {len(category_display_names)} display_name de categorias do KV")
+    except Exception as e:
+        logger.warning(f"[EXTRACT-TYPES] Não foi possível carregar display_name de categorias do KV: {e}")
 
-    # PASSO 4: Calcular estatísticas
+    # PASSO 4: Agrupar por categoria (usando display_name do KV)
+    categories = _group_by_category(all_types_dict, category_display_names)
+
+    # PASSO 5: Calcular estatísticas
     successful_servers = len([r for r in server_results if r['success']])
     total_servers = len(server_results)
 
