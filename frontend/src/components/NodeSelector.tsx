@@ -55,7 +55,11 @@ export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
     setSelectedNode(value);
   }, [value]);
 
-  // ✅ OTIMIZAÇÃO: Selecionar nó padrão quando nodes carregarem
+  /**
+   * SPEC-PERF-001: Selecionar no padrao quando nodes carregarem
+   * IMPORTANTE: onChange removido das dependencias para evitar re-execucoes desnecessarias
+   * onChange eh uma funcao callback que nao deve triggar o efeito
+   */
   useEffect(() => {
     if (!loading && nodes.length > 0 && !selectedNode) {
       if (showAllNodesOption) {
@@ -64,7 +68,7 @@ export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
           onChange('all', undefined);
         }
       } else {
-        // Selecionar o main_server (primeiro nó Master)
+        // Selecionar o main_server (primeiro no Master)
         const mainNode = mainServer ? nodes.find(n => n.addr === mainServer) : nodes[0];
         if (mainNode) {
           setSelectedNode(mainNode.addr);
@@ -74,7 +78,9 @@ export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
         }
       }
     }
-  }, [loading, nodes, mainServer, selectedNode, showAllNodesOption, onChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, nodes, mainServer, selectedNode, showAllNodesOption]);
+  // SPEC-PERF-001: onChange removido - eh uma funcao callback que nao deve triggar efeito
 
   // Mostrar erro se houver
   useEffect(() => {

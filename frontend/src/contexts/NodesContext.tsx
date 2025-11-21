@@ -8,7 +8,7 @@
  * - Não bloqueia renderização da página
  */
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import axios from 'axios';
 
@@ -43,47 +43,56 @@ export function NodesProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadNodes = async () => {
+  /**
+   * SPEC-PERF-001: Funcao de carregamento memoizada com useCallback
+   * Evita recriacao da funcao a cada render, mantendo referencia estavel
+   */
+  const loadNodes = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // ✅ OTIMIZAÇÃO: Timeout reduzido (backend tem cache de 30s)
+      // SPEC-PERF-001: Timeout reduzido (backend tem cache de 60s agora)
       const response = await axios.get<{ success: boolean; data: ConsulNode[]; main_server: string }>(
         `${API_URL}/nodes`,
         {
-          timeout: 10000, // 10s (reduzido de 60s - cache backend é rápido)
+          timeout: 10000, // 10s (reduzido de 60s - cache backend eh rapido)
         }
       );
 
       if (response.data.success) {
         setNodes(response.data.data || []);
         setMainServer(response.data.main_server || null);
-        console.log(`[NodesContext] ✅ ${response.data.data?.length || 0} nós carregados`);
+        console.log(`[NodesContext] OK ${response.data.data?.length || 0} nos carregados`);
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
       setError(errorMessage);
-      console.error('[NodesContext] ❌ Erro ao carregar nós:', err);
+      console.error('[NodesContext] ERRO ao carregar nos:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadNodes();
-  }, []);
+  }, [loadNodes]);
+
+  /**
+   * SPEC-PERF-001: Context value memoizado com useMemo
+   * Evita re-renders desnecessarios em todos os consumers
+   * So recria o objeto quando os dados realmente mudam
+   */
+  const contextValue = useMemo(() => ({
+    nodes,
+    mainServer,
+    loading,
+    error,
+    reload: loadNodes,
+  }), [nodes, mainServer, loading, error, loadNodes]);
 
   return (
-    <NodesContext.Provider
-      value={{
-        nodes,
-        mainServer,
-        loading,
-        error,
-        reload: loadNodes,
-      }}
-    >
+    <NodesContext.Provider value={contextValue}>
       {children}
     </NodesContext.Provider>
   );
