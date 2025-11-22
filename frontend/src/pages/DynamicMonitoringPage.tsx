@@ -41,6 +41,7 @@ import {
   message,
   Modal,
   Popconfirm,
+  Radio,
   Space,
   Tag,
   Tooltip,
@@ -238,6 +239,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     staleness_ms?: number;
     total_time_ms?: number;
   } | null>(null);
+
+  // ✅ PERF-002 FIX: Modal de confirmação de exportação com preview
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportInfo, setExportInfo] = useState<{
+    totalRecords: number;
+    totalColumns: number;
+    estimatedSize: string;
+    columns: string[];
+  } | null>(null);
+
+  // ✅ PERF-002 FIX: Escopo de exportação (página atual ou todos os registros)
+  const [exportScope, setExportScope] = useState<'current' | 'all'>('current');
+  const [exportLoading, setExportLoading] = useState(false);
 
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
@@ -1127,16 +1141,30 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   }, [selectedRows]);
 
   // ✅ NOVO: Handler de exportação CSV
+  /**
+   * Função auxiliar para calcular tamanho estimado do CSV
+   * Baseado no número de registros e colunas (estimativa conservadora)
+   */
+  const estimateCsvSize = (recordCount: number, columnCount: number): string => {
+    // Aproximação: ~150 bytes por registro + 100 bytes de header
+    const estimatedBytes = (recordCount * 150) + 100;
+    if (estimatedBytes < 1024) return `${estimatedBytes} B`;
+    if (estimatedBytes < 1024 * 1024) return `${(estimatedBytes / 1024).toFixed(2)} KB`;
+    return `${(estimatedBytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  /**
+   * Abre o modal de confirmação com preview das informações de exportação
+   * Permite escolher entre exportar página atual ou todos os registros
+   */
   const handleExport = useCallback(() => {
-    if (!tableSnapshot.length) {
+    if (!tableSnapshot.length && summary.total === 0) {
       message.info('Não há dados para exportar');
       return;
     }
 
-    const sanitize = (value: unknown) =>
-      String(value ?? '').replace(/[\r\n]+/g, ' ').replace(/;/g, ',');
-
-    const header = [
+    // Coletas de informações sobre a exportação
+    const columns = [
       'ID',
       'Service',
       'Node',
@@ -1147,32 +1175,185 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       'meta_json',
     ];
 
-    const rows = tableSnapshot.map((record) => {
-      const meta = record.Meta || {};
-      const metaValues = tableFields.map(f => sanitize(meta[f.name]));
+    // Por padrão, mostra informações da página atual
+    // O usuário pode escolher exportar todos
+    const exportData = {
+      totalRecords: tableSnapshot.length,
+      totalColumns: columns.length,
+      estimatedSize: estimateCsvSize(tableSnapshot.length, columns.length),
+      columns: columns,
+    };
 
-      return [
-        sanitize(record.ID),
-        sanitize(record.Service),
-        sanitize(record.Node),
-        sanitize(record.Address),
-        sanitize(record.Port),
-        sanitize((record.Tags || []).join('|')),
-        ...metaValues,
-        sanitize(JSON.stringify(meta)),
-      ].join(';');
+    // Reset do escopo para página atual ao abrir modal
+    setExportScope('current');
+    setExportInfo(exportData);
+    setExportModalOpen(true);
+  }, [tableSnapshot, tableFields, summary.total]);
+
+  /**
+   * Atualiza informações de preview quando usuário muda escopo de exportação
+   */
+  const handleExportScopeChange = useCallback((scope: 'current' | 'all') => {
+    setExportScope(scope);
+
+    const columns = [
+      'ID',
+      'Service',
+      'Node',
+      'Address',
+      'Port',
+      'Tags',
+      ...tableFields.map(f => f.name),
+      'meta_json',
+    ];
+
+    // Atualizar preview baseado no escopo selecionado
+    const recordCount = scope === 'current' ? tableSnapshot.length : summary.total;
+
+    setExportInfo({
+      totalRecords: recordCount,
+      totalColumns: columns.length,
+      estimatedSize: estimateCsvSize(recordCount, columns.length),
+      columns: columns,
     });
+  }, [tableSnapshot, tableFields, summary.total]);
 
-    const csvContent = [header.join(';'), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${category}-${new Date().toISOString()}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    message.success('CSV exportado com sucesso!');
-  }, [tableSnapshot, tableFields, category]);
+  /**
+   * Executa a exportação CSV após confirmação do usuário
+   * Suporta exportação da página atual ou de todos os registros
+   */
+  const performCsvExport = useCallback(async () => {
+    if (!exportInfo) {
+      message.error('Nenhum dado para exportar');
+      return;
+    }
+
+    // Função auxiliar para sanitizar valores do CSV
+    const sanitize = (value: unknown) =>
+      String(value ?? '').replace(/[\r\n]+/g, ' ').replace(/;/g, ',');
+
+    // Função auxiliar para gerar linhas CSV a partir dos dados
+    const generateCsvRows = (data: MonitoringDataItem[]) => {
+      return data.map((record) => {
+        const meta = record.Meta || {};
+        const metaValues = tableFields.map(f => sanitize(meta[f.name]));
+
+        return [
+          sanitize(record.ID),
+          sanitize(record.Service),
+          sanitize(record.Node),
+          sanitize(record.Address),
+          sanitize(record.Port),
+          sanitize((record.Tags || []).join('|')),
+          ...metaValues,
+          sanitize(JSON.stringify(meta)),
+        ].join(';');
+      });
+    };
+
+    // Função auxiliar para download do CSV
+    const downloadCsv = (rows: string[], recordCount: number) => {
+      const csvContent = [exportInfo.columns.join(';'), ...rows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${category}-${exportScope === 'all' ? 'completo' : 'pagina'}-${new Date().toISOString().slice(0, 19)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Fechar modal e informar sucesso
+      setExportModalOpen(false);
+      setExportInfo(null);
+      setExportLoading(false);
+      message.success(`CSV exportado com sucesso! (${recordCount} registros)`);
+    };
+
+    // Se exportar apenas página atual, usar tableSnapshot
+    if (exportScope === 'current') {
+      if (!tableSnapshot.length) {
+        message.error('Nenhum dado na página atual para exportar');
+        return;
+      }
+      const rows = generateCsvRows(tableSnapshot);
+      downloadCsv(rows, tableSnapshot.length);
+      return;
+    }
+
+    // Se exportar todos, buscar dados completos do backend
+    setExportLoading(true);
+
+    try {
+      console.log('[Export] Buscando todos os registros...');
+      console.log('[Export] Parametros:', {
+        category,
+        page: 1,
+        page_size: 10000,
+        sort_field: sortField,
+        sort_order: sortOrder,
+        node: selectedNode !== 'all' ? selectedNode : undefined,
+        filters,
+      });
+
+      // Buscar TODOS os registros do backend
+      // IMPORTANTE: Nao passar page e page_size para obter todos os registros
+      // A API tem limite de 200 por pagina, mas retorna todos se omitir paginacao
+      const exportOptions: {
+        page?: number;
+        page_size?: number;
+        sort_field?: string;
+        sort_order?: 'ascend' | 'descend';
+        node?: string;
+        filters?: Record<string, string | undefined>;
+      } = {};
+
+      // NAO incluir page e page_size para buscar todos os registros
+      // Adicionar apenas campos com valores definidos
+      if (sortField) exportOptions.sort_field = sortField;
+      if (sortOrder) exportOptions.sort_order = sortOrder;
+      if (selectedNode && selectedNode !== 'all') exportOptions.node = selectedNode;
+      if (filters && Object.keys(filters).length > 0) exportOptions.filters = filters;
+
+      console.log('[Export] Options construidas (sem paginacao para buscar todos):', exportOptions);
+
+      const response = await consulAPI.getMonitoringData(category, exportOptions);
+
+      console.log('[Export] Resposta raw da API:', response);
+
+      // Normalizar resposta: axios retorna response.data que contem a resposta da API
+      const normalizedResponse = (response && (response as any).data)
+        ? (response as any).data
+        : response;
+
+      console.log('[Export] Resposta normalizada:', normalizedResponse);
+
+      // API retorna { success: true, data: [...], total: N }
+      if (!normalizedResponse.success || !normalizedResponse.data) {
+        console.error('[Export] Resposta invalida:', normalizedResponse);
+        throw new Error('Erro ao buscar dados completos');
+      }
+
+      // Processar dados retornados (API retorna em "data", nao "items")
+      const allData = normalizedResponse.data as MonitoringDataItem[];
+      console.log('[Export] Total de registros recebidos:', allData.length);
+
+      if (!allData.length) {
+        setExportLoading(false);
+        message.error('Nenhum dado encontrado para exportar');
+        return;
+      }
+
+      const rows = generateCsvRows(allData);
+      downloadCsv(rows, allData.length);
+
+    } catch (error) {
+      setExportLoading(false);
+      console.error('[Export] Erro ao buscar todos os registros:', error);
+      message.error('Erro ao buscar dados completos. Tente exportar apenas a página atual.');
+    }
+  }, [tableSnapshot, tableFields, exportInfo, category, exportScope, sortField, sortOrder, selectedNode, filters]);
 
   // ✅ NOVO: Handlers de busca avançada
   const handleAdvancedSearch = useCallback(
@@ -1725,6 +1906,132 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               Por enquanto, use a página antiga Services.tsx ou a API direta para criar novos serviços.
             </p>
           </div>
+        )}
+      </Modal>
+
+      {/* ✅ PERF-002 FIX: Modal de confirmação de exportação CSV com preview */}
+      <Modal
+        title="Confirmar Exportação CSV"
+        open={exportModalOpen}
+        onCancel={() => {
+          setExportModalOpen(false);
+          setExportInfo(null);
+          setExportLoading(false);
+        }}
+        onOk={performCsvExport}
+        okText={exportLoading ? 'Exportando...' : 'Confirmar Exportação'}
+        okButtonProps={{ loading: exportLoading, disabled: exportLoading }}
+        cancelText="Cancelar"
+        cancelButtonProps={{ disabled: exportLoading }}
+        width={600}
+        destroyOnClose
+        closable={!exportLoading}
+        maskClosable={!exportLoading}
+      >
+        {exportInfo && (
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            {/* 🎯 Seleção do escopo de exportação */}
+            {summary.total > tableSnapshot.length && (
+              <Card
+                size="small"
+                style={{
+                  background: '#fffbe6',
+                  border: '1px solid #ffe58f',
+                }}
+              >
+                <div style={{ marginBottom: 12 }}>
+                  <strong>Escopo da Exportação:</strong>
+                </div>
+                <Radio.Group
+                  value={exportScope}
+                  onChange={(e) => handleExportScopeChange(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Radio value="current">
+                      <span>
+                        <strong>Página Atual</strong> - {tableSnapshot.length} registros visíveis
+                      </span>
+                    </Radio>
+                    <Radio value="all">
+                      <span>
+                        <strong>Todos os Registros</strong> - {summary.total} registros no total
+                      </span>
+                    </Radio>
+                  </Space>
+                </Radio.Group>
+              </Card>
+            )}
+
+            {/* ℹ️ Resumo da exportação */}
+            <Card
+              size="small"
+              style={{
+                background: '#f6f8fa',
+                border: '1px solid #e1e4e8',
+              }}
+            >
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                  <span><strong>Total de Registros:</strong></span>
+                  <span style={{ color: '#0366d6', fontWeight: 'bold' }}>{exportInfo.totalRecords.toLocaleString('pt-BR')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                  <span><strong>Número de Colunas:</strong></span>
+                  <span style={{ color: '#0366d6', fontWeight: 'bold' }}>{exportInfo.totalColumns}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                  <span><strong>Tamanho Estimado:</strong></span>
+                  <span style={{ color: '#28a745', fontWeight: 'bold' }}>{exportInfo.estimatedSize}</span>
+                </div>
+              </Space>
+            </Card>
+
+            {/* 📋 Lista de colunas que serão exportadas */}
+            <div>
+              <strong style={{ display: 'block', marginBottom: 8 }}>
+                Colunas que serão exportadas:
+              </strong>
+              <div
+                style={{
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  padding: '12px',
+                  background: '#f9f9f9',
+                  border: '1px solid #d9d9d9',
+                  borderRadius: '4px',
+                }}
+              >
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  {exportInfo.columns.map((col, idx) => (
+                    <li key={idx} style={{ marginBottom: '4px', fontSize: '13px' }}>
+                      <code style={{ background: '#f5f5f5', padding: '2px 6px', borderRadius: '2px' }}>
+                        {col}
+                      </code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* ✅ Avisos e informações adicionais */}
+            <div
+              style={{
+                padding: '12px',
+                background: '#e6f4ff',
+                border: '1px solid #91caff',
+                borderRadius: '4px',
+                fontSize: '13px',
+              }}
+            >
+              <strong>ℹ️ Informações:</strong>
+              <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                <li>O arquivo será salvo em formato CSV (semicolon-separated)</li>
+                <li>Quebras de linha serão removidas dos valores</li>
+                <li>Um backup completo em JSON está incluído na coluna "meta_json"</li>
+              </ul>
+            </div>
+          </Space>
         )}
       </Modal>
     </PageContainer>
