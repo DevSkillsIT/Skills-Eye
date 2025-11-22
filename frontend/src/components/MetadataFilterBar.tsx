@@ -53,12 +53,41 @@ const MetadataFilterBar: React.FC<MetadataFilterBarProps> = ({
     });
   };
 
+  // ✅ SPEC-PERF-002 DEBUG: Log para identificar mismatch de chaves
+  if (import.meta.env.DEV && fields.length > 0 && Object.keys(options).length > 0) {
+    const fieldsNames = fields.map(f => f.name);
+    const optionsKeys = Object.keys(options);
+    const mismatches = fieldsNames.filter(name => !optionsKeys.includes(name));
+    if (mismatches.length > 0) {
+      console.log('[MetadataFilterBar] Mismatch de chaves:', {
+        filterFields: fieldsNames,
+        filterOptions: optionsKeys,
+        mismatches
+      });
+    }
+  }
+
   return (
     <Space wrap align="center">
       {/* GERAÇÃO DINÂMICA: Um Select para cada campo com show_in_filter=true */}
       {fields.map((field) => {
-        // ✅ SPRINT 1 (2025-11-14): Validação defensiva com optional chaining
-        const fieldOptions = options?.[field.name] ?? [];
+        // ✅ SPEC-PERF-002 CORREÇÃO: Buscar opcoes com fallback para correspondencia aproximada
+        // Isso resolve casos onde field.name e options key nao correspondem exatamente
+        let fieldOptions = options?.[field.name] ?? [];
+
+        // Se nao encontrou opcoes diretas, tentar encontrar correspondencia aproximada
+        if (fieldOptions.length === 0 && Object.keys(options).length > 0) {
+          const lowerName = field.name.toLowerCase();
+          const matchingKey = Object.keys(options).find(
+            key => key.toLowerCase() === lowerName ||
+                   key.toLowerCase().includes(lowerName) ||
+                   lowerName.includes(key.toLowerCase())
+          );
+          if (matchingKey) {
+            fieldOptions = options[matchingKey];
+          }
+        }
+
         const minWidth = field.display_name.length > 15 ? 200 : 150;
 
         // ✅ SPRINT 1: Não renderizar select sem opções (evita race condition)

@@ -435,19 +435,26 @@ async def get_monitoring_data(
     # Tentar buscar do cache intermediario de monitoramento
     cached_data = await monitoring_data_cache.get_data(category, node)
 
+    # SPEC-PERF-002 FIX: Verificar se cache tem dados validos
+    # Se cache retornou vazio, invalidar e buscar novamente
+    if cached_data is not None and len(cached_data) == 0:
+        logger.warning(f"[MONITORING DATA] Cache HIT mas VAZIO - invalidando e buscando novamente")
+        await monitoring_data_cache.invalidate(category)
+        cached_data = None  # Forcar busca abaixo
+
     if cached_data is not None:
         # CACHE HIT - usar dados do cache
-        logger.info(f"[MONITORING DATA] Cache HIT para category='{category}', node='{node}'")
+        logger.info(f"[MONITORING DATA] Cache HIT para category='{category}', node='{node}', total={len(cached_data)}")
         raw_result = {
             "success": True,
             "category": category,
             "data": cached_data,
             "total": len(cached_data),
-            "available_fields": [],  # Sera preenchido abaixo se necessario
+            "available_fields": [],  # Sera preenchido abaixo
             "metadata": {"cache_hit": True}
         }
 
-        # Buscar available_fields do cache generico ou KV se necessario
+        # Buscar available_fields do KV
         from core.kv_manager import KVManager
         kv = KVManager()
         fields_data = await kv.get_json('skills/eye/metadata/fields')
@@ -467,15 +474,26 @@ async def get_monitoring_data(
         logger.info(f"[MONITORING DATA] Cache MISS para category='{category}', node='{node}'")
         raw_result = await fetch_data()
 
-        # Armazenar no cache de monitoramento para proximas requisicoes
-        await monitoring_data_cache.set_data(
-            category=category,
-            data=raw_result.get('data', []),
-            node=node
-        )
+        # SPEC-PERF-002 FIX: Só salvar no cache se tiver dados
+        # Evita cache de dados vazios que causaria problemas
+        data_to_cache = raw_result.get('data', [])
+        if data_to_cache:
+            await monitoring_data_cache.set_data(
+                category=category,
+                data=data_to_cache,
+                node=node
+            )
+            logger.info(f"[MONITORING DATA] Cache SET: {len(data_to_cache)} servicos")
+        else:
+            logger.warning(f"[MONITORING DATA] Dados vazios, NAO salvando no cache")
 
     # SPEC-PERF-002: Processar dados com paginacao, filtros e ordenacao server-side
     # Se page e page_size nao forem passados, retorna todos (compatibilidade backward)
+
+    # DEBUG: Log dos dados antes de processar
+    raw_data = raw_result.get('data', [])
+    logger.info(f"[MONITORING DATA DEBUG] Dados para processar: {len(raw_data)} servicos")
+    logger.info(f"[MONITORING DATA DEBUG] sort_field={sort_field}, sort_order={sort_order}")
 
     # Extrair filtros dinamicos dos query params (exceto os ja processados)
     excluded_params = {'category', 'company', 'site', 'env', 'page', 'page_size',
@@ -527,6 +545,8 @@ async def get_monitoring_data(
         response["page"] = processed["page"]
         response["pageSize"] = processed["pageSize"]  # camelCase
         response["filterOptions"] = processed["filterOptions"]  # camelCase
+        # SPEC-PERF-002 FIX: Incluir _fieldStats para ordenar colunas vazias por ultimo
+        response["_fieldStats"] = processed.get("_fieldStats", {})
 
         # Calcular total de paginas
         total_pages = (processed["total"] + page_size - 1) // page_size
@@ -534,6 +554,7 @@ async def get_monitoring_data(
     else:
         # Sem paginacao - incluir filterOptions mesmo assim para uso futuro
         response["filterOptions"] = processed["filterOptions"]  # camelCase
+        response["_fieldStats"] = processed.get("_fieldStats", {})
 
     return response
 

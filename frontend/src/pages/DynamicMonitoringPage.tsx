@@ -129,6 +129,7 @@ interface Summary {
 interface MetadataState {
   options: Record<string, string[]>;
   loaded: boolean;
+  fieldStats?: Record<string, number>;  // Contagem de valores por campo para ordenar colunas
 }
 
 // ============================================================================
@@ -208,7 +209,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     loaded: false
   });
   // Desestruturar para compatibilidade com codigo existente
-  const { options: metadataOptions, loaded: metadataOptionsLoaded } = metadataState;
+  const { options: metadataOptions, loaded: metadataOptionsLoaded, fieldStats } = metadataState;
 
   // ✅ SPEC-PERF-002: Sincronizar ref com state para estabilidade no filterDropdown
   useEffect(() => {
@@ -240,26 +241,54 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
   // SISTEMA DINÂMICO: Combinar colunas fixas + campos metadata
   const defaultColumnConfig = useMemo<ColumnConfig[]>(() => {
-    const metadataColumns: ColumnConfig[] = tableFields.map((field) => ({
-      key: field.name,
-      title: field.display_name,
-      visible: field.show_in_table ?? true,
-      locked: false
-    }));
+    // Campos de metadata que vem do backend
+    let metadataColumns: ColumnConfig[] = tableFields
+      // Filtrar campos que já estão nas fixedColumns para evitar duplicação
+      .filter(field => !['name', 'instance'].includes(field.name.toLowerCase()))
+      .map((field) => ({
+        key: field.name,
+        title: field.display_name,
+        visible: field.show_in_table ?? true,
+        locked: false
+      }));
 
-    // Colunas fixas que sempre existem
+    // SPEC-PERF-002 FIX: Ordenar colunas com valores vazios por ultimo
+    // Usar fieldStats do backend para saber quais campos tem valores
+    if (fieldStats && Object.keys(fieldStats).length > 0) {
+      // Criar copia para ordenar (sort modifica o array original)
+      metadataColumns = [...metadataColumns].sort((a, b) => {
+        const aCount = fieldStats[a.key] || 0;
+        const bCount = fieldStats[b.key] || 0;
+        // Campos com valores vem primeiro, vazios por ultimo
+        if (aCount > 0 && bCount === 0) return -1;
+        if (aCount === 0 && bCount > 0) return 1;
+        // Se ambos tem ou nao tem valores, ordenar por quantidade (maior primeiro)
+        return bCount - aCount;
+      });
+
+      if (import.meta.env.DEV) {
+        const withValues = metadataColumns.filter(c => (fieldStats[c.key] || 0) > 0).length;
+        const withoutValues = metadataColumns.length - withValues;
+        console.log(`[DynamicMonitoringPage] Ordenacao de colunas: ${withValues} com valores, ${withoutValues} vazias`);
+      }
+    }
+
+    // SPEC-PERF-002 FIX: Ordem fixa das colunas principais
+    // Service ID, Service Name, Nó, Name, Instance, Tags - sempre nessa ordem
     const fixedColumns: ColumnConfig[] = [
       { key: 'ID', title: 'Service ID', visible: true, locked: false },
       { key: 'Service', title: 'Service Name', visible: true },
       { key: 'Node', title: 'Nó', visible: true },
-      { key: 'Address', title: 'Address', visible: true },
-      { key: 'Port', title: 'Port', visible: false },
+      { key: 'name', title: 'Name', visible: true },
+      { key: 'instance', title: 'Instance', visible: true },
       { key: 'Tags', title: 'Tags', visible: true },
+      { key: 'Address', title: 'Address', visible: false },
+      { key: 'Port', title: 'Port', visible: false },
       { key: 'actions', title: 'Ações', visible: true, locked: true }
     ];
 
     return [...fixedColumns, ...metadataColumns];
-  }, [tableFields]);
+  }, [tableFields, fieldStats]);
 
   // ✅ CORREÇÃO CRÍTICA: Atualizar columnConfig quando tableFields carregar
   // ✅ SPEC-PERF-002: Remover columnConfig das dependencias para evitar ciclo infinito
@@ -268,8 +297,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   useEffect(() => {
     // ✅ OTIMIZAÇÃO: Só atualizar quando realmente necessário (tableFields carregou)
     if (defaultColumnConfig.length > 0 && tableFields.length > 0) {
-      // Verificar se defaultColumnConfig mudou desde a ultima vez
-      const defaultKeys = defaultColumnConfig.map(c => c.key).sort().join(',');
+      // SPEC-PERF-002 FIX: Verificar se defaultColumnConfig mudou (INCLUINDO ORDEM)
+      // Não usar .sort() para detectar mudança de ordem das colunas
+      const defaultKeys = defaultColumnConfig.map(c => c.key).join(',');
 
       // ✅ SPEC-PERF-002: Comparar apenas com a ref anterior, nao com columnConfig atual
       // Isso evita o ciclo: columnConfig muda -> useEffect roda -> setColumnConfig -> loop
@@ -278,7 +308,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         if (import.meta.env.DEV) {
           console.log('[DynamicMonitoringPage] ✅ Atualizando columnConfig:', {
             to: defaultColumnConfig.length,
-            metadataColumns: defaultColumnConfig.length - 7, // 7 colunas fixas
+            metadataColumns: defaultColumnConfig.length - 9, // 9 colunas fixas
           });
         }
         prevDefaultColumnConfigRef.current = defaultKeys;
@@ -297,23 +327,24 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // ✅ NOVO: Handler de mudanças na tabela (ordenação)
-  // ✅ CORREÇÃO: Recarregar tabela quando ordenação mudar
+  // ✅ SPEC-PERF-002 FIX: Apenas atualizar estados, o useEffect fará o reload
   const handleTableChange = useCallback((_pagination: any, _filters: any, sorter: any) => {
     if (sorter && sorter.field) {
-      setSortField(sorter.field);
+      // SPEC-PERF-002 FIX: Converter array de campo para string
+      // ProTable envia field como array para colunas com dataIndex=['Meta', 'company']
+      // Backend espera string como 'Meta.company' ou apenas 'company'
+      let field = sorter.field;
+      if (Array.isArray(field)) {
+        // Se é ['Meta', 'fieldName'], enviar apenas 'fieldName'
+        // O backend já sabe procurar no Meta
+        field = field[field.length - 1];
+      }
+      setSortField(field);
       setSortOrder(sorter.order || null);
-      // ✅ CORREÇÃO: Recarregar tabela para aplicar ordenação
-      // Pequeno delay para garantir que estado foi atualizado
-      setTimeout(() => {
-        actionRef.current?.reload();
-      }, 0);
+      // NÃO chamar reload() aqui - o useEffect[sortField, sortOrder] fará isso
     } else {
       setSortField(null);
       setSortOrder(null);
-      // Recarregar quando ordenação for removida
-      setTimeout(() => {
-        actionRef.current?.reload();
-      }, 0);
     }
   }, []);
 
@@ -547,20 +578,41 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
-      // Só renderizar se metadataOptions estiver carregado e tiver opções
-      // ✅ SPEC-PERF-002: Usar metadataOptionsRef para estabilidade no filterDropdown
-      const fieldOptions = metadataOptionsRef.current[colConfig.key] || [];
-      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags' && metadataOptionsLoaded) {
+      // ✅ SPEC-PERF-002 FIX: Usar metadataOptions (estado) ao inves de ref para garantir re-render
+      // A ref nao causa re-render quando atualizada, mas o estado sim
+      let fieldOptions = metadataOptions[colConfig.key] || [];
+      let actualOptionsKey = colConfig.key; // Guardar a chave real usada para buscar opcoes
+
+      // Se nao encontrou pela key exata, tentar encontrar uma correspondencia aproximada
+      // Isso resolve casos onde o frontend usa 'Node' mas backend retorna 'node_ip'
+      if (fieldOptions.length === 0) {
+        const lowerKey = colConfig.key.toLowerCase();
+        const matchingKey = Object.keys(metadataOptions).find(
+          key => key.toLowerCase() === lowerKey ||
+                 key.toLowerCase().includes(lowerKey) ||
+                 lowerKey.includes(key.toLowerCase())
+        );
+        if (matchingKey) {
+          fieldOptions = metadataOptions[matchingKey];
+          actualOptionsKey = matchingKey; // Usar a chave real do backend
+        }
+      }
+
+      // ✅ SPEC-PERF-002 FIX: Remover condicao metadataOptionsLoaded redundante
+      // Se fieldOptions.length > 0, ja temos opcoes para mostrar
+      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags') {
         // ✅ CORREÇÃO: Usar filteredValue para controlar estado visual do filtro
         baseColumn.filteredValue = filters[colConfig.key] ? [filters[colConfig.key]] : null;
+
+        // Capturar a chave real para usar no closure do filterDropdown
+        const optionsKeyForDropdown = actualOptionsKey;
 
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
           // ✅ CORREÇÃO: Usar ref para persistir estado de busca (evita reset a cada render)
           const [searchText, setSearchText] = useState(filterSearchTextRef.current[colConfig.key] || '');
 
-          // ✅ SPEC-PERF-002: Usar ref para opcoes atualizadas (evita stale closure)
-          const currentOptions = metadataOptionsRef.current[colConfig.key] || [];
-          const filteredOptions = currentOptions.filter(opt =>
+          // ✅ SPEC-PERF-002 FIX: Usar fieldOptions capturado no closure (ja tem os valores corretos)
+          const filteredOptions = fieldOptions.filter(opt =>
             opt.toLowerCase().includes(searchText.toLowerCase())
           );
 
@@ -824,10 +876,39 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ SPEC-PERF-002: Usar filterOptions do servidor (evita calculo client-side)
+      // ✅ CORREÇÃO CRÍTICA: Adicionar campos fixos (Node, Service) ao filterOptions
+      // O backend retorna campos de metadata, mas precisamos também dos campos fixos
       if (response.filterOptions && isMountedRef.current) {
-        setMetadataState({ options: response.filterOptions, loaded: true });
+        // Mesclar filterOptions do backend com campos fixos
+        const enhancedOptions = { ...response.filterOptions };
+
+        // Adicionar opcoes para campos fixos se nao vierem do backend
+        if (!enhancedOptions['Node']) {
+          const nodeSet = new Set<string>();
+          rows.forEach(item => {
+            if (item.Node) nodeSet.add(item.Node);
+          });
+          if (nodeSet.size > 0) {
+            enhancedOptions['Node'] = Array.from(nodeSet).sort();
+          }
+        }
+
+        if (!enhancedOptions['Service']) {
+          const serviceSet = new Set<string>();
+          rows.forEach(item => {
+            if (item.Service) serviceSet.add(item.Service);
+          });
+          if (serviceSet.size > 0) {
+            enhancedOptions['Service'] = Array.from(serviceSet).sort();
+          }
+        }
+
+        // SPEC-PERF-002 FIX: Pegar _fieldStats do backend para ordenar colunas vazias por ultimo
+        const fieldStats = response._fieldStats || {};
+        setMetadataState({ options: enhancedOptions, loaded: true, fieldStats });
         if (DEBUG_PERFORMANCE) {
-          console.log(`%c[PERF] filterOptions do servidor: ${Object.keys(response.filterOptions).length} campos`, 'color: #9c27b0; font-weight: bold');
+          console.log(`%c[PERF] filterOptions do servidor: ${Object.keys(enhancedOptions).length} campos`, 'color: #9c27b0; font-weight: bold');
+          console.log('[PERF] Chaves filterOptions:', Object.keys(enhancedOptions));
         }
       } else if (!metadataOptionsLoaded && rows.length > 0) {
         // Fallback: Se backend nao retornou filterOptions, extrair dos dados recebidos
@@ -890,37 +971,73 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         });
       }
 
-      // 3. Calcular summary para dashboard (agregacoes locais)
+      // 3. ✅ SPEC-PERF-002 CORREÇÃO: Buscar summary do backend (totais de TODO o dataset)
+      // O backend retorna estatisticas sem paginacao, mostrando totais reais
       const summaryStart = performance.now();
-      const nextSummary = processedRows.reduce(
-        (acc, item) => {
-          acc.total += 1;
-          const catKey = item.Meta?.type || 'desconhecido';
-          acc.byCategory[catKey] = (acc.byCategory[catKey] || 0) + 1;
-          const companyKey = item.Meta?.company || 'desconhecido';
-          acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
-          const siteKey = item.Meta?.site || 'desconhecido';
-          acc.bySite[siteKey] = (acc.bySite[siteKey] || 0) + 1;
-          const nodeKey = item.Node || 'desconhecido';
-          acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
-          (item.Tags || []).forEach(tag => acc.uniqueTags.add(tag));
-          return acc;
-        },
-        {
-          total: 0,
-          byCategory: {} as Record<string, number>,
-          byCompany: {} as Record<string, number>,
-          bySite: {} as Record<string, number>,
-          byNode: {} as Record<string, number>,
-          uniqueTags: new Set<string>()
-        },
-      );
-      if (isMountedRef.current) {
-        setSummary(nextSummary);
+      try {
+        const summaryResponse = await consulAPI.getMonitoringSummary(category, {
+          node: selectedNode !== 'all' ? selectedNode : undefined,
+          company: filters.company,
+          site: filters.site,
+          env: filters.env,
+        });
+
+        if (summaryResponse.data.success && isMountedRef.current) {
+          const backendSummary = summaryResponse.data.summary;
+
+          // Extrair tags unicos dos dados da pagina (backend nao retorna tags no summary)
+          const tagsSet = new Set<string>();
+          processedRows.forEach(item => {
+            (item.Tags || []).forEach(tag => tagsSet.add(tag));
+          });
+
+          setSummary({
+            total: backendSummary.total,
+            byCategory: backendSummary.byEnv || {},  // Usar env como categoria
+            byCompany: backendSummary.byCompany || {},
+            bySite: backendSummary.bySite || {},
+            byNode: backendSummary.byNode || {},
+            uniqueTags: tagsSet
+          });
+
+          if (DEBUG_PERFORMANCE) {
+            console.log(`%c[PERF] Summary do BACKEND: total=${backendSummary.total}`, 'color: #00bcd4; font-weight: bold');
+          }
+        }
+      } catch (summaryError) {
+        // Fallback: Se endpoint /summary falhar, usar calculo local (apenas pagina atual)
+        console.warn('[PERF] Erro ao buscar summary do backend, usando calculo local:', summaryError);
+
+        const nextSummary = processedRows.reduce(
+          (acc, item) => {
+            acc.total += 1;
+            const catKey = item.Meta?.type || 'desconhecido';
+            acc.byCategory[catKey] = (acc.byCategory[catKey] || 0) + 1;
+            const companyKey = item.Meta?.company || 'desconhecido';
+            acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
+            const siteKey = item.Meta?.site || 'desconhecido';
+            acc.bySite[siteKey] = (acc.bySite[siteKey] || 0) + 1;
+            const nodeKey = item.Node || 'desconhecido';
+            acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
+            (item.Tags || []).forEach(tag => acc.uniqueTags.add(tag));
+            return acc;
+          },
+          {
+            total: 0,
+            byCategory: {} as Record<string, number>,
+            byCompany: {} as Record<string, number>,
+            bySite: {} as Record<string, number>,
+            byNode: {} as Record<string, number>,
+            uniqueTags: new Set<string>()
+          },
+        );
+        if (isMountedRef.current) {
+          setSummary(nextSummary);
+        }
       }
       const summaryEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] Summary LOCAL em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
+        console.log(`%c[PERF] Summary total em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
       }
 
       // Salvar snapshot para exportacao CSV
@@ -1125,7 +1242,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     actionRef.current?.reload();
   }, [category]);
 
-  // ✅ OTIMIZAÇÃO: Reload apenas quando filtros/nó mudam (não em category)
+  // ✅ OTIMIZAÇÃO: Reload apenas quando filtros/nó/ordenação mudam (não em category)
   // Usa ref para evitar reload na primeira renderização
   const isFirstRender = React.useRef(true);
   useEffect(() => {
@@ -1134,10 +1251,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       isFirstRender.current = false;
       return;
     }
-    
-    // Reload apenas quando selectedNode ou filters mudarem
+
+    // SPEC-PERF-002 FIX: Reload quando selectedNode, filters, sortField ou sortOrder mudarem
     actionRef.current?.reload();
-  }, [selectedNode, filters]);
+  }, [selectedNode, filters, sortField, sortOrder]);
 
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
@@ -1313,19 +1430,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // ✅ CORREÇÃO: Usar reset() do ProTable para limpar TUDO (filtros + ordenação)
-                  actionRef.current?.reset?.();
-                  
-                  // Limpar estados customizados
+                  // ✅ SPEC-PERF-002 FIX: Limpar todos os estados de filtro e ordenacao
+                  // O useEffect[selectedNode, filters, sortField, sortOrder] fara o reload automaticamente
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   setSortField(null);
                   setSortOrder(null);
-                  // Manter selectedNode e advancedConditions
-                  
-                  // Reload para aplicar mudanças
-                  actionRef.current?.reload();
+                  // Limpar refs de busca dos filtros
+                  filterSearchTextRef.current = {};
+                  // Limpar condicoes avancadas tambem
+                  setAdvancedConditions([]);
+                  setAdvancedOperator('and');
+                  // Manter selectedNode
                 }}
               >
                 Limpar Filtros e Ordem
@@ -1334,7 +1451,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
             <Tooltip title="Escolha quais colunas exibir na tabela">
               <ColumnSelector
-                columns={columnConfig}
+                columns={columnConfig.length > 0 ? columnConfig : defaultColumnConfig}
                 onChange={setColumnConfig}
                 storageKey={`${category}-columns`}
               />

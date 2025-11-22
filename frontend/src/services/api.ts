@@ -1026,6 +1026,48 @@ export const consulAPI = {
       detail?: string;
     }>('/monitoring/sync-cache'),
 
+  /**
+   * SPEC-PERF-002: Busca metricas agregadas (summary) de TODO o dataset
+   *
+   * Este endpoint retorna estatisticas sem paginacao, permitindo que o frontend
+   * mostre totais e contagens reais (nao apenas da pagina atual).
+   *
+   * @param category - Categoria: network-probes, web-probes, etc
+   * @param options - Filtros opcionais (company, site, env, node)
+   * @returns Summary com totais por categoria, empresa, site, no
+   */
+  getMonitoringSummary: (
+    category: string,
+    options?: {
+      company?: string;
+      site?: string;
+      env?: string;
+      node?: string;
+    }
+  ) => {
+    const params: Record<string, any> = { category };
+
+    if (options) {
+      if (options.company) params.company = options.company;
+      if (options.site) params.site = options.site;
+      if (options.env) params.env = options.env;
+      if (options.node && options.node !== 'all') params.node = options.node;
+    }
+
+    return api.get<{
+      success: boolean;
+      category: string;
+      summary: {
+        total: number;
+        byCompany: Record<string, number>;
+        byEnv: Record<string, number>;
+        bySite: Record<string, number>;
+        byNode: Record<string, number>;
+      };
+      filterOptions: Record<string, string[]>;
+    }>('/monitoring/summary', { params });
+  },
+
   // =========================================================================
   // ⭐ CATEGORIZATION RULES API - Gerenciamento de Regras (v2.0)
   // =========================================================================

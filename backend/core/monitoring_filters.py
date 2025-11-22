@@ -308,12 +308,29 @@ def extract_filter_options(
             "site": ["palmas", "rio"]
         }
     """
-    # Campos padrao para extrair se nenhum especificado
+    # SPEC-PERF-002 FIX: Se nenhum campo especificado, extrair TODOS os campos de metadata
+    # Isso garante que o frontend receba opcoes para todos os campos dinamicos
     if not fields:
-        fields = [
-            'company', 'site', 'env', 'project',
-            'module', 'Service', 'node_ip'
-        ]
+        # Coletar todos os campos unicos presentes nos dados
+        all_fields: Set[str] = set()
+
+        # Campos de nivel raiz que queremos incluir
+        root_fields_to_include = {'Service', 'Node', 'node_ip', 'site_code', 'site_name'}
+
+        for item in data:
+            # Adicionar campos do nivel raiz
+            for rf in root_fields_to_include:
+                if rf in item and item[rf]:
+                    all_fields.add(rf)
+
+            # Adicionar TODOS os campos do Meta
+            meta = item.get('Meta', {})
+            for key in meta.keys():
+                if meta[key]:  # Apenas se tiver valor
+                    all_fields.add(key)
+
+        fields = list(all_fields)
+        logger.debug(f"[FilterOptions] Campos dinamicos detectados: {len(fields)}")
 
     # Dicionario para acumular valores unicos
     options: Dict[str, Set[str]] = {field: set() for field in fields}
@@ -338,18 +355,27 @@ def extract_filter_options(
 
     # Converter sets para listas ordenadas e filtrar campos vazios
     result = {}
+    # SPEC-PERF-002 FIX: Também retornar contagem para ordenar colunas no frontend
+    field_counts = {}
+
     for field, values in options.items():
         if values:  # Apenas incluir campos que tem valores
             # Ordenar valores (case-insensitive)
             sorted_values = sorted(values, key=lambda x: x.lower())
             result[field] = sorted_values
+            field_counts[field] = len(values)
 
     logger.debug(
         f"[FilterOptions] Extraidos {len(result)} campos com opcoes de "
         f"{len(data)} servicos"
     )
 
-    return result
+    # Retornar resultado com estatisticas de campos
+    # O frontend pode usar _fieldStats para ordenar colunas vazias por ultimo
+    return {
+        'options': result,
+        '_fieldStats': field_counts
+    }
 
 
 def process_monitoring_data(
@@ -403,7 +429,9 @@ def process_monitoring_data(
 
     # PASSO 3: Extrair filterOptions dos dados filtrados
     # (antes da paginacao para ter todas as opcoes)
-    filter_options = extract_filter_options(filtered_data)
+    filter_options_result = extract_filter_options(filtered_data)
+    filter_options = filter_options_result['options']
+    field_stats = filter_options_result['_fieldStats']
 
     # PASSO 4: Aplicar ordenacao
     sorted_data = apply_sort(filtered_data, sort_field, sort_order)
@@ -432,5 +460,6 @@ def process_monitoring_data(
         "total": total,
         "page": page,
         "pageSize": page_size,  # camelCase
-        "filterOptions": filter_options  # camelCase
+        "filterOptions": filter_options,  # camelCase
+        "_fieldStats": field_stats  # Contagem de valores por campo para ordenar colunas
     }

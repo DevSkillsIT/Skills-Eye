@@ -467,15 +467,23 @@ class TestFilterOptionsExtraction:
         """
         result = extract_filter_options(mock_monitoring_data)
 
+        # SPEC-PERF-002 FIX: Novo formato retorna {options: {}, _fieldStats: {}}
+        options = result['options']
+
         # Deve ter multiplos campos
-        assert 'company' in result
-        assert 'env' in result
-        assert 'site' in result
+        assert 'company' in options
+        assert 'env' in options
+        assert 'site' in options
 
         # Valores devem estar ordenados
-        assert result['company'] == ['Agro Xingu', 'Empresa Terceira']
-        assert result['env'] == ['dev', 'prod', 'staging']
-        assert result['site'] == ['curitiba', 'palmas', 'sao_paulo']
+        assert options['company'] == ['Agro Xingu', 'Empresa Terceira']
+        assert options['env'] == ['dev', 'prod', 'staging']
+        assert options['site'] == ['curitiba', 'palmas', 'sao_paulo']
+
+        # Deve ter _fieldStats com contagens
+        assert '_fieldStats' in result
+        assert result['_fieldStats']['company'] == 2
+        assert result['_fieldStats']['env'] == 3
 
 
     def test_extract_filter_options_specific_fields(self, mock_monitoring_data):
@@ -486,10 +494,11 @@ class TestFilterOptionsExtraction:
         Esperado: Retornar apenas esses campos.
         """
         result = extract_filter_options(mock_monitoring_data, fields=['company', 'env'])
+        options = result['options']
 
-        assert 'company' in result
-        assert 'env' in result
-        assert 'site' not in result
+        assert 'company' in options
+        assert 'env' in options
+        assert 'site' not in options
 
 
     def test_extract_filter_options_filtered_data(self, mock_monitoring_data):
@@ -503,11 +512,12 @@ class TestFilterOptionsExtraction:
         filtered = [s for s in mock_monitoring_data if s['Meta']['env'] == 'prod']
 
         result = extract_filter_options(filtered)
+        options = result['options']
 
         # env so pode ser 'prod'
-        assert result['env'] == ['prod']
+        assert options['env'] == ['prod']
         # company ainda tem 2 valores
-        assert result['company'] == ['Agro Xingu', 'Empresa Terceira']
+        assert options['company'] == ['Agro Xingu', 'Empresa Terceira']
 
 
     def test_extract_filter_options_empty_data(self):
@@ -520,7 +530,8 @@ class TestFilterOptionsExtraction:
         result = extract_filter_options([])
 
         # Campos sem valores sao excluidos
-        assert result == {}
+        assert result['options'] == {}
+        assert result['_fieldStats'] == {}
 
 
 # ============================================================================
