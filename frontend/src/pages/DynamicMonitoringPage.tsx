@@ -578,22 +578,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
-      // ✅ SPEC-PERF-002 FIX: Usar metadataOptions (estado) ao inves de ref para garantir re-render
-      // A ref nao causa re-render quando atualizada, mas o estado sim
-      let fieldOptions = metadataOptions[colConfig.key] || [];
+      // ✅ SPEC-PERF-002 FIX: Usar metadataOptionsRef.current para evitar recalculos desnecessarios
+      // O flag metadataOptionsLoaded garante que o useMemo seja recalculado quando as opcoes carregarem
+      const currentMetadataOptions = metadataOptionsRef.current;
+      let fieldOptions = currentMetadataOptions[colConfig.key] || [];
       let actualOptionsKey = colConfig.key; // Guardar a chave real usada para buscar opcoes
 
       // Se nao encontrou pela key exata, tentar encontrar uma correspondencia aproximada
       // Isso resolve casos onde o frontend usa 'Node' mas backend retorna 'node_ip'
       if (fieldOptions.length === 0) {
         const lowerKey = colConfig.key.toLowerCase();
-        const matchingKey = Object.keys(metadataOptions).find(
+        const matchingKey = Object.keys(currentMetadataOptions).find(
           key => key.toLowerCase() === lowerKey ||
                  key.toLowerCase().includes(lowerKey) ||
                  lowerKey.includes(key.toLowerCase())
         );
         if (matchingKey) {
-          fieldOptions = metadataOptions[matchingKey];
+          fieldOptions = currentMetadataOptions[matchingKey];
           actualOptionsKey = matchingKey; // Usar a chave real do backend
         }
       }
@@ -790,8 +791,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     defaultColumnConfig,  // ✅ CORREÇÃO: Adicionado para fallback quando columnConfig vazio
     columnWidths,
     tableFields,
-    metadataOptionsLoaded,
-    metadataOptions,  // ✅ CORREÇÃO: Adicionado para filteredValue
+    metadataOptionsLoaded,  // ✅ SPEC-PERF-002: Apenas flag boolean, não o objeto completo
+    // metadataOptions removido - usar metadataOptionsRef.current dentro do useMemo
     filters,  // ✅ CORREÇÃO: Adicionado para filteredValue
     sortField,  // ✅ CORREÇÃO: Adicionado para sortOrder
     sortOrder,  // ✅ CORREÇÃO: Adicionado para sortOrder
@@ -1457,7 +1458,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               />
             </Tooltip>
 
-            <Tooltip title="Exporta os registros visíveis para arquivo CSV">
+            <Tooltip title={`Exporta ${tableSnapshot.length} registros da página atual${summary.total > tableSnapshot.length ? ` (de ${summary.total} total)` : ''}`}>
               <Button
                 icon={<DownloadOutlined />}
                 onClick={handleExport}
