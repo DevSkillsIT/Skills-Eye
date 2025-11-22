@@ -93,12 +93,41 @@ pip install -r requirements.txt
 
 # Configurar variáveis de ambiente
 cp .env.example .env
-# Edite .env com suas configurações:
+# Edite .env com suas configurações principais:
 # CONSUL_HOST=172.16.1.26
 # CONSUL_PORT=8500
 # CONSUL_TOKEN=your-token-here  # se ACL habilitado
 # PROMETHEUS_CONFIG_HOSTS=host1:port/user/pass;host2:port/user/pass
 ```
+
+#### Variáveis de Performance e Resiliência (SPEC-PERF-001)
+
+```bash
+# Fallback Multi-Servidor Consul - Lista de servidores para failover automático
+CONSUL_SERVERS=172.16.1.26:8500,172.16.1.27:8500,172.16.1.28:8500
+
+# Timeout para chamadas à Catalog API (segundos, padrão: 2.0)
+CONSUL_CATALOG_TIMEOUT=2.0
+
+# Controle de concorrência - Máximo de chamadas simultâneas à API (padrão: 5)
+CONSUL_SEMAPHORE_LIMIT=5
+
+# Cache de sites - TTL em segundos (padrão: 300 = 5 minutos)
+SITES_CACHE_TTL=300
+
+# Retry com backoff exponencial - Máximo de tentativas (padrão: 1)
+CONSUL_MAX_RETRIES=1
+
+# Retry - Delay base em segundos (padrão: 0.5)
+CONSUL_RETRY_DELAY=0.5
+```
+
+**Notas Importantes:**
+
+- **CONSUL_SERVERS** está vazio por padrão. Se configurado, ativa fallback automático entre múltiplos servidores
+- **CONSUL_CATALOG_TIMEOUT** determina quanto tempo aguardar por resposta antes de tentar próximo servidor
+- **CONSUL_SEMAPHORE_LIMIT** previne sobrecarga no Consul limitando requisições simultâneas
+- O sistema mantém pool HTTP persistente com 20 conexões keepalive e máximo de 100 conexões
 
 ### 3. Configuração do Frontend
 
@@ -358,11 +387,89 @@ http://localhost:5000/api/v1
 | **Service Tags** | 5 | Gerenciamento de tags |
 | **Consul Insights** | 2 | Analytics e insights |
 | **Optimized Endpoints** | 8 | Endpoints com cache e otimizações |
+| **Admin** | 2 | Endpoints administrativos (cache management) |
 
 ### Swagger UI Interativo
 ```
 http://localhost:5000/docs
 ```
+
+### Endpoints Administrativos (SPEC-PERF-001)
+
+#### Gerenciamento de Cache
+
+**POST** `/api/v1/admin/cache/nodes/flush`
+
+Invalida manualmente o cache de nós e sites. Útil após mudanças no membership do Consul ou para debug.
+
+```bash
+curl -X POST http://localhost:5000/api/v1/admin/cache/nodes/flush
+```
+
+Resposta:
+```json
+{
+  "success": true,
+  "message": "Cache invalidado com sucesso",
+  "keys_flushed": 2,
+  "flushed_at": "2025-11-21T20:30:00Z",
+  "warning": "Cache é local por instância. Em ambientes distribuídos, chamar em cada instância"
+}
+```
+
+**GET** `/api/v1/admin/cache/nodes/info`
+
+Obtém informações sobre configuração e status do cache.
+
+---
+
+## ⚡ Performance e Resiliência
+
+### Otimizações Implementadas (SPEC-PERF-001)
+
+O Skills Eye inclui diversas otimizações para garantir performance em ambientes de produção:
+
+#### 1. **Fallback Multi-Servidor Consul**
+- Tenta múltiplos servidores Consul automaticamente
+- Retry com backoff exponencial configurável
+- Métricas Prometheus para monitoramento de failover
+- Campo `active_server` indica qual servidor foi usado
+
+#### 2. **Pool HTTP Compartilhado**
+- httpx.AsyncClient persistente (reutilização de conexões)
+- 20 conexões keepalive, máximo 100 conexões
+- Reduz overhead de TLS/handshake por requisição
+
+#### 3. **Controle de Concorrência (Semaphore)**
+- Limita requisições simultâneas ao Consul
+- Previne saturação com `CONSUL_SEMAPHORE_LIMIT`
+- Padrão: 5 requisições simultâneas
+
+#### 4. **Cache Inteligente com Invalidação Automática**
+- Cache separado para sites (TTL 5 minutos)
+- Detecta mudanças no membership e invalida automaticamente
+- Cache local em memória por instância (considere Redis para ambientes distribuídos)
+
+#### 5. **Virtualizacao de Tabelas Frontend**
+- ProTable com virtualização para 150+ registros
+- Sem travamentos mesmo com muitos dados
+
+#### 6. **Categorização Inteligente**
+- Engine ignora metadata opcional se não presente no serviço
+- Suporta novos exporters sem modificação de código
+
+#### 7. **Métricas Prometheus Incluídas**
+- `consul_node_enrich_failures_total` - Falhas ao enriquecer nós
+- `consul_node_enrich_duration_seconds` - Tempo de enriquecimento
+- `consul_sites_cache_status_total` - Status do cache de sites
+- `consul_server_fallback_total` - Uso de fallback por servidor
+
+### Monitoramento de Performance
+
+Acesse o Swagger UI para testar endpoints e inspecionar métricas:
+- **Endpoint Principal:** `GET /api/v1/nodes` (com cache e fallback)
+- **Documentação:** `http://localhost:5000/docs`
+- **Métricas Prometheus:** `http://localhost:9090`
 
 ---
 
