@@ -364,10 +364,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
   // ✅ SPEC-PERF-002: Debounce com cancelamento para evitar requests excessivos
   const debouncedReload = useDebouncedCallback(() => {
-    // ✅ CORREÇÃO: Cancelar request anterior antes de disparar novo reload
+    // ✅ SPEC-PERF-002-FIX REQ-006: Cancelar request anterior antes de disparar novo reload
     // Isso evita race conditions quando usuário digita rápido
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      console.log('[DynamicMonitoringPage] Request anterior cancelada');
     }
     actionRef.current?.reload();
   }, 300);
@@ -844,6 +845,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         node: selectedNode !== 'all' ? selectedNode : undefined,
         // Filtros de metadata (todos os filtros ativos)
         filters: filters,
+        // ✅ SPEC-PERF-002-FIX REQ-001: Busca textual enviada ao backend
+        // Backend processa em TODO o dataset ANTES da paginação
+        q: searchValue || undefined,
         // Signal para abort
         signal: signal,
       });
@@ -967,24 +971,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         console.log(`%c[PERF] Filtros avancados LOCAL em ${(filtersEnd - filtersStart).toFixed(0)}ms`, 'color: #ff5722; font-weight: bold');
       }
 
-      // 2. Busca por keyword (pesquisa global em multiplos campos)
-      const keyword = searchValue.trim().toLowerCase();
-      if (keyword) {
-        processedRows = processedRows.filter((item) => {
-          const fields = [
-            item.Service,
-            item.ID,
-            item.Meta?.name,
-            item.Meta?.instance,
-            item.Meta?.company,
-            item.Meta?.site,
-            item.Node,
-          ];
-          return fields.some(
-            (field) => field && String(field).toLowerCase().includes(keyword),
-          );
-        });
-      }
+      // ✅ SPEC-PERF-002-FIX REQ-001: Busca textual REMOVIDA do frontend
+      // A busca agora é feita 100% no backend via parâmetro 'q'
+      // Isso permite buscar em TODO o dataset, não apenas na página atual
+      // Código anterior removido conforme especificação
 
       // 3. ✅ SPEC-PERF-002 CORREÇÃO: Buscar summary do backend (totais de TODO o dataset)
       // O backend retorna estatisticas sem paginacao, mostrando totais reais
@@ -1067,9 +1057,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // Retornar dados - JA vem paginados do servidor
-      // Se aplicamos filtros locais (avancados/keyword), precisamos recalcular
-      const finalData = (advancedConditions.length > 0 || keyword) ? processedRows : rows;
-      const finalTotal = (advancedConditions.length > 0 || keyword) ? processedRows.length : total;
+      // Se aplicamos filtros locais (avancados), precisamos recalcular
+      // ✅ SPEC-PERF-002-FIX REQ-001: keyword removido - busca agora é server-side
+      const finalData = (advancedConditions.length > 0) ? processedRows : rows;
+      const finalTotal = (advancedConditions.length > 0) ? processedRows.length : total;
 
       return {
         data: finalData,
@@ -1434,9 +1425,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       return;
     }
 
-    // SPEC-PERF-002 FIX: Reload quando selectedNode, filters, sortField ou sortOrder mudarem
-    actionRef.current?.reload();
-  }, [selectedNode, filters, sortField, sortOrder]);
+    // ✅ SPEC-PERF-002-FIX REQ-004: Usar debouncedReload para evitar duplo disparo
+    // Isso garante que múltiplas mudanças de estado em sequência disparem apenas UMA requisição
+    debouncedReload();
+  }, [selectedNode, filters, sortField, sortOrder, debouncedReload]);
 
   const advancedActive = advancedConditions.some(
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',

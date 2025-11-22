@@ -912,6 +912,8 @@ export const consulAPI = {
       filters?: Record<string, string | undefined>;
       // AbortSignal para cancelar request
       signal?: AbortSignal;
+      // ✅ SPEC-PERF-002-FIX REQ-001: Busca textual server-side
+      q?: string;
     }
   ) => {
     // Construir parametros para o backend
@@ -940,6 +942,12 @@ export const consulAPI = {
             params[key] = value;
           }
         });
+      }
+
+      // ✅ SPEC-PERF-002-FIX REQ-001: Busca textual enviada ao backend
+      // O backend processa o parâmetro 'q' em TODO o dataset ANTES da paginação
+      if (options.q) {
+        params.q = options.q;
       }
     }
 
