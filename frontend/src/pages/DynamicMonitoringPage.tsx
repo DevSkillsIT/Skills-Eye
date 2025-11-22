@@ -1274,6 +1274,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             x: 2000, // Força scroll horizontal para fixed columns
             y: 'calc(100vh - 450px)'
           }}
+          virtual // Ativa virtualização para performance com 150+ registros
           sticky
           options={{
             reload: true,

@@ -38,6 +38,13 @@ consul_fallback_total = Counter(
     ['from_node', 'to_node']
 )
 
+# Métrica para rastrear uso de fallback em múltiplos servidores
+consul_server_fallback = Counter(
+    'consul_server_fallback_total',
+    'Total de fallbacks entre servidores Consul configurados',
+    ['server', 'status']  # status: success|failure|timeout
+)
+
 # SPRINT 1 CORREÇÕES (2025-11-15): Métricas Agent Caching e Stale Reads
 consul_cache_hits = Counter(
     'consul_cache_hits_total',
@@ -55,6 +62,26 @@ consul_api_type = Counter(
     'consul_api_calls_total',
     'Total de chamadas por tipo de API',
     ['api_type']  # api_type: agent|catalog|kv|health
+)
+
+# SPEC-PERF-001: Métricas de observabilidade para enriquecimento de nós
+consul_node_enrich_failures = Counter(
+    'consul_node_enrich_failures_total',
+    'Total de falhas ao enriquecer nós com contagem de serviços',
+    ['node_name', 'error_type']  # error_type: timeout|connection|http_error|unknown
+)
+
+consul_node_enrich_duration = Histogram(
+    'consul_node_enrich_duration_seconds',
+    'Tempo de enriquecimento de nós com contagem de serviços',
+    ['node_name', 'status'],  # status: success|error
+    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0)
+)
+
+consul_sites_cache_status = Counter(
+    'consul_sites_cache_status_total',
+    'Status do cache de sites do KV',
+    ['status']  # status: hit|miss|refresh|error
 )
 
 # ============================================================================

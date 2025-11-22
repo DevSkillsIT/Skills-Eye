@@ -43,9 +43,48 @@ class Config:
     do metadata_fields.json via metadata_loader!
     """
 
-    # Consul
+    # Consul - Configurações básicas
     CONSUL_TOKEN = os.getenv("CONSUL_TOKEN", "8382a112-81e0-cd6d-2b92-8565925a0675")
     CONSUL_PORT = int(os.getenv("CONSUL_PORT", "8500"))
+
+    # Lista de servidores Consul para fallback (separados por vírgula)
+    # Formato: "172.16.1.26:8500,172.16.1.27:8500,172.16.1.28:8500"
+    # Se vazio, usa apenas MAIN_SERVER derivado do KV metadata/sites
+    @staticmethod
+    def get_consul_servers() -> list:
+        """
+        Retorna lista de servidores Consul para fallback.
+
+        FONTE: Variável de ambiente CONSUL_SERVERS
+        Formato: "IP1:PORTA1,IP2:PORTA2,IP3:PORTA3"
+
+        Se CONSUL_SERVERS estiver vazio, retorna lista vazia.
+        O código que usa deve fazer fallback para MAIN_SERVER.
+        """
+        servers_env = os.getenv("CONSUL_SERVERS", "")
+        if not servers_env.strip():
+            return []
+
+        # Parsear lista de servidores separados por vírgula
+        servers = []
+        for server in servers_env.split(","):
+            server = server.strip()
+            if server:
+                servers.append(server)
+
+        return servers
+
+    # SPEC-PERF-001: Configurações de performance e resiliência
+    # Timeout para chamadas à Catalog API (segundos)
+    CONSUL_CATALOG_TIMEOUT = float(os.getenv("CONSUL_CATALOG_TIMEOUT", "2.0"))
+    # Número máximo de chamadas simultâneas à Catalog API (evita tempestade de requisições)
+    CONSUL_SEMAPHORE_LIMIT = int(os.getenv("CONSUL_SEMAPHORE_LIMIT", "5"))
+    # TTL do cache de sites (segundos) - dados do KV mudam raramente
+    SITES_CACHE_TTL = int(os.getenv("SITES_CACHE_TTL", "300"))
+    # Número máximo de retries para chamadas ao Consul
+    CONSUL_MAX_RETRIES = int(os.getenv("CONSUL_MAX_RETRIES", "1"))
+    # Delay base para backoff exponencial (segundos)
+    CONSUL_RETRY_DELAY = float(os.getenv("CONSUL_RETRY_DELAY", "0.5"))
 
     @staticmethod
     def get_main_server() -> str:

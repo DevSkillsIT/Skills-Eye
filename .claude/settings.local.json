@@ -148,7 +148,14 @@
       "Bash(git mv:*)",
       "Bash(pgrep:*)",
       "Bash(ss -tlnp:*)",
-      "Bash(./venv/bin/python3:*)"
+      "Bash(./venv/bin/python3:*)",
+      "Bash(git cat-file:*)",
+      "Bash(git fsck:*)",
+      "Bash(/tmp/DynamicMonitoringPage_422303f.tsx)",
+      "Bash(bash:*)",
+      "Bash(./venv/bin/python:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs"
     ],
     "deny": [],
     "ask": []
