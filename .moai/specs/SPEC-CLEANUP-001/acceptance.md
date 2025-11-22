@@ -1,6 +1,6 @@
 ---
 id: SPEC-CLEANUP-001
-version: "1.2.0"
+version: "1.3.0"
 status: draft
 created: 2025-11-21
 updated: 2025-11-21
@@ -13,6 +13,12 @@ type: acceptance-criteria
 ## Visao Geral
 
 Este documento define os criterios de aceitacao detalhados para a remocao completa das paginas obsoletas do projeto Skills-Eye, com cenarios de teste em formato Given-When-Then. **MUDANCA CRITICA v1.2.0**: services.py deve ser REFATORADO (nao removido) e BlackboxGroups.tsx foi adicionado a lista de remocao.
+
+**MUDANCAS v1.3.0**:
+- Cenario 16: Testes nao quebram (Tests/)
+- Cenario 17: Dashboard sem atalhos quebrados
+- Cenario 18: Scripts de diagnostico funcionam
+- Cenario 19: bulkDeleteServices removido do api.ts
 
 ---
 
@@ -441,6 +447,112 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 
 ---
 
+### Cenario 16: Testes Nao Quebram [v1.3.0]
+
+**Objetivo**: Validar que testes em Tests/ funcionam apos mover modulos para obsolete/
+
+```gherkin
+DADO que os modulos BlackboxManager e ServicePresetManager foram movidos para obsolete/
+QUANDO executar os testes em Tests/
+ENTAO nenhum teste deve falhar por import error
+E todos os testes atualizados devem passar
+```
+
+**Passos de teste**:
+```bash
+# Verificar que nao ha imports de modulos obsoletos
+grep -r "BlackboxManager\|ServicePresetManager" Tests/ --include="*.py"
+# Esperado: nenhum resultado ou apenas em comentarios
+
+# Executar testes
+python -m pytest Tests/ -v
+```
+
+**Resultado esperado**: Todos os testes passam sem ImportError
+
+---
+
+### Cenario 17: Dashboard Sem Atalhos Quebrados [v1.3.0]
+
+**Objetivo**: Validar que Dashboard nao tem botoes que navegam para rotas obsoletas
+
+```gherkin
+DADO que as rotas /services e /blackbox foram removidas
+QUANDO acessar o Dashboard
+ENTAO NAO deve haver botao "Novo alvo Blackbox"
+E NAO deve haver botao "Registrar servico"
+E NAO deve haver botao "Ver todos os servicos"
+OU os botoes devem redirecionar para fluxos validos
+```
+
+**Passos de teste**:
+1. Navegar para Dashboard (/)
+2. Verificar botoes de atalho
+3. Se existirem, clicar em cada um
+4. Verificar que navegam para rotas validas
+5. Verificar console para erros
+
+**Resultado esperado**: Nenhum botao navega para rotas que retornam 404
+
+---
+
+### Cenario 18: Scripts de Diagnostico Funcionam [v1.3.0]
+
+**Objetivo**: Validar que scripts de diagnostico nao falham por arquivo nao encontrado
+
+```gherkin
+DADO que os arquivos Services.tsx, BlackboxTargets.tsx, etc foram deletados
+QUANDO executar diagnostico.ps1
+ENTAO o script NAO deve falhar por arquivo nao encontrado
+E NAO deve validar existencia de arquivos deletados
+```
+
+```gherkin
+DADO que os arquivos Services.tsx, BlackboxTargets.tsx foram deletados
+QUANDO executar analyze_react_complexity.py
+ENTAO o script NAO deve falhar por arquivo nao encontrado
+E NAO deve tentar ler arquivos deletados
+```
+
+**Passos de teste**:
+```bash
+# Testar diagnostico.ps1 (Windows)
+powershell -File diagnostico.ps1
+
+# Testar analyze_react_complexity.py
+python analyze_react_complexity.py
+```
+
+**Resultado esperado**: Scripts executam sem erros de arquivo nao encontrado
+
+---
+
+### Cenario 19: bulkDeleteServices Removido do api.ts [v1.3.0]
+
+**Objetivo**: Validar que metodo bulkDeleteServices foi removido do api.ts
+
+```gherkin
+DADO que api.ts foi atualizado
+QUANDO buscar por bulkDeleteServices
+ENTAO NAO deve existir o metodo bulkDeleteServices
+E NAO deve haver referencias a /services/bulk/deregister
+```
+
+**Passos de teste**:
+```bash
+# Verificar que metodo foi removido
+grep "bulkDeleteServices" frontend/src/services/api.ts
+# Esperado: nenhum resultado
+
+# Verificar que endpoint foi removido
+grep "bulk/deregister" frontend/src/services/api.ts
+# Esperado: nenhum resultado
+```
+
+**Resultado esperado**: Metodo e endpoint completamente removidos
+
+---
+
 ## Quality Gates
 
 ### Gate 1: Pre-Merge
@@ -450,11 +562,15 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 - [ ] Build passa sem erros
 - [ ] Zero erros de TypeScript
 - [ ] Zero warnings de imports nao utilizados
-- [ ] Todos os cenarios de teste passam
+- [ ] Todos os cenarios de teste passam (1-19)
 - [ ] Console limpo (sem erros)
 - [ ] Backend inicia sem erros
 - [ ] ServiceGroups nao navega ao clicar
 - [ ] **CRITICO**: CRUD de services funciona
+- [ ] **v1.3.0**: Testes em Tests/ passam
+- [ ] **v1.3.0**: Dashboard sem atalhos quebrados
+- [ ] **v1.3.0**: Scripts de diagnostico funcionam
+- [ ] **v1.3.0**: bulkDeleteServices removido
 
 ### Gate 2: Pre-Deploy
 
@@ -465,6 +581,8 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 - [ ] Revisao de PR aprovada
 - [ ] Nenhuma regressao identificada
 - [ ] CRUD de services testado em staging
+- [ ] **v1.3.0**: Testes em Tests/ executados em staging
+- [ ] **v1.3.0**: Scripts de diagnostico testados
 
 ---
 
@@ -477,8 +595,11 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 | Build | `npm run build` | Exit code 0 |
 | TypeScript | `npx tsc --noEmit` | Zero erros |
 | ESLint | `npm run lint` | Zero erros |
-| Testes | `npm test` | Todos passam |
+| Testes frontend | `npm test` | Todos passam |
 | Backend | `python app.py` | Inicia sem erros |
+| Testes Tests/ [v1.3.0] | `python -m pytest Tests/ -v` | Todos passam |
+| diagnostico.ps1 [v1.3.0] | `powershell -File diagnostico.ps1` | Exit code 0 |
+| analyze_react [v1.3.0] | `python analyze_react_complexity.py` | Exit code 0 |
 
 ### Manuais
 
@@ -486,6 +607,7 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 |-------------|--------|----------|
 | Menu | Inspecao visual | Items corretos |
 | ServiceGroups | Click testing | NAO navega |
+| Dashboard [v1.3.0] | Click testing | Sem atalhos quebrados |
 | Console | DevTools | Sem erros |
 | CRUD services | Criar/Editar/Deletar | Funciona |
 | Funcionalidade | Uso real | Comportamento esperado |
@@ -533,12 +655,27 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 - [ ] Metodos de blackbox removidos
 - [ ] Metodos de presets removidos
 - [ ] Metodos de listagem de services removidos
+- [ ] bulkDeleteServices removido [v1.3.0]
 - [ ] createService mantido
 - [ ] updateService mantido
 - [ ] deleteService mantido
 
+### Para Testes e Scripts [v1.3.0]:
+- [ ] Tests/test_phase1.py atualizado/removido
+- [ ] Tests/test_audit_fix.py atualizado/removido
+- [ ] Nenhum teste importa modulos obsoletos
+- [ ] diagnostico.ps1 atualizado
+- [ ] analyze_react_complexity.py atualizado
+- [ ] Todos scripts executam sem erros
+
+### Para Dashboard [v1.3.0]:
+- [ ] Botao "Novo alvo Blackbox" REMOVIDO ou redirecionado
+- [ ] Botao "Registrar servico" REMOVIDO ou redirecionado
+- [ ] Botao "Ver todos os servicos" REMOVIDO ou redirecionado
+- [ ] Nenhum botao navega para rotas 404
+
 ### Para o SPEC completo:
-- [ ] Todos os cenarios de teste passam
+- [ ] Todos os cenarios de teste passam (1-19)
 - [ ] Quality gates satisfeitos
 - [ ] Documentacao atualizada
 - [ ] PR revisado e aprovado
@@ -555,6 +692,8 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 4. **Funcionalidade critica quebrada** que nao pode ser corrigida rapidamente
 5. **Regressao em DynamicMonitoringPage** ou outras paginas ativas
 6. **Erro em producao** identificado apos deploy
+7. **Testes em Tests/ quebrados [v1.3.0]** - impede validacao automatizada
+8. **Dashboard inacessivel [v1.3.0]** - pagina principal quebrada
 
 ### Como fazer rollback:
 
@@ -582,6 +721,9 @@ git reset --hard <commit-hash>
 | Tamanho do bundle | Reduzido ~10% | Comparar antes/depois |
 | Arquivos removidos | 11 (6 paginas + 1 hook + 4 backend) | Contagem manual |
 | CRUD services | 100% funcional | Teste manual |
+| Testes Tests/ [v1.3.0] | 100% passando | `python -m pytest Tests/` |
+| Scripts diagnostico [v1.3.0] | 0 erros | Execucao manual |
+| Cenarios de teste | 19/19 passando | Contagem manual |
 
 ---
 
@@ -593,10 +735,12 @@ git reset --hard <commit-hash>
 2. **CRITICO**: Build passa
 3. **CRITICO**: Backend inicia
 4. **CRITICO**: ServiceGroups NAO navega
-5. **ALTO**: Menu correto
-6. **ALTO**: Console limpo
-7. **MEDIO**: Testes passam
-8. **MEDIO**: Arquivos realmente deletados
+5. **CRITICO [v1.3.0]**: Testes em Tests/ passam
+6. **ALTO**: Menu correto
+7. **ALTO**: Console limpo
+8. **ALTO [v1.3.0]**: Dashboard sem atalhos quebrados
+9. **MEDIO**: Arquivos realmente deletados
+10. **MEDIO [v1.3.0]**: Scripts de diagnostico funcionam
 
 ### Dicas para Tester
 
@@ -607,13 +751,16 @@ git reset --hard <commit-hash>
 - **CRITICO**: Testar CRUD de services em DynamicMonitoringPage
 - **IMPORTANTE**: Confirmar que clique em servico no ServiceGroups NAO faz nada
 - **IMPORTANTE**: Verificar que services.py existe e foi refatorado (nao movido)
+- **IMPORTANTE v1.3.0**: Executar testes em Tests/ apos CADA milestone
+- **IMPORTANTE v1.3.0**: Verificar Dashboard apos remocao de rotas
+- **IMPORTANTE v1.3.0**: Caminho correto eh `backend/api/models.py`
 
 ---
 
 ## Tags de Rastreabilidade
 
 <!-- TAG_BLOCK_START -->
-- [SPEC-CLEANUP-001] Criterios de aceitacao
+- [SPEC-CLEANUP-001] Criterios de aceitacao v1.3.0
 - [TEST-001] Menu sem paginas desativadas (5 items)
 - [TEST-002] ServiceGroups NAO navega ao clicar
 - [TEST-003] Build sem erros
@@ -629,4 +776,8 @@ git reset --hard <commit-hash>
 - [TEST-013] CRUD de services funciona (CRITICO)
 - [TEST-014] Endpoints removidos retornam 404
 - [TEST-015] api.ts atualizado
+- [TEST-016] Testes nao quebram - Tests/ (v1.3.0)
+- [TEST-017] Dashboard sem atalhos quebrados (v1.3.0)
+- [TEST-018] Scripts de diagnostico funcionam (v1.3.0)
+- [TEST-019] bulkDeleteServices removido do api.ts (v1.3.0)
 <!-- TAG_BLOCK_END -->

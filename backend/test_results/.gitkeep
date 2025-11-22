@@ -1,5 +1,0 @@
-# Diretorio para armazenar resultados de benchmarks e testes
-# Arquivos gerados automaticamente pelo bench_nodes.py:
-# - nodes_baseline.json: Metricas de baseline
-# - nodes_compare.json: Metricas apos otimizacoes
-# - nodes_benchmark_report.json: Relatorio completo de comparacao

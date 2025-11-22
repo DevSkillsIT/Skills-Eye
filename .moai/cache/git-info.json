@@ -1,7 +1,7 @@
 {
-  "branch": "feature/SPEC-PERF-001",
-  "last_commit": "410a5ad revert: reverter mudancas SPEC-PERF-001 para analise",
-  "commit_time": "17 minutes ago",
-  "changes": 12,
-  "last_check": "2025-11-21T19:26:36.576898"
+  "branch": "dev-adriano",
+  "last_commit": "09a068d fix(export): modal de confirmacao CSV com escolha de escopo",
+  "commit_time": "6 minutes ago",
+  "changes": 131,
+  "last_check": "2025-11-22T19:24:02.016852"
 }

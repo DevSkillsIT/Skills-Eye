@@ -1,6 +1,6 @@
 ---
 id: SPEC-CLEANUP-001
-version: "1.2.0"
+version: "1.3.0"
 status: draft
 created: 2025-11-21
 updated: 2025-11-21
@@ -15,6 +15,7 @@ priority: MEDIUM
 | 1.0.0  | 2025-11-21 | Claude Code | Versao inicial do SPEC         |
 | 1.1.0  | 2025-11-21 | Claude Code | Alterar para delecao completa  |
 | 1.2.0  | 2025-11-21 | Claude Code | Analise completa de dependencias - services.py refatorado, BlackboxGroups adicionado |
+| 1.3.0  | 2025-11-21 | Claude Code | Correcoes criticas auditoria: testes, Dashboard.tsx, scripts diagnostico, caminho models.py, bulkDeleteServices |
 
 ---
 
@@ -23,6 +24,8 @@ priority: MEDIUM
 ## Resumo Executivo
 
 Este SPEC define o processo de remocao completa das paginas estaticas obsoletas do projeto Skills-Eye (Services, Exporters, BlackboxTargets, BlackboxGroups, ServicePresets, TestMonitoringTypes) que foram substituidas pelo sistema dinamico `DynamicMonitoringPage`. O processo garante que nenhuma dependencia seja quebrada e que os arquivos sejam completamente removidos do projeto.
+
+**MUDANCAS v1.3.0**: Adiciona preparacao de testes/scripts, remocao de atalhos Dashboard.tsx, corrige caminho models.py, e inclui remocao de bulkDeleteServices no api.ts.
 
 ## Contexto e Motivacao
 
@@ -98,6 +101,38 @@ const handleServiceClick = (serviceName: string) => {
 ```
 
 **ACAO REQUERIDA**: REMOVER completamente esta funcionalidade de navegacao.
+
+#### IMPACTO CRITICO - Dashboard.tsx (v1.3.0)
+
+**Dashboard.tsx** (linhas 401-433) contem botoes que navegam para rotas que serao removidas:
+
+```typescript
+<Button onClick={() => navigate('/blackbox?create=true')}>Novo alvo Blackbox</Button>
+<Button onClick={() => navigate('/services?create=true')}>Registrar servico</Button>
+<Button onClick={() => navigate('/services')}>Ver todos os servicos</Button>
+```
+
+**ACAO REQUERIDA**: REMOVER ou REDIRECIONAR esses botoes para fluxos validos (DynamicMonitoringPage).
+
+#### IMPACTO CRITICO - Testes em Tests/ (v1.3.0)
+
+A pasta `Tests/` na raiz contem scripts de integracao que importam BlackboxManager e ServicePresetManager:
+- `Tests/test_phase1.py`
+- `Tests/test_audit_fix.py`
+- Outros scripts em Tests/
+
+**ACAO REQUERIDA**: Atualizar ou remover testes ANTES de mover modulos para obsolete/.
+
+#### IMPACTO CRITICO - Scripts de Diagnostico (v1.3.0)
+
+**diagnostico.ps1** (linhas 5-25, 79):
+- Valida existencia de ServicePresets.tsx, BlackboxGroups.tsx
+- Testa endpoint GET /api/v1/services
+
+**analyze_react_complexity.py** (linhas 13-21):
+- Le diretamente BlackboxTargets.tsx e Services.tsx
+
+**ACAO REQUERIDA**: Atualizar ou aposentar estes utilitarios.
 
 #### Componentes COMPARTILHADOS (NAO remover)
 
@@ -300,6 +335,8 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 
 **EARS Format**: O sistema **DEVE** remover models nao utilizados do backend.
 
+**IMPORTANTE**: O caminho correto eh `backend/api/models.py`, NAO `backend/models.py`.
+
 **REMOVER**:
 - BlackboxTarget
 - BlackboxUpdateRequest
@@ -308,6 +345,54 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 **MANTER**:
 - ServiceCreateRequest (usado por createService)
 - ServiceUpdateRequest (usado por updateService)
+
+### FR-012: Atualizar Testes em Tests/ (v1.3.0)
+
+**EARS Format**: O sistema **DEVE** atualizar ou remover testes que dependem de modulos obsoletos ANTES de mover para obsolete/.
+
+**Detalhes**:
+- Atualizar ou remover `Tests/test_phase1.py` (importa BlackboxManager)
+- Atualizar ou remover `Tests/test_audit_fix.py` (importa ServicePresetManager)
+- Verificar outros scripts em Tests/ que dependem de modulos obsoletos
+
+**Justificativa**: Evitar quebra de testes ao mover modulos para obsolete/.
+
+### FR-013: Remover Atalhos Quebrados do Dashboard.tsx (v1.3.0)
+
+**EARS Format**: O sistema **DEVE** remover ou redirecionar botoes do Dashboard.tsx que navegam para rotas obsoletas.
+
+**Botoes a REMOVER** (linhas 401-433):
+```typescript
+<Button onClick={() => navigate('/blackbox?create=true')}>Novo alvo Blackbox</Button>
+<Button onClick={() => navigate('/services?create=true')}>Registrar servico</Button>
+<Button onClick={() => navigate('/services')}>Ver todos os servicos</Button>
+```
+
+**Alternativa**: Redirecionar para fluxos validos em DynamicMonitoringPage (ex: /monitoring/system-exporters).
+
+**Justificativa**: Evitar navegacao para rotas que nao existem mais.
+
+### FR-014: Atualizar Scripts de Diagnostico (v1.3.0)
+
+**EARS Format**: O sistema **DEVE** atualizar scripts de diagnostico para nao referenciar arquivos removidos.
+
+**Scripts a atualizar**:
+- `diagnostico.ps1`: Remover validacao de ServicePresets.tsx, BlackboxGroups.tsx e endpoint GET /api/v1/services
+- `analyze_react_complexity.py`: Remover leitura de BlackboxTargets.tsx e Services.tsx
+
+**Justificativa**: Evitar falha de scripts ao procurar arquivos deletados.
+
+### FR-015: Remover bulkDeleteServices do api.ts (v1.3.0)
+
+**EARS Format**: O sistema **DEVE** remover o metodo bulkDeleteServices do api.ts do frontend.
+
+**Metodo a REMOVER**:
+```typescript
+bulkDeleteServices: (services: Array<{service_id: string; node_addr?: string}>) =>
+  api.delete('/services/bulk/deregister', {...})
+```
+
+**Justificativa**: Endpoint DELETE /services/bulk/deregister sera removido de services.py.
 
 ---
 
@@ -382,6 +467,30 @@ O sistema **NAO DEVERA** quebrar a funcionalidade CRUD de services usada pelo Dy
 - updateService funciona em DynamicCRUDModal
 - deleteService funciona em DynamicMonitoringPage
 
+### IR-006: Testes Nao Quebram (v1.3.0)
+
+O sistema **NAO DEVERA** ter testes quebrados por import error apos mover modulos para obsolete/.
+
+**Validacao**:
+- Executar testes em Tests/
+- Nenhum ImportError relacionado a BlackboxManager ou ServicePresetManager
+
+### IR-007: Dashboard Sem Atalhos Quebrados (v1.3.0)
+
+O sistema **NAO DEVERA** ter botoes no Dashboard que navegam para rotas obsoletas.
+
+**Validacao**:
+- Nenhum botao navega para /blackbox ou /services
+- Ou botoes redirecionam para fluxos validos
+
+### IR-008: Scripts de Diagnostico Funcionam (v1.3.0)
+
+O sistema **NAO DEVERA** ter scripts de diagnostico que falham por arquivo nao encontrado.
+
+**Validacao**:
+- diagnostico.ps1 executa sem erros
+- analyze_react_complexity.py executa sem erros
+
 ---
 
 ## Design Constraints (MUST)
@@ -435,7 +544,17 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 |---------|-------------|-------|
 | `frontend/src/App.tsx` | Remover 5 imports, 5 rotas e 5 menu items | Medio |
 | `frontend/src/pages/ServiceGroups.tsx` | REMOVER handleServiceClick completamente | Medio |
-| `frontend/src/services/api.ts` | Remover metodos nao utilizados | Baixo |
+| `frontend/src/pages/Dashboard.tsx` | REMOVER botoes que navegam para /blackbox e /services | Medio |
+| `frontend/src/services/api.ts` | Remover metodos nao utilizados + bulkDeleteServices | Baixo |
+
+### Testes e Scripts - Modificacoes (v1.3.0)
+
+| Arquivo | Modificacao | Risco |
+|---------|-------------|-------|
+| `Tests/test_phase1.py` | Atualizar/remover imports de BlackboxManager | Alto |
+| `Tests/test_audit_fix.py` | Atualizar/remover imports de ServicePresetManager | Alto |
+| `diagnostico.ps1` | Remover validacao de arquivos deletados | Baixo |
+| `analyze_react_complexity.py` | Remover leitura de arquivos deletados | Baixo |
 
 ### Frontend - DELETAR (6 paginas + 1 hook)
 
@@ -455,7 +574,9 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 |---------|-------------|-------|
 | `backend/api/services.py` | REFATORAR - manter apenas CRUD | Alto |
 | `backend/app.py` | Remover imports e include_router | Medio |
-| `backend/models.py` | Remover models de blackbox | Baixo |
+| `backend/api/models.py` | Remover models de blackbox | Baixo |
+
+**NOTA v1.3.0**: Caminho correto eh `backend/api/models.py`, NAO `backend/models.py`.
 
 ### Backend - Mover para obsolete/
 
@@ -474,6 +595,9 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 | Risco | Probabilidade | Impacto | Mitigacao |
 |-------|---------------|---------|-----------|
 | CRUD de services quebrado | Alta | Critico | Refatorar cuidadosamente services.py |
+| Testes em Tests/ quebrados (v1.3.0) | Alta | Alto | Atualizar testes ANTES de mover modulos |
+| Dashboard com atalhos quebrados (v1.3.0) | Alta | Medio | Remover botoes ou redirecionar |
+| Scripts diagnostico falham (v1.3.0) | Media | Baixo | Atualizar scripts antes de deletar arquivos |
 | API backend usada por outra pagina | Media | Alto | Verificar TODOS imports antes de mover |
 | Import esquecido no App.tsx | Media | Medio | Verificar todos imports apos remocao |
 | Componente compartilhado removido | Baixa | Alto | Analise de dependencias previa |
@@ -506,12 +630,14 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 
 ## Notas de Implementacao
 
-1. **Ordem de execucao**: REFATORAR services.py PRIMEIRO, depois limpar App.tsx, DELETAR arquivos frontend, MOVER backend APIs
+1. **Ordem de execucao v1.3.0**: Preparar testes/scripts PRIMEIRO, depois REFATORAR services.py, limpar Dashboard.tsx e App.tsx, DELETAR arquivos frontend, MOVER backend APIs
 2. **Commits atomicos**: Um commit por fase para facilitar rollback
 3. **Build continuo**: Validar build apos cada modificacao
 4. **DELETAR completamente**: NAO usar .old-deprecated, DELETAR do frontend
 5. **Backend services.py**: REFATORAR, NAO mover para obsolete/
 6. **Testar CRUD**: Verificar createService, updateService, deleteService apos refatoracao
+7. **Caminho models.py**: Usar `backend/api/models.py`, NAO `backend/models.py`
+8. **Remover bulkDeleteServices**: Incluir na limpeza do api.ts
 
 ---
 
@@ -529,5 +655,9 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 - [FR-008] Mover APIs backend para obsolete
 - [FR-009] Atualizar app.py do backend
 - [FR-010] Atualizar api.ts do frontend
-- [FR-011] Atualizar models.py do backend
+- [FR-011] Atualizar backend/api/models.py
+- [FR-012] Atualizar testes em Tests/ (v1.3.0)
+- [FR-013] Remover atalhos Dashboard.tsx (v1.3.0)
+- [FR-014] Atualizar scripts de diagnostico (v1.3.0)
+- [FR-015] Remover bulkDeleteServices do api.ts (v1.3.0)
 <!-- TAG_BLOCK_END -->

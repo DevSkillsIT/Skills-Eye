@@ -1,6 +1,6 @@
 ---
 id: SPEC-CLEANUP-001
-version: "1.2.0"
+version: "1.3.0"
 status: draft
 created: 2025-11-21
 updated: 2025-11-21
@@ -14,9 +14,63 @@ type: implementation-plan
 
 Este plano detalha as etapas para remocao completa das paginas obsoletas do projeto Skills-Eye, garantindo zero quebra de funcionalidade e limpeza total do codigo morto. **MUDANCA CRITICA**: services.py deve ser REFATORADO, NAO removido, pois endpoints CRUD sao usados por DynamicMonitoringPage e DynamicCRUDModal.
 
+**MUDANCAS v1.3.0**:
+- Milestone 0 (Preparacao) adicionado - testes e scripts ANTES de tudo
+- Milestone 2.1 (Dashboard.tsx) adicionado - remover atalhos quebrados
+- Milestone 6 atualizado - incluir remocao de bulkDeleteServices
+- Milestone 8 corrigido - caminho correto `backend/api/models.py`
+- Nova ordem de execucao garantindo que dependencias sejam tratadas primeiro
+
 ---
 
 ## Milestones por Prioridade
+
+### Milestone 0: Preparacao - Testes e Scripts (Prioridade: CRITICA) [v1.3.0]
+
+**Objetivo**: Atualizar ou remover testes e scripts que dependem de modulos obsoletos ANTES de qualquer remocao
+
+**IMPORTANTE**: Este passo DEVE ser executado PRIMEIRO para evitar quebra de testes ao mover modulos para obsolete/!
+
+**Tarefas**:
+
+1. **Atualizar/remover testes em Tests/**
+   - Verificar `Tests/test_phase1.py` - importa BlackboxManager
+   - Verificar `Tests/test_audit_fix.py` - importa ServicePresetManager
+   - Listar todos arquivos em Tests/ que importam modulos obsoletos
+   ```bash
+   grep -r "BlackboxManager\|ServicePresetManager" Tests/ --include="*.py"
+   ```
+
+2. **Decidir acao para cada teste**
+   - Se teste pode ser atualizado → atualizar imports e logica
+   - Se teste nao faz mais sentido → remover arquivo
+   - Documentar decisao para cada arquivo
+
+3. **Atualizar diagnostico.ps1**
+   - Remover validacao de ServicePresets.tsx (linha ~5-25)
+   - Remover validacao de BlackboxGroups.tsx
+   - Remover teste de GET /api/v1/services (linha ~79)
+   - Ou comentar secoes obsoletas
+
+4. **Atualizar analyze_react_complexity.py**
+   - Remover leitura de BlackboxTargets.tsx (linhas 13-21)
+   - Remover leitura de Services.tsx
+   - Atualizar lista de arquivos analisados
+
+**Arquivos modificados**:
+- `Tests/test_phase1.py` (atualizar ou remover)
+- `Tests/test_audit_fix.py` (atualizar ou remover)
+- `diagnostico.ps1` (atualizar)
+- `analyze_react_complexity.py` (atualizar)
+
+**Validacao**:
+- [ ] Nenhum teste importa BlackboxManager
+- [ ] Nenhum teste importa ServicePresetManager
+- [ ] diagnostico.ps1 nao valida arquivos que serao deletados
+- [ ] analyze_react_complexity.py nao le arquivos que serao deletados
+- [ ] Scripts executam sem erros
+
+---
 
 ### Milestone 1: REFATORAR services.py do Backend (Prioridade: CRITICA)
 
@@ -87,6 +141,43 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
 **Validacao**:
 - [ ] Build passa
 - [ ] Clique em servico nao causa navegacao
+- [ ] Nao ha erros no console
+
+---
+
+### Milestone 2.1: Dashboard.tsx - Remover Atalhos Quebrados (Prioridade: ALTA) [v1.3.0]
+
+**Objetivo**: Remover ou redirecionar botoes que navegam para rotas obsoletas
+
+**Tarefas**:
+
+1. **Localizar botoes em Dashboard.tsx** (linhas 401-433)
+   ```typescript
+   // IDENTIFICAR ESTES BOTOES
+   <Button onClick={() => navigate('/blackbox?create=true')}>Novo alvo Blackbox</Button>
+   <Button onClick={() => navigate('/services?create=true')}>Registrar servico</Button>
+   <Button onClick={() => navigate('/services')}>Ver todos os servicos</Button>
+   ```
+
+2. **Opcao A: REMOVER botoes** (recomendado se funcionalidade nao faz mais sentido)
+   - Deletar completamente os botoes
+   - Ajustar layout se necessario
+
+3. **Opcao B: REDIRECIONAR botoes** (se funcionalidade ainda faz sentido)
+   - Redirecionar para DynamicMonitoringPage equivalente
+   - Exemplo: `/services` → `/monitoring/system-exporters`
+   - Exemplo: `/blackbox` → `/monitoring/network-probes`
+
+4. **Atualizar imports** (se necessario)
+   - Remover imports nao utilizados apos remocao
+
+**Arquivos modificados**:
+- `frontend/src/pages/Dashboard.tsx`
+
+**Validacao**:
+- [ ] Build passa
+- [ ] Dashboard renderiza corretamente
+- [ ] Nenhum botao navega para /services ou /blackbox
 - [ ] Nao ha erros no console
 
 ---
@@ -237,6 +328,12 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
    - getServiceCatalogNames
    - getMetadataUniqueValues
    - searchByMetadata
+   - **bulkDeleteServices** [v1.3.0]
+     ```typescript
+     // REMOVER este metodo
+     bulkDeleteServices: (services: Array<{service_id: string; node_addr?: string}>) =>
+       api.delete('/services/bulk/deregister', {...})
+     ```
 
 4. **MANTER metodos CRUD de services**
    - createService
@@ -294,6 +391,8 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
 
 **Objetivo**: Remover models nao utilizados
 
+**IMPORTANTE v1.3.0**: O caminho correto eh `backend/api/models.py`, NAO `backend/models.py`!
+
 **Tarefas**:
 
 1. **REMOVER models de blackbox**
@@ -306,7 +405,7 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
    - ServiceUpdateRequest (usado por updateService)
 
 **Arquivos modificados**:
-- `backend/models.py`
+- `backend/api/models.py` (caminho correto!)
 
 **Validacao**:
 - [ ] Backend inicia sem erros
@@ -399,12 +498,30 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
    - Confirmar que NAO navega para lugar nenhum
    - Verificar que nao ha erros no console
 
-8. **Verificar arquivos deletados**
+8. **Verificar Dashboard** [v1.3.0]
+   - Navegar para Dashboard
+   - Confirmar que NAO ha botoes para /services ou /blackbox
+   - Verificar que nao ha erros no console
+
+9. **Verificar testes em Tests/** [v1.3.0]
    ```bash
-   # Confirmar que arquivos NAO existem
-   ls frontend/src/pages/Services.tsx 2>/dev/null && echo "ERRO" || echo "OK - deletado"
-   ls frontend/src/pages/BlackboxGroups.tsx 2>/dev/null && echo "ERRO" || echo "OK - deletado"
+   # Executar testes atualizados
+   python -m pytest Tests/ -v
    ```
+
+10. **Verificar scripts de diagnostico** [v1.3.0]
+    ```bash
+    # Executar scripts e verificar que nao falham
+    powershell -File diagnostico.ps1
+    python analyze_react_complexity.py
+    ```
+
+11. **Verificar arquivos deletados**
+    ```bash
+    # Confirmar que arquivos NAO existem
+    ls frontend/src/pages/Services.tsx 2>/dev/null && echo "ERRO" || echo "OK - deletado"
+    ls frontend/src/pages/BlackboxGroups.tsx 2>/dev/null && echo "ERRO" || echo "OK - deletado"
+    ```
 
 **Validacao**:
 - [ ] Build sem erros
@@ -414,6 +531,9 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
 - [ ] Navegacao funcionando
 - [ ] Console limpo
 - [ ] ServiceGroups sem navegacao em clique
+- [ ] Dashboard sem atalhos quebrados [v1.3.0]
+- [ ] Testes em Tests/ passam [v1.3.0]
+- [ ] Scripts de diagnostico funcionam [v1.3.0]
 - [ ] Arquivos realmente deletados
 
 ---
@@ -428,33 +548,42 @@ Este plano detalha as etapas para remocao completa das paginas obsoletas do proj
 
 **Exemplo de commits**:
 ```bash
+git commit -m "chore(tests): atualizar testes e scripts para remocao de modulos obsoletos"
 git commit -m "refactor(services): manter apenas endpoints CRUD em services.py"
 git commit -m "fix(servicegroups): remover funcionalidade de navegacao ao clicar em servico"
+git commit -m "fix(dashboard): remover atalhos para rotas obsoletas"
 git commit -m "refactor(app): remover imports e rotas de paginas obsoletas"
 git commit -m "chore(cleanup): deletar paginas obsoletas do frontend"
 git commit -m "chore(cleanup): deletar hook exclusivo useMonitoringType"
-git commit -m "refactor(api): remover metodos nao utilizados do api.ts"
+git commit -m "refactor(api): remover metodos nao utilizados do api.ts incluindo bulkDeleteServices"
 git commit -m "refactor(backend): atualizar app.py removendo routers obsoletos"
-git commit -m "refactor(models): remover models de blackbox"
+git commit -m "refactor(models): remover models de blackbox em backend/api/models.py"
 git commit -m "chore(cleanup): mover APIs backend obsoletas para obsolete/"
 ```
 
-### Ordem de Execucao
+### Ordem de Execucao (v1.3.0)
 
 ```
-[Milestone 1] → [Milestone 2] → [Milestone 3] → [Milestone 4] → [Milestone 5]
-     |              |              |              |              |
-  REFATORAR      REMOVER       Limpar App     DELETAR        DELETAR
- services.py   ServiceGroups     .tsx         Paginas         Hook
+[Milestone 0] → [Milestone 1] → [Milestone 2] → [Milestone 2.1] → [Milestone 3]
+     |              |              |               |                  |
+ Preparacao     REFATORAR      REMOVER        Dashboard.tsx      Limpar App
+Testes/Scripts services.py   ServiceGroups   Atalhos             .tsx
 
      ↓
-[Milestone 6] → [Milestone 7] → [Milestone 8] → [Milestone 9] → [Milestone 10]
+[Milestone 4] → [Milestone 5] → [Milestone 6] → [Milestone 7] → [Milestone 8]
      |              |              |              |              |
-  Atualizar     Atualizar      Atualizar       Mover APIs     Validar
-   api.ts        app.py        models.py       Backend        Final
+  DELETAR        DELETAR      Atualizar      Atualizar       Atualizar
+  Paginas         Hook        api.ts +        app.py       api/models.py
+                          bulkDeleteServices
+
+     ↓
+[Milestone 9] → [Milestone 10]
+     |              |
+  Mover APIs      Validar
+   Backend        Final
 ```
 
-**IMPORTANTE**: NAO pular etapas. Cada milestone depende do anterior.
+**IMPORTANTE**: NAO pular etapas. Milestone 0 DEVE ser executado PRIMEIRO para evitar quebra de testes!
 
 ---
 
@@ -472,11 +601,14 @@ git commit -m "chore(cleanup): mover APIs backend obsoletas para obsolete/"
 
 | Decisao | Justificativa |
 |---------|---------------|
+| Preparar testes/scripts PRIMEIRO (v1.3.0) | Evitar quebra de testes ao mover modulos |
 | REFATORAR services.py | CRUD usado por DynamicMonitoringPage e DynamicCRUDModal |
+| REMOVER atalhos Dashboard.tsx (v1.3.0) | Evitar navegacao para rotas inexistentes |
 | DELETAR paginas frontend | Remocao completa de codigo morto |
 | Mover APIs para obsolete/ | Preservar para referencia sem poluir projeto |
 | REMOVER navegacao ServiceGroups | Nao ha destino valido |
 | Manter models de services | Usados por endpoints CRUD |
+| Remover bulkDeleteServices (v1.3.0) | Endpoint bulk/deregister sera removido |
 
 ---
 
@@ -519,6 +651,24 @@ git commit -m "chore(cleanup): mover APIs backend obsoletas para obsolete/"
 2. Comparar com versao anterior
 3. Restaurar items necessarios
 
+### Risco 5: Testes Quebrados por Import Error [v1.3.0]
+
+**Sintoma**: Testes em Tests/ falham ao importar BlackboxManager ou ServicePresetManager
+
+**Contingencia**:
+1. Verificar se Milestone 0 foi executado
+2. Atualizar ou remover testes que importam modulos obsoletos
+3. Executar testes novamente
+
+### Risco 6: Dashboard com Atalhos Quebrados [v1.3.0]
+
+**Sintoma**: Clique em botao no Dashboard navega para rota 404
+
+**Contingencia**:
+1. Verificar se Milestone 2.1 foi executado
+2. Remover ou redirecionar botoes problematicos
+3. Atualizar layout se necessario
+
 ---
 
 ## Checklist Pre-Implementacao
@@ -529,24 +679,29 @@ git commit -m "chore(cleanup): mover APIs backend obsoletas para obsolete/"
 - [ ] Backend inicia corretamente
 - [ ] Entendimento claro de cada etapa
 - [ ] **CRITICO**: Entender que services.py deve ser REFATORADO, NAO removido
+- [ ] **CRITICO v1.3.0**: Entender que Milestone 0 (testes/scripts) deve ser PRIMEIRO
+- [ ] **CRITICO v1.3.0**: Caminho correto eh `backend/api/models.py`
 
 ---
 
 ## Checklist Pos-Implementacao
 
+- [ ] Testes em Tests/ atualizados/removidos [v1.3.0]
+- [ ] Scripts de diagnostico atualizados [v1.3.0]
 - [ ] services.py refatorado (apenas CRUD)
 - [ ] Todos os 6 arquivos de pagina DELETADOS
 - [ ] Hook useMonitoringType DELETADO
 - [ ] App.tsx limpo de referencias
 - [ ] ServiceGroups sem navegacao em clique
-- [ ] api.ts atualizado (metodos removidos)
+- [ ] Dashboard sem atalhos quebrados [v1.3.0]
+- [ ] api.ts atualizado (metodos removidos + bulkDeleteServices) [v1.3.0]
 - [ ] app.py atualizado (routers removidos)
-- [ ] models.py atualizado (models removidos)
+- [ ] backend/api/models.py atualizado (models removidos) [v1.3.0]
 - [ ] APIs backend movidas para obsolete/
 - [ ] CRUD de services funciona
 - [ ] Build frontend passa
 - [ ] Backend inicia sem erros
-- [ ] Testes passam
+- [ ] Testes em Tests/ passam [v1.3.0]
 - [ ] Console limpo
 - [ ] Menu funcionando
 - [ ] Rotas antigas retornam 404
@@ -558,15 +713,17 @@ git commit -m "chore(cleanup): mover APIs backend obsoletas para obsolete/"
 ## Tags de Rastreabilidade
 
 <!-- TAG_BLOCK_START -->
-- [SPEC-CLEANUP-001] Plano de implementacao
+- [SPEC-CLEANUP-001] Plano de implementacao v1.3.0
+- [MILESTONE-0] Preparacao - Testes e Scripts (v1.3.0)
 - [MILESTONE-1] REFATORAR services.py (CRUD apenas)
 - [MILESTONE-2] REMOVER navegacao ServiceGroups
+- [MILESTONE-2.1] Dashboard.tsx - Remover atalhos quebrados (v1.3.0)
 - [MILESTONE-3] Limpeza do App.tsx
 - [MILESTONE-4] DELETAR paginas do frontend (6)
 - [MILESTONE-5] DELETAR hook exclusivo
-- [MILESTONE-6] Atualizar api.ts
+- [MILESTONE-6] Atualizar api.ts + bulkDeleteServices (v1.3.0)
 - [MILESTONE-7] Atualizar app.py
-- [MILESTONE-8] Atualizar models.py
+- [MILESTONE-8] Atualizar backend/api/models.py (v1.3.0)
 - [MILESTONE-9] Mover APIs backend para obsolete
 - [MILESTONE-10] Validacao final
 <!-- TAG_BLOCK_END -->
