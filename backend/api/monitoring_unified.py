@@ -287,11 +287,16 @@ async def get_monitoring_data(
                     svc_module = svc.get('Meta', {}).get('module', '')
                     svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
 
+                    # SPEC-PERF-001: Marcar se o serviço tem metrics_path no metadata
+                    # Se não tiver, o engine ignora a condição metrics_path da regra
+                    has_metrics_path = 'metrics_path' in svc.get('Meta', {})
+
                     # FIX BUG #1: categorize() espera dict, não kwargs
                     svc_category, svc_type_info = categorization_engine.categorize({
                         'job_name': svc_job_name,
                         'module': svc_module,
-                        'metrics_path': svc_metrics_path
+                        'metrics_path': svc_metrics_path,
+                        '_has_metrics_path': has_metrics_path
                     })
 
                     # Verificar se serviço pertence à categoria solicitada

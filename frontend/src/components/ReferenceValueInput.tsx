@@ -159,7 +159,7 @@ const ReferenceValueInput: React.FC<ReferenceValueInputProps> = ({
   };
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', height: '100%', display: 'flex', alignItems: 'center' }}>
       <AutoComplete
         value={internalValue}
         onChange={handleChange}

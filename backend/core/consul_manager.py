@@ -29,7 +29,10 @@ from .metrics import (
     consul_fallback_total,
     consul_cache_hits,
     consul_stale_responses,
-    consul_api_type
+    consul_api_type,
+    consul_node_enrich_failures,
+    consul_node_enrich_duration,
+    consul_sites_cache_status
 )
 
 logger = logging.getLogger(__name__)
@@ -79,7 +82,18 @@ def retry_with_backoff(max_retries=3, base_delay=1, max_delay=10):
 # ============================================================================
 
 class ConsulManager:
-    """Gerenciador principal do Consul - Versão Async para FastAPI"""
+    """Gerenciador principal do Consul - Versão Async para FastAPI
+
+    SPEC-PERF-001: Otimizações implementadas:
+    - httpx.AsyncClient compartilhado (pool de conexões persistente)
+    - Reduz overhead de TLS/conexão em chamadas repetidas
+    - Semaphore para limitar chamadas simultâneas
+    """
+
+    # SPEC-PERF-001: Cliente HTTP compartilhado (pool persistente)
+    # Evita overhead de criação de conexão a cada requisição
+    _shared_client: Optional[httpx.AsyncClient] = None
+    _client_lock = asyncio.Lock()
 
     def __init__(self, host: str = None, port: int = None, token: str = None):
         # Lazy evaluation: só acessa Config.MAIN_SERVER se necessário (evita loop circular)
@@ -88,6 +102,47 @@ class ConsulManager:
         self.token = token or Config.CONSUL_TOKEN
         self.base_url = f"http://{self.host}:{self.port}/v1"
         self.headers = {"X-Consul-Token": self.token}
+
+    @classmethod
+    async def get_shared_client(cls) -> httpx.AsyncClient:
+        """
+        Retorna cliente HTTP compartilhado com pool de conexões persistente.
+
+        SPEC-PERF-001: Otimização para evitar overhead de TLS/conexão
+        - Pool de conexões reutilizáveis
+        - Keepalive automático
+        - Timeout padrão configurado
+
+        Returns:
+            httpx.AsyncClient: Cliente compartilhado thread-safe
+        """
+        if cls._shared_client is None:
+            async with cls._client_lock:
+                # Double-check pattern para thread safety
+                if cls._shared_client is None:
+                    cls._shared_client = httpx.AsyncClient(
+                        timeout=httpx.Timeout(
+                            connect=5.0,
+                            read=Config.CONSUL_CATALOG_TIMEOUT,
+                            write=5.0,
+                            pool=5.0
+                        ),
+                        limits=httpx.Limits(
+                            max_keepalive_connections=20,
+                            max_connections=100,
+                            keepalive_expiry=30.0
+                        )
+                    )
+                    logger.info("✅ [ConsulManager] Cliente HTTP compartilhado inicializado")
+        return cls._shared_client
+
+    @classmethod
+    async def close_shared_client(cls):
+        """Fecha cliente HTTP compartilhado (para cleanup em shutdown)"""
+        if cls._shared_client is not None:
+            await cls._shared_client.aclose()
+            cls._shared_client = None
+            logger.info("✅ [ConsulManager] Cliente HTTP compartilhado fechado")
 
     @retry_with_backoff()
     async def _request(self, method: str, path: str, use_cache: bool = False, **kwargs):
@@ -120,71 +175,72 @@ class ConsulManager:
 
         url = f"{self.base_url}{path}"
 
-        async with httpx.AsyncClient() as client:
-            start_time = time.time()
-            response = await client.request(method, url, **kwargs)
-            duration_ms = (time.time() - start_time) * 1000
+        # SPEC-PERF-001: Usar cliente compartilhado para pool de conexões persistente
+        client = await self.get_shared_client()
+        start_time = time.time()
+        response = await client.request(method, url, **kwargs)
+        duration_ms = (time.time() - start_time) * 1000
 
-            # ✅ MÉTRICAS: Cache hits com categorização de freshness
-            if use_cache:
-                age = int(response.headers.get("Age", "0"))
-                cache_status = response.headers.get("X-Cache", "MISS")
+        # METRICAS: Cache hits com categorizacao de freshness
+        if use_cache:
+            age = int(response.headers.get("Age", "0"))
+            cache_status = response.headers.get("X-Cache", "MISS")
 
-                if cache_status == "HIT":
-                    # Categorizar freshness do cache
-                    if age < 10:
-                        age_bucket = "fresh"
-                    elif age < 60:
-                        age_bucket = "stale"
-                    else:
-                        age_bucket = "very_stale"
-
-                    consul_cache_hits.labels(
-                        endpoint=path.split('?')[0],
-                        age_bucket=age_bucket
-                    ).inc()
-
-                    if age > 60:
-                        logger.warning(
-                            f"[Consul] 📦 Cache stale: {path} age={age}s "
-                            f"(background refresh may be delayed)"
-                        )
-
-            # ✅ MÉTRICAS: Stale responses com categorização de lag
-            last_contact_ms = int(response.headers.get("X-Consul-LastContact", "0"))
-            if last_contact_ms > 1000:  # > 1 segundo
-                if last_contact_ms < 5000:
-                    lag_bucket = "1s-5s"
-                elif last_contact_ms < 10000:
-                    lag_bucket = "5s-10s"
+            if cache_status == "HIT":
+                # Categorizar freshness do cache
+                if age < 10:
+                    age_bucket = "fresh"
+                elif age < 60:
+                    age_bucket = "stale"
                 else:
-                    lag_bucket = ">10s"
+                    age_bucket = "very_stale"
 
-                consul_stale_responses.labels(
+                consul_cache_hits.labels(
                     endpoint=path.split('?')[0],
-                    lag_bucket=lag_bucket
+                    age_bucket=age_bucket
                 ).inc()
 
-                logger.warning(
-                    f"[Consul] ⏱️ Stale response: {path} lag={last_contact_ms}ms"
-                )
+                if age > 60:
+                    logger.warning(
+                        f"[Consul] Cache stale: {path} age={age}s "
+                        f"(background refresh may be delayed)"
+                    )
 
-            # ✅ MÉTRICAS: Rastrear tipo de API chamada (agent|catalog|kv|health)
-            if path.startswith("/agent/"):
-                api_type = "agent"
-            elif path.startswith("/catalog/"):
-                api_type = "catalog"
-            elif path.startswith("/kv/"):
-                api_type = "kv"
-            elif path.startswith("/health/"):
-                api_type = "health"
+        # METRICAS: Stale responses com categorizacao de lag
+        last_contact_ms = int(response.headers.get("X-Consul-LastContact", "0"))
+        if last_contact_ms > 1000:  # > 1 segundo
+            if last_contact_ms < 5000:
+                lag_bucket = "1s-5s"
+            elif last_contact_ms < 10000:
+                lag_bucket = "5s-10s"
             else:
-                api_type = "other"
+                lag_bucket = ">10s"
 
-            consul_api_type.labels(api_type=api_type).inc()
+            consul_stale_responses.labels(
+                endpoint=path.split('?')[0],
+                lag_bucket=lag_bucket
+            ).inc()
 
-            response.raise_for_status()
-            return response
+            logger.warning(
+                f"[Consul] Stale response: {path} lag={last_contact_ms}ms"
+            )
+
+        # METRICAS: Rastrear tipo de API chamada (agent|catalog|kv|health)
+        if path.startswith("/agent/"):
+            api_type = "agent"
+        elif path.startswith("/catalog/"):
+            api_type = "catalog"
+        elif path.startswith("/kv/"):
+            api_type = "kv"
+        elif path.startswith("/health/"):
+            api_type = "health"
+        else:
+            api_type = "other"
+
+        consul_api_type.labels(api_type=api_type).inc()
+
+        response.raise_for_status()
+        return response
 
     @staticmethod
     def sanitize_service_id(raw_id: str) -> str:

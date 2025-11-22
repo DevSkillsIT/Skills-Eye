@@ -107,9 +107,12 @@ class CategorizationRule:
                 else:
                     return False
 
-        # Verificar metrics_path (match exato) - OBRIGATÓRIO se especificado
+        # Verificar metrics_path (match exato) - APENAS se o serviço fornecer esse dado
+        # Se o serviço não tem metrics_path no metadata, ignorar esta condição
+        # A categorização é determinada principalmente por job_name_pattern e module_pattern
         if 'metrics_path' in self.conditions:
-            if metrics_path != self.conditions['metrics_path']:
+            service_has_metrics_path = job_data.get('_has_metrics_path', False)
+            if service_has_metrics_path and metrics_path != self.conditions['metrics_path']:
                 return False
 
         # Verificar module_pattern (regex) - OPCIONAL

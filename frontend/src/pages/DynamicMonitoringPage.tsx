@@ -122,7 +122,7 @@ interface DynamicMonitoringPageProps {
   category: string;  // 'network-probes', 'web-probes', etc
 }
 
-interface MonitoringDataItem {
+export interface MonitoringDataItem {
   ID: string;
   Service: string;
   Address?: string;
@@ -582,8 +582,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // Normalizar resposta: axios retorna response.data
-      const response = (axiosResponse && (axiosResponse as any).data) 
-        ? (axiosResponse as any).data 
+      const response = (axiosResponse && (axiosResponse as any).data)
+        ? (axiosResponse as any).data
         : axiosResponse;
 
       if (!response.success) {
@@ -986,7 +986,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       byNode: {},
       uniqueTags: new Set(),
     });
-    
+
     // Reload após resetar estados (chamada única)
     actionRef.current?.reload();
   }, [category]);
@@ -1000,7 +1000,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       isFirstRender.current = false;
       return;
     }
-    
+
     // Reload apenas quando selectedNode ou filters mudarem
     actionRef.current?.reload();
   }, [selectedNode, filters]);
@@ -1274,6 +1274,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             x: 2000, // Força scroll horizontal para fixed columns
             y: 'calc(100vh - 450px)'
           }}
+          virtual // Ativa virtualização para performance com 150+ registros
           sticky
           options={{
             reload: true,

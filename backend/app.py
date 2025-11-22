@@ -37,6 +37,7 @@ from api.categorization_rules import router as categorization_rules_router  # �
 from api.reference_values import router as reference_values_router  # NOVO: Sistema de auto-cadastro/retroalimentação
 from api.service_tags import router as service_tags_router  # NOVO: Sistema de tags retroalimentáveis
 from api.settings import router as settings_router  # NOVO: Configurações globais (naming strategy, etc)
+from api.admin import router as admin_router  # SPEC-PERF-001: Endpoints administrativos (flush cache, etc)
 try:
     from api.installer import router as installer_router
     from api.health import router as health_router
@@ -685,6 +686,7 @@ app.include_router(reference_values_router, prefix="/api/v1/reference-values", t
 app.include_router(service_tags_router, prefix="/api/v1/service-tags", tags=["Service Tags"])  # NOVO: Tags retroalimentáveis
 app.include_router(settings_router, prefix="/api/v1", tags=["Settings"])  # NOVO: Configurações globais
 app.include_router(cache_router, prefix="/api/v1", tags=["Cache"])  # SPRINT 2: Cache management
+app.include_router(admin_router, prefix="/api/v1", tags=["Admin"])  # SPEC-PERF-001: Endpoints administrativos
 
 # SPRINT 2 (2025-11-15): Prometheus metrics parsed para dashboard frontend
 from api.prometheus_metrics import router as prometheus_metrics_router

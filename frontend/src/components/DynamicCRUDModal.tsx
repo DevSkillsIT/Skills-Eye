@@ -38,7 +38,6 @@ import {
   message,
   Alert,
   Spin,
-  Tooltip,
   Typography,
   Row,
   Col,
@@ -63,6 +62,7 @@ import { useServiceTags } from '../hooks/useServiceTags';
 import FormFieldRenderer from './FormFieldRenderer';
 import TagsInput from './TagsInput';
 import { NodeSelector } from './NodeSelector';
+import FloatingFormField from './FloatingFormField';
 import type { MonitoringDataItem } from '../pages/DynamicMonitoringPage';
 
 const { Text } = Typography;
@@ -180,7 +180,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 
   // Watch all values for validation
   const formValues = Form.useWatch([], form);
-  
+
   // ✅ REF para rastrear se é seleção automática inicial do NodeSelector
   const isInitialAutoSelect = useRef(true);
   // ✅ REF para rastrear o último nó que foi selecionado automaticamente
@@ -198,7 +198,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         // Modo edição: preencher form com dados do serviço
         const nodeAddr = service.node_ip || service.Node || '';
         setSelectedNode(nodeAddr);
-        
+
         // Preencher form com dados do serviço
         const meta = service.Meta || {};
         form.setFieldsValue({
@@ -211,13 +211,13 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         });
 
         // Detectar exporter_type do serviço
-        const exporterType = meta.exporter_type || 
-                            meta.job || 
-                            service.Service;
-        
+        const exporterType = meta.exporter_type ||
+          meta.job ||
+          service.Service;
+
         // Detectar categoria do serviço (pode estar no meta ou inferir)
         // const serviceCategory = meta.category || category;
-        
+
         if (exporterType) {
           setSelectedType(exporterType);
           // Em modo edição, ir direto para metadata (último step)
@@ -283,22 +283,22 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         // ✅ ENRIQUECIMENTO DE DADOS DO NÓ
         // Atualizar selectedNodeData com informações precisas do site vindas do backend
         if (serverInfo && serverInfo.site) {
-            const isDefault = serverInfo.site.is_default === true; // Garantir booleano
-            console.log(`[DynamicCRUDModal] 🌍 Site: ${serverInfo.site.name}, Default/Master: ${isDefault}`);
-            
-            setSelectedNodeData((prev: any) => ({
-                ...prev, // Manter dados anteriores (addr, tags originais, etc)
-                site_name: serverInfo.site.name, 
-                isMaster: isDefault, // Sobrescrever com a verdade do backend
-                type: isDefault ? 'master' : 'slave', // Atualizar tipo para compatibilidade
-                tags: {
-                    ...prev?.tags,
-                    role: isDefault ? 'master' : 'slave'
-                }
-            }));
+          const isDefault = serverInfo.site.is_default === true; // Garantir booleano
+          console.log(`[DynamicCRUDModal] 🌍 Site: ${serverInfo.site.name}, Default/Master: ${isDefault}`);
+
+          setSelectedNodeData((prev: any) => ({
+            ...prev, // Manter dados anteriores (addr, tags originais, etc)
+            site_name: serverInfo.site.name,
+            isMaster: isDefault, // Sobrescrever com a verdade do backend
+            type: isDefault ? 'master' : 'slave', // Atualizar tipo para compatibilidade
+            tags: {
+              ...prev?.tags,
+              role: isDefault ? 'master' : 'slave'
+            }
+          }));
         } else {
-            console.warn(`[DynamicCRUDModal] ⚠️ Nenhuma info de site encontrada no backend para ${nodeAddr}. Mantendo dados locais.`);
-            // Não resetar selectedNodeData aqui, manter o que veio do NodeSelector
+          console.warn(`[DynamicCRUDModal] ⚠️ Nenhuma info de site encontrada no backend para ${nodeAddr}. Mantendo dados locais.`);
+          // Não resetar selectedNodeData aqui, manter o que veio do NodeSelector
         }
 
         // DEBUG: Log detalhado dos tipos recebidos
@@ -378,7 +378,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         console.log(`[DynamicCRUDModal] IDs disponíveis:`, availableTypes.map(t => t.id));
         message.warning(`Tipo '${typeId}' não encontrado. Usando formulário padrão.`);
         setFormSchema({ fields: [] });
-        setStep('form');
+        setStep('exporter');
         return;
       }
 
@@ -466,7 +466,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       setLoading(true);
 
       // PASSO 1: AUTO-CADASTRO DE VALORES (igual Services.tsx)
-      
+
       // 1A) Auto-cadastrar TAGS
       if (values.tags && Array.isArray(values.tags) && values.tags.length > 0) {
         try {
@@ -478,7 +478,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 
       // 1B) Auto-cadastrar METADATA FIELDS
       const metadataValues: Array<{ fieldName: string; value: string }> = [];
-      
+
       formFields.forEach((field) => {
         if (field.available_for_registration) {
           const fieldValue = values[field.name];
@@ -563,7 +563,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       // O Check será montado apenas se enable_check estiver ativo e houver campos de check
       if (formSchema && values.enable_check === true) {
         const checkConfig: any = {};
-        
+
         // Buscar todos os campos que começam com "check_" do form_schema
         // O schema define os nomes dos campos, não assumimos valores padrão
         formSchema.fields.forEach((field) => {
@@ -578,7 +578,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
             }
           }
         });
-        
+
         // Adicionar Check ao payload apenas se houver pelo menos um campo configurado
         if (Object.keys(checkConfig).length > 0) {
           payload.Check = checkConfig;
@@ -633,7 +633,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 
       // Regras de validação
       const rules: any[] = [];
-      
+
       // Required
       if (field.required) {
         rules.push({
@@ -661,20 +661,20 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       // Min/Max Length (para strings) ou Value (para numbers)
       if (field.validation?.min !== undefined || field.validation?.max !== undefined) {
         if (field.type === 'number') {
-           // Para input number, min/max são controlados via props, mas regra ajuda
-           rules.push({
-             type: 'number',
-             min: field.validation.min,
-             max: field.validation.max,
-             message: `Valor deve estar entre ${field.validation.min} e ${field.validation.max}`,
-           });
+          // Para input number, min/max são controlados via props, mas regra ajuda
+          rules.push({
+            type: 'number',
+            min: field.validation.min,
+            max: field.validation.max,
+            message: `Valor deve estar entre ${field.validation.min} e ${field.validation.max}`,
+          });
         } else {
-           // Para strings
-           rules.push({
-             min: field.validation.min,
-             max: field.validation.max,
-             message: `Deve ter entre ${field.validation.min} e ${field.validation.max} caracteres`,
-           });
+          // Para strings
+          rules.push({
+            min: field.validation.min,
+            max: field.validation.max,
+            message: `Deve ter entre ${field.validation.min} e ${field.validation.max} caracteres`,
+          });
         }
       }
 
@@ -786,43 +786,28 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
               span = 24;
             }
 
+            const isFullWidth = span === 24;
+
             return (
-              <Col 
-                span={span} 
+              <FloatingFormField
                 key={field.name}
+                name={field.name}
+                label={field.label || field.name}
+                helper={field.help}
+                required={field.required}
+                rules={rules}
+                initialValue={normalizedInitialValue}
+                className={isFullWidth ? 'span-full' : ''}
               >
-                <Form.Item
-                  name={field.name}
-                  label={
-                    <Space size="small">
-                      <span>{field.label || field.name}</span>
-                      {(field.help || field.required) && (
-                        <Tooltip
-                          title={
-                            <div>
-                              {field.help && <div>{field.help}</div>}
-                              {field.required && <div style={{ marginTop: 4, fontWeight: 'bold' }}>Campo obrigatório</div>}
-                            </div>
-                          }
-                        >
-                          <InfoCircleOutlined style={{ color: field.required ? '#ff4d4f' : '#1890ff' }} />
-                        </Tooltip>
-                      )}
-                    </Space>
-                  }
-                  rules={rules}
-                  initialValue={normalizedInitialValue}
-                >
-                  {inputComponent}
-                </Form.Item>
-              </Col>
+                {inputComponent}
+              </FloatingFormField>
             );
           }}
         </Form.Item>
       );
     });
 
-    return <Row gutter={16}>{fieldItems}</Row>;
+    return <div className="form-grid-layout">{fieldItems}</div>;
   }, [formSchema]);
 
   // Renderizar campos metadata genéricos em layout de 2 colunas
@@ -851,18 +836,20 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       // Determinar span baseado no tipo: text/textarea ocupa linha inteira
       // Usar type assertion porque o TypeScript pode não ter todos os tipos atualizados
       const fieldType = (field as any).field_type || field.field_type;
-      const isFullWidth = fieldType === 'text' || fieldType === 'textarea';
+      const fieldNameLower = field.name.toLowerCase();
+      const isFullWidth = fieldType === 'text' || fieldType === 'textarea' || fieldNameLower === 'notas' || fieldNameLower === 'notes' || fieldNameLower === 'description' || fieldNameLower === 'observacao';
+
       return (
-        <Col span={isFullWidth ? 24 : 12} key={field.name}>
-          <FormFieldRenderer
-            field={field}
-            mode={mode}
-          />
-        </Col>
+        <FormFieldRenderer
+          key={field.name}
+          field={field}
+          mode={mode}
+          className={isFullWidth ? 'span-full' : ''}
+        />
       );
     });
 
-    return <Row gutter={16}>{fieldItems}</Row>;
+    return <div className="form-grid-layout">{fieldItems}</div>;
   }, [formFields, formSchema, mode]);
 
   // Determinar título do modal
@@ -915,8 +902,8 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       if (step === 'node') {
         setSubmittable(!!selectedNode && selectedNode !== 'all');
         return;
-      } 
-      
+      }
+
       if (step === 'type') {
         setSubmittable(!!selectedType);
         return;
@@ -932,7 +919,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         const metaFields = formFields
           .filter(f => !schemaFields.has(f.name))
           .map(f => f.name);
-        
+
         // 'name' é sempre obrigatório e geralmente está nos metadados ou values
         fieldsToCheck = [...metaFields, 'name'];
       }
@@ -976,7 +963,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     // Tentar obter label amigável
     // Suporta tanto objeto ConsulNode (do NodeSelector) quanto Option do Select
     let nodeLabelRaw = '';
-    
+
     if (selectedNodeData) {
       if ('site_name' in selectedNodeData) {
         nodeLabelRaw = selectedNodeData.site_name;
@@ -987,53 +974,53 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       } else if ('children' in selectedNodeData) {
         // children pode ser complexo (ReactNode), tentar extrair string se possível
         if (typeof selectedNodeData.children === 'string') {
-            nodeLabelRaw = selectedNodeData.children;
+          nodeLabelRaw = selectedNodeData.children;
         }
       }
     }
-    
+
     const nodeIp = selectedNode;
-    
+
     // Se não tiver label, usa o IP como label
     let displayLabel: string = nodeLabelRaw || nodeIp;
     let displayIp: string | null = nodeIp;
 
     // Limpeza básica
     if (displayLabel && typeof displayLabel === 'string') {
-       const cleanLabel = displayLabel.trim();
-       const cleanIp = nodeIp.trim();
+      const cleanLabel = displayLabel.trim();
+      const cleanIp = nodeIp.trim();
 
-       // Se o label for exatamente o IP, não mostra IP secundário
-       if (cleanLabel === cleanIp) {
+      // Se o label for exatamente o IP, não mostra IP secundário
+      if (cleanLabel === cleanIp) {
+        displayIp = null;
+      }
+      // Se o label contiver " - IP" ou " (IP)", simplifica para mostrar só o nome
+      else if (cleanLabel.includes(cleanIp)) {
+        const possibleName = cleanLabel.replace(cleanIp, '').replace(/[()-]/g, '').trim();
+        if (possibleName) {
+          displayLabel = possibleName;
+        } else {
+          displayLabel = cleanIp;
           displayIp = null;
-       }
-       // Se o label contiver " - IP" ou " (IP)", simplifica para mostrar só o nome
-       else if (cleanLabel.includes(cleanIp)) {
-          const possibleName = cleanLabel.replace(cleanIp, '').replace(/[()-]/g, '').trim();
-          if (possibleName) {
-             displayLabel = possibleName;
-          } else {
-             displayLabel = cleanIp;
-             displayIp = null;
-          }
-       }
+        }
+      }
     }
 
     // Lógica para determinar Master/Slave
     let isMaster = false;
     if (selectedNodeData) {
-        if (typeof selectedNodeData.isMaster === 'boolean') {
-            isMaster = selectedNodeData.isMaster;
-        } else if (selectedNodeData.type === 'master') {
-            isMaster = true;
-        } else if (selectedNodeData.tags?.role === 'master') {
-            isMaster = true;
-        }
+      if (typeof selectedNodeData.isMaster === 'boolean') {
+        isMaster = selectedNodeData.isMaster;
+      } else if (selectedNodeData.type === 'master') {
+        isMaster = true;
+      } else if (selectedNodeData.tags?.role === 'master') {
+        isMaster = true;
+      }
     }
 
     return (
-      <div style={{ 
-        marginBottom: 24, 
+      <div style={{
+        marginBottom: 24,
         background: '#fff',
         border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: token.borderRadiusLG,
@@ -1043,45 +1030,45 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         alignItems: 'center',
         gap: 16
       }}>
-        <div style={{ 
-          width: 40, 
-          height: 40, 
-          borderRadius: '50%', 
-          background: token.colorInfoBg, 
-          display: 'flex', 
-          alignItems: 'center', 
+        <div style={{
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          background: token.colorInfoBg,
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
           border: `1px solid ${token.colorInfoBorder}`
         }}>
           <CloudServerOutlined style={{ color: token.colorInfo, fontSize: 20 }} />
         </div>
-        
+
         <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>SERVIDOR SELECIONADO</Text>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Text strong style={{ fontSize: 16 }}>
               {displayLabel}
             </Text>
-            
+
             {displayIp && displayIp !== displayLabel && (
               <Tag style={{ margin: 0, fontFamily: 'monospace' }}>
                 {displayIp}
               </Tag>
             )}
-            
+
             {/* Badge Master/Slave */}
-            <Tag 
-              color={isMaster ? 'green' : 'blue'} 
+            <Tag
+              color={isMaster ? 'green' : 'blue'}
               style={{ margin: 0, textTransform: 'capitalize' }}
             >
               {isMaster ? 'Master' : 'Slave'}
             </Tag>
           </div>
         </div>
-        
-        <Button 
-          type="text" 
-          icon={<EditOutlined />} 
+
+        <Button
+          type="text"
+          icon={<EditOutlined />}
           onClick={() => setStep('node')}
           title="Alterar servidor"
         />
@@ -1106,9 +1093,9 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     >
       {/* Stepper Visual */}
       <div style={{ marginBottom: 32, marginTop: 16 }}>
-        <Steps 
-          current={currentStepIndex} 
-          items={STEPS} 
+        <Steps
+          current={currentStepIndex}
+          items={STEPS}
           size="small"
         />
       </div>
@@ -1201,11 +1188,11 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
                     label={type.display_name} // ✅ Label simples para o input
                     data-search={`${type.display_name} ${type.exporter_type} ${type.category}`}
                   >
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      width: '100%', 
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      width: '100%',
                       padding: '4px 0'
                     }}>
                       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', marginRight: 12 }}>
@@ -1214,10 +1201,10 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
                         </Text>
                         <Text type="secondary" style={{ fontSize: 12 }}>{type.exporter_type}</Text>
                       </div>
-                      <div style={{ 
-                        background: token.colorBgLayout, 
-                        padding: '2px 8px', 
-                        borderRadius: 4, 
+                      <div style={{
+                        background: token.colorBgLayout,
+                        padding: '2px 8px',
+                        borderRadius: 4,
                         fontSize: 10, // Reduzido levemente
                         color: token.colorTextTertiary,
                         whiteSpace: 'nowrap',
@@ -1254,10 +1241,10 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
                 Preencha os campos específicos para <strong>{availableTypes.find(t => t.id === selectedType)?.display_name}</strong>.
               </Text>
             </div>
-            
-            <div style={{ 
-              background: token.colorBgLayout, 
-              padding: 24, 
+
+            <div style={{
+              background: token.colorBgLayout,
+              padding: 24,
               borderRadius: token.borderRadiusLG,
               border: `1px solid ${token.colorBorderSecondary}`
             }}>
@@ -1279,9 +1266,9 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
               <Text type="secondary">Informações adicionais para categorização e filtros.</Text>
             </div>
 
-            <div style={{ 
-              background: token.colorBgLayout, 
-              padding: 24, 
+            <div style={{
+              background: token.colorBgLayout,
+              padding: 24,
               borderRadius: token.borderRadiusLG,
               border: `1px solid ${token.colorBorderSecondary}`
             }}>
@@ -1297,10 +1284,10 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         <div style={{ marginTop: 32, textAlign: 'right', borderTop: `1px solid ${token.colorBorderSecondary}`, paddingTop: 16 }}>
           <Space size="middle"> {/* Aumentar espaçamento entre botões */}
             <Button onClick={onCancel} size="large">Cancelar</Button>
-            
+
             {/* Botão Voltar */}
             {step !== 'node' && (
-              <Button 
+              <Button
                 onClick={handleBack}
                 icon={<ArrowLeftOutlined />}
                 size="large"
@@ -1357,9 +1344,9 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
               </Button>
             )}
             {step === 'metadata' && (
-              <Button 
-                type="primary" 
-                htmlType="submit" 
+              <Button
+                type="primary"
+                htmlType="submit"
                 loading={loading}
                 disabled={!submittable}
                 size="large"

@@ -11,7 +11,7 @@
  * - Reduz latência de 1454ms para ~0ms (usa cache do Context)
  */
 
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
 import { Select, Badge, Spin, App } from 'antd';
 import { CloudServerOutlined } from '@ant-design/icons';
 import { useNodesContext } from '../contexts/NodesContext';
@@ -51,30 +51,45 @@ export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
   const { nodes, mainServer, loading, error: nodesError } = useNodesContext();
   const [selectedNode, setSelectedNode] = useState<string | undefined>(value);
 
+  // ✅ CORREÇÃO: useRef para manter referência estável do callback onChange
+  // Isso resolve o problema de callbacks não-memoizados que são recriados a cada render
+  // Sem isso, o useEffect de seleção inicial seria disparado múltiplas vezes
+  // ou ficaria desatualizado se o callback mudar no componente pai
+  const onChangeRef = useRef(onChange);
+
+  // Atualiza a referência sempre que o onChange mudar
+  // Assim o useEffect sempre usa a versão mais recente do callback
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   useEffect(() => {
     setSelectedNode(value);
   }, [value]);
 
   // ✅ OTIMIZAÇÃO: Selecionar nó padrão quando nodes carregarem
+  // Usa onChangeRef para evitar re-execuções desnecessárias quando o callback é recriado
   useEffect(() => {
     if (!loading && nodes.length > 0 && !selectedNode) {
       if (showAllNodesOption) {
         setSelectedNode('all');
-        if (onChange) {
-          onChange('all', undefined);
+        // Usa a referência estável do callback - sempre pega a versão mais atual
+        if (onChangeRef.current) {
+          onChangeRef.current('all', undefined);
         }
       } else {
         // Selecionar o main_server (primeiro nó Master)
         const mainNode = mainServer ? nodes.find(n => n.addr === mainServer) : nodes[0];
         if (mainNode) {
           setSelectedNode(mainNode.addr);
-          if (onChange) {
-            onChange(mainNode.addr, mainNode);
+          // Usa a referência estável do callback - sempre pega a versão mais atual
+          if (onChangeRef.current) {
+            onChangeRef.current(mainNode.addr, mainNode);
           }
         }
       }
     }
-  }, [loading, nodes, mainServer, selectedNode, showAllNodesOption, onChange]);
+  }, [loading, nodes, mainServer, selectedNode, showAllNodesOption]);
 
   // Mostrar erro se houver
   useEffect(() => {
@@ -163,11 +178,21 @@ export const NodeSelector: React.FC<NodeSelectorProps> = memo(({
 }, (prevProps, nextProps) => {
   // ✅ OTIMIZAÇÃO: Comparação customizada para React.memo
   // Só re-renderiza se props relevantes mudarem
+  //
+  // IMPORTANTE: onChange DEVE ser incluído na comparação para que o useEffect
+  // que atualiza onChangeRef seja executado quando o callback mudar.
+  // Sem isso, o componente manteria uma referência desatualizada do callback,
+  // causando bugs de closures onde o callback captura estado antigo do parent.
+  //
+  // Nota: Se o componente pai passar arrow functions inline (ex: onChange={() => ...}),
+  // o componente vai re-renderizar a cada render do pai. Isso é o comportamento
+  // correto - se o callback muda, o componente precisa atualizar sua referência.
   return (
     prevProps.value === nextProps.value &&
     prevProps.disabled === nextProps.disabled &&
     prevProps.showAllNodesOption === nextProps.showAllNodesOption &&
-    prevProps.placeholder === nextProps.placeholder
+    prevProps.placeholder === nextProps.placeholder &&
+    prevProps.onChange === nextProps.onChange
   );
 });
 

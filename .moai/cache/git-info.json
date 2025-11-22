@@ -1,7 +1,7 @@
 {
-  "branch": "feature/SPEC-ARCH-001",
-  "last_commit": "01b3f01 feat(spec): adicionar SPEC-ARCH-001 com detalhes t\u00e9cnicos espec\u00edficos",
-  "commit_time": "3 minutes ago",
-  "changes": 0,
-  "last_check": "2025-11-20T23:29:41.475435"
+  "branch": "feature/SPEC-PERF-001",
+  "last_commit": "410a5ad revert: reverter mudancas SPEC-PERF-001 para analise",
+  "commit_time": "17 minutes ago",
+  "changes": 12,
+  "last_check": "2025-11-21T19:26:36.576898"
 }

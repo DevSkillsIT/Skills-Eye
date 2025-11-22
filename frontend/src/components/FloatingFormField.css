@@ -1,0 +1,151 @@
+/* Container principal do campo */
+.floating-form-field {
+  position: relative;
+  /* margin-bottom: 24px; Removido para o Grid controlar o espaçamento vertical */
+}
+
+/* Esconder o label padrão do Ant Design para usarmos o nosso customizado */
+.floating-form-field .ant-form-item-label {
+  display: none;
+}
+
+/* Container relativo para posicionamento dos elementos flutuantes */
+.floating-input-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Altura fixa estrita para garantir alinhamento no Grid */
+.floating-input-container.fixed-height {
+  height: 40px;
+}
+
+/* Label que flutua */
+/* Label que flutua */
+.floating-label {
+  position: absolute;
+  left: 12px;
+  top: 8px; /* Posição inicial (dentro do input) */
+  font-size: 14px;
+  color: #595959; /* Mais escuro para não parecer placeholder */
+  font-weight: 500; /* Mais peso */
+  pointer-events: none; /* Permite clicar através do label para focar no input */
+  transition: all 0.2s ease-out;
+  z-index: 10;
+  background-color: transparent;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.required-mark {
+  color: #ff4d4f;
+  margin-left: 2px;
+}
+
+/* Ícone de Helper (Info) */
+.floating-helper-icon {
+  font-size: 14px;
+  color: #1890ff;
+  opacity: 0; /* Invisível por padrão */
+  transition: opacity 0.2s ease-out;
+  pointer-events: auto;
+  cursor: help;
+}
+
+/* 
+   ESTADOS: FOCUS OU COM VALOR 
+   Quando o input tem foco ou tem valor (classe .has-value), movemos o label para cima
+*/
+.floating-input-container:focus-within .floating-label,
+.floating-input-container.has-value .floating-label {
+  top: -24px; /* Move para cima do input */
+  left: 0px;
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Mostrar o ícone de helper apenas quando focado */
+.floating-input-container:focus-within .floating-helper-icon {
+  opacity: 1;
+}
+
+/* Customização do Input do Ant Design para comportar o label dentro */
+.floating-input-container .ant-input,
+.floating-input-container .ant-input-number,
+.floating-input-container .ant-select-selector {
+  height: 40px !important; /* Altura fixa para garantir consistência */
+  padding-top: 4px;
+}
+
+/* Ajuste específico para Select */
+.floating-input-container .ant-select-selector {
+  display: flex;
+  align-items: center;
+}
+
+/* CRITICAL FIX: Forçar Select a ser bloco para evitar "ghost space" de inline-block dentro de divs */
+.floating-input-container .ant-select {
+  display: block;
+  width: 100%;
+}
+
+/* Garantir que wrappers (como do ReferenceValueInput) não adicionem altura extra */
+.floating-input-container > div {
+  display: block;
+}
+
+/* Esconder o placeholder nativo quando NÃO estiver focado (para não sobrepor nosso label) */
+.floating-input-container:not(:focus-within):not(.has-value) .ant-input::placeholder {
+  color: transparent;
+}
+
+/* Esconder o placeholder do Select quando NÃO estiver focado e NÃO tiver valor */
+.floating-input-container:not(:focus-within):not(.has-value) .ant-select-selection-placeholder {
+  color: transparent !important;
+  opacity: 0;
+}
+
+/* Quando focado, o placeholder nativo aparece (pois o label subiu) */
+.floating-input-container:focus-within .ant-input::placeholder {
+  color: #bfbfbf;
+}
+
+/* Quando focado, o placeholder do Select aparece */
+.floating-input-container:focus-within .ant-select-selection-placeholder {
+  color: #bfbfbf !important;
+  opacity: 1;
+}
+
+/* CORREÇÃO DE LARGURA: Checkboxes e outros itens não devem forçar 100% */
+/* Apenas inputs de texto, select e input-number devem ter largura total se desejado */
+.floating-input-container .ant-input,
+.floating-input-container .ant-select,
+.floating-input-container .ant-input-number {
+  width: 100%;
+}
+
+/* Reset para Checkbox/Radio dentro do container se houver */
+.floating-input-container .ant-checkbox-wrapper,
+.floating-input-container .ant-radio-wrapper {
+  width: auto;
+}
+
+/* ==========================================================================
+   CSS GRID LAYOUT (Substitui Row/Col do Ant Design)
+   ========================================================================== */
+
+.form-grid-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Duas colunas iguais */
+  gap: 24px 16px; /* Vertical 24px, Horizontal 16px */
+  width: 100%;
+}
+
+/* Classe utilitária para ocupar largura total (2 colunas) */
+.span-full {
+  grid-column: span 2;
+}
