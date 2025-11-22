@@ -891,31 +891,84 @@ export const consulAPI = {
   /**
    * Busca dados de monitoramento do Consul filtrados por categoria
    *
+   * SPEC-PERF-002: Suporta paginacao, ordenacao e filtros server-side
+   *
    * @param category - Categoria: network-probes, web-probes, system-exporters, database-exporters
-   * @param company - Filtro opcional de empresa
-   * @param site - Filtro opcional de site
-   * @param env - Filtro opcional de ambiente
-   * @returns Dados de serviços filtrados
+   * @param options - Opcoes de paginacao, ordenacao, filtros e signal para abort
+   * @returns Dados de servicos filtrados, paginados e ordenados pelo backend
    */
   getMonitoringData: (
     category: string,
-    company?: string,
-    site?: string,
-    env?: string
-  ) =>
-    api.get<{
+    options?: {
+      // Paginacao server-side
+      page?: number;
+      page_size?: number;
+      // Ordenacao server-side
+      sort_field?: string;
+      sort_order?: 'ascend' | 'descend';
+      // Filtro por no
+      node?: string;
+      // Filtros de metadata (company, site, env, etc)
+      filters?: Record<string, string | undefined>;
+      // AbortSignal para cancelar request
+      signal?: AbortSignal;
+    }
+  ) => {
+    // Construir parametros para o backend
+    const params: Record<string, any> = { category };
+
+    if (options) {
+      // Paginacao
+      if (options.page) params.page = options.page;
+      if (options.page_size) params.page_size = options.page_size;
+
+      // Ordenacao
+      if (options.sort_field) params.sort_field = options.sort_field;
+      if (options.sort_order) {
+        // Converter 'ascend'/'descend' para 'asc'/'desc' do backend
+        params.sort_order = options.sort_order === 'ascend' ? 'asc' : 'desc';
+      }
+
+      // Filtro por no
+      if (options.node) params.node = options.node;
+
+      // Filtros de metadata
+      if (options.filters) {
+        Object.entries(options.filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== '') {
+            params[key] = value;
+          }
+        });
+      }
+    }
+
+    return api.get<{
       success: boolean;
       category: string;
       data: any[];
       total: number;
+      // SPEC-PERF-002: Backend retorna opcoes de filtro para evitar calculo client-side
+      filterOptions?: Record<string, string[]>;
       modules?: string[];
       job_names?: string[];
       cache_age_seconds?: number;
       filters_applied?: Record<string, any>;
       detail?: string;
+      // Metadata de performance
+      _metadata?: {
+        source_name?: string;
+        is_master?: boolean;
+        cache_status?: string;
+        age_seconds?: number;
+        staleness_ms?: number;
+        total_time_ms?: number;
+      };
     }>('/monitoring/data', {
-      params: { category, company, site, env }
-    }),
+      params,
+      signal: options?.signal,
+      timeout: 30000, // 30s timeout
+    });
+  },
 
   /**
    * Busca métricas do Prometheus via PromQL

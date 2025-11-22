@@ -125,6 +125,12 @@ interface Summary {
   uniqueTags: Set<string>;
 }
 
+// ✅ SPEC-PERF-002 GAP 3: Interface para estado atomico de metadataOptions
+interface MetadataState {
+  options: Record<string, string[]>;
+  loaded: boolean;
+}
+
 // ============================================================================
 // COMPONENTE PRINCIPAL
 // ============================================================================
@@ -192,10 +198,14 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     uniqueTags: new Set(),
   });
 
-  // ✅ NOVO: Metadata options para filtros de coluna
-  const [metadataOptions, setMetadataOptions] = useState<Record<string, string[]>>({});
-  // ✅ SPRINT 1 (2025-11-14): Estado de loading para evitar race condition
-  const [metadataOptionsLoaded, setMetadataOptionsLoaded] = useState(false);
+  // ✅ SPEC-PERF-002 GAP 3: Estado atomico para metadataOptions (evita race condition)
+  // Combina options e loaded em um unico estado para atualizacao atomica
+  const [metadataState, setMetadataState] = useState<MetadataState>({
+    options: {},
+    loaded: false
+  });
+  // Desestruturar para compatibilidade com codigo existente
+  const { options: metadataOptions, loaded: metadataOptionsLoaded } = metadataState;
 
   // ✅ SPEC-PERF-002: Sincronizar ref com state para estabilidade no filterDropdown
   useEffect(() => {
@@ -712,211 +722,134 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     getFieldValue,
   ]);
 
-  // Request handler - busca dados do backend com TODAS as transformações
+  // ✅ SPEC-PERF-002: Request handler com paginacao SERVER-SIDE
+  // Backend aplica filtros, ordenacao e paginacao - frontend apenas renderiza
   const requestHandler = useCallback(async (params: any) => {
     try {
-      // ⏱️ PERFORMANCE LOG: Início
+      // Performance log: Inicio
       const perfStart = performance.now();
       if (DEBUG_PERFORMANCE) {
-        console.log('%c[PERF] 🚀 requestHandler INÍCIO', 'color: #00ff00; font-weight: bold');
+        console.log('%c[PERF] requestHandler INICIO (server-side)', 'color: #00ff00; font-weight: bold');
       }
 
-      // ✅ SPEC-PERF-002: Cancelar request anterior para evitar race conditions
+      // Cancelar request anterior para evitar race conditions
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
 
-      // Chamar endpoint unificado com filtro de nó
+      // Chamar API com TODOS os parametros para processamento server-side
       const apiStart = performance.now();
-      const axiosResponse = await consulAPI.getMonitoringData(
-        category,
-        filters.company,
-        filters.site,
-        filters.env
-        // TODO: Quando backend suportar, passar signal: signal
-      );
+      const axiosResponse = await consulAPI.getMonitoringData(category, {
+        // Paginacao server-side
+        page: params?.current || 1,
+        page_size: params?.pageSize || 50,
+        // Ordenacao server-side
+        sort_field: sortField || undefined,
+        sort_order: sortOrder || undefined,
+        // Filtro por no
+        node: selectedNode !== 'all' ? selectedNode : undefined,
+        // Filtros de metadata (todos os filtros ativos)
+        filters: filters,
+        // Signal para abort
+        signal: signal,
+      });
       const apiEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
+        console.log(`%c[PERF] API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
       }
 
-      // ✅ SPEC-PERF-002: Verificar se request foi abortado
+      // Verificar se request foi abortado
       if (signal.aborted) {
         return { data: [], total: 0, success: true };
       }
 
       // Normalizar resposta: axios retorna response.data
-      const response = (axiosResponse && (axiosResponse as any).data) 
-        ? (axiosResponse as any).data 
+      const response = (axiosResponse && (axiosResponse as any).data)
+        ? (axiosResponse as any).data
         : axiosResponse;
 
       if (!response.success) {
-        // eslint-disable-next-line no-console
         console.warn('[MONITORING] Payload inesperado:', response);
         throw new Error(response.detail || 'Erro ao buscar dados');
       }
 
-      // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance
-      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      // Capturar _metadata de performance
       if (response._metadata && isMountedRef.current) {
         setResponseMetadata(response._metadata);
-        console.log(
-          `%c[PERF] 📡 Source: ${response._metadata.source_name} | ` +
-          `Master: ${response._metadata.is_master} | ` +
-          `Cache: ${response._metadata.cache_status} | ` +
-          `Age: ${response._metadata.age_seconds}s | ` +
-          `Staleness: ${response._metadata.staleness_ms}ms | ` +
-          `Total: ${response._metadata.total_time_ms}ms`,
-          'color: #4caf50; font-weight: bold; background: #1b5e20; padding: 4px;'
-        );
+        if (DEBUG_PERFORMANCE) {
+          console.log(
+            `%c[PERF] Source: ${response._metadata.source_name} | ` +
+            `Master: ${response._metadata.is_master} | ` +
+            `Cache: ${response._metadata.cache_status} | ` +
+            `Age: ${response._metadata.age_seconds}s | ` +
+            `Total: ${response._metadata.total_time_ms}ms`,
+            'color: #4caf50; font-weight: bold; background: #1b5e20; padding: 4px;'
+          );
+        }
       }
 
+      // Dados ja vem filtrados, ordenados e paginados do backend
       let rows: MonitoringDataItem[] = response.data || [];
+      const total = response.total || 0;
+
       if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] 📊 Total registros recebidos: ${rows.length}`, 'color: #2196f3; font-weight: bold');
+        console.log(`%c[PERF] Registros na pagina: ${rows.length} | Total: ${total}`, 'color: #2196f3; font-weight: bold');
       }
 
-      // ✅ FILTRO POR NÓ: Compara com node_ip (IP) ao invés de Node (nome)
-      // NodeSelector retorna IP do nó, backend agora retorna node_ip
-      if (selectedNode && selectedNode !== 'all') {
-        rows = rows.filter(item => item.node_ip === selectedNode);
-      }
-
-      // ✅ NOVO: Extrair metadataOptions dinamicamente (ANTES de filtrar)
-      const metadataStart = performance.now();
-      const optionsSets: Record<string, Set<string>> = {};
-      filterFields.forEach((field) => {
-        optionsSets[field.name] = new Set<string>();
-      });
-
-      // Também extrair para colunas fixas que podem ter valores variados
-      ['Node', 'Service'].forEach(field => {
-        optionsSets[field] = new Set<string>();
-      });
-
-      rows.forEach((item) => {
-        // Metadata fields
+      // ✅ SPEC-PERF-002: Usar filterOptions do servidor (evita calculo client-side)
+      if (response.filterOptions && isMountedRef.current) {
+        setMetadataState({ options: response.filterOptions, loaded: true });
+        if (DEBUG_PERFORMANCE) {
+          console.log(`%c[PERF] filterOptions do servidor: ${Object.keys(response.filterOptions).length} campos`, 'color: #9c27b0; font-weight: bold');
+        }
+      } else if (!metadataOptionsLoaded && rows.length > 0) {
+        // Fallback: Se backend nao retornou filterOptions, extrair dos dados recebidos
+        // NOTA: Isso so funciona bem se a pagina atual tiver dados representativos
+        const optionsSets: Record<string, Set<string>> = {};
         filterFields.forEach((field) => {
-          const value = item.Meta?.[field.name];
-          if (value && typeof value === 'string') {
-            optionsSets[field.name].add(value);
-          }
+          optionsSets[field.name] = new Set<string>();
+        });
+        ['Node', 'Service'].forEach(field => {
+          optionsSets[field] = new Set<string>();
         });
 
-        // Fixed fields
-        if (item.Node) optionsSets['Node'].add(item.Node);
-        if (item.Service) optionsSets['Service'].add(item.Service);
-      });
-
-      const options: Record<string, string[]> = {};
-      Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
-        options[fieldName] = Array.from(valueSet).sort();
-      });
-
-      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
-      if (isMountedRef.current) {
-        setMetadataOptions(options);
-        setMetadataOptionsLoaded(true);  // ✅ SPRINT 1: Marcar como carregado
-      }
-      const metadataEnd = performance.now();
-      const metadataFieldsCount = Object.keys(options).length;
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
-      }
-
-      // ✅ CORREÇÃO CRÍTICA: Aplicar filtros de metadata ANTES de filtros avançados
-      const metadataFiltersStart = performance.now();
-      let metadataFilteredRows = rows;
-      
-      // Aplicar filtros de MetadataFilterBar (filtros simples)
-      const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '');
-      if (activeFilters.length > 0) {
-        metadataFilteredRows = rows.filter((item) => {
-          return activeFilters.every(([fieldName, filterValue]) => {
-            // Verificar se é campo de metadata
-            const field = filterFields.find(f => f.name === fieldName);
-            if (field) {
-              const itemValue = item.Meta?.[fieldName];
-              return itemValue === filterValue || String(itemValue) === String(filterValue);
+        rows.forEach((item) => {
+          filterFields.forEach((field) => {
+            const value = item.Meta?.[field.name];
+            if (value && typeof value === 'string') {
+              optionsSets[field.name].add(value);
             }
-            
-            // Verificar se é campo fixo
-            if (fieldName === 'Node') {
-              return item.Node === filterValue;
-            }
-            if (fieldName === 'Service') {
-              return item.Service === filterValue;
-            }
-            
-            return true;
           });
+          if (item.Node) optionsSets['Node'].add(item.Node);
+          if (item.Service) optionsSets['Service'].add(item.Service);
         });
-      }
-      const metadataFiltersEnd = performance.now();
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Filtros metadata em ${(metadataFiltersEnd - metadataFiltersStart).toFixed(0)}ms → ${metadataFilteredRows.length} registros`, 'color: #e91e63; font-weight: bold');
+
+        const options: Record<string, string[]> = {};
+        Object.entries(optionsSets).forEach(([fieldName, valueSet]) => {
+          options[fieldName] = Array.from(valueSet).sort();
+        });
+
+        if (isMountedRef.current) {
+          setMetadataState({ options, loaded: true });
+        }
       }
 
-      // ✅ NOVO: Aplicar filtros avançados (depois dos filtros de metadata)
+      // ✅ PROCESSAMENTO LOCAL PERMITIDO (complexo demais para backend):
+
+      // 1. Filtros avancados (regex, operadores complexos)
       const filtersStart = performance.now();
-      const filteredRows = applyAdvancedFilters(metadataFilteredRows);
+      let processedRows = applyAdvancedFilters(rows);
       const filtersEnd = performance.now();
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
+      if (DEBUG_PERFORMANCE && advancedConditions.length > 0) {
+        console.log(`%c[PERF] Filtros avancados LOCAL em ${(filtersEnd - filtersStart).toFixed(0)}ms`, 'color: #ff5722; font-weight: bold');
       }
 
-      // ✅ NOVO: Calcular summary
-      const summaryStart = performance.now();
-      const nextSummary = filteredRows.reduce(
-        (acc, item) => {
-          acc.total += 1;
-
-          // Por categoria (type)
-          const catKey = item.Meta?.type || 'desconhecido';
-          acc.byCategory[catKey] = (acc.byCategory[catKey] || 0) + 1;
-
-          // Por empresa
-          const companyKey = item.Meta?.company || 'desconhecido';
-          acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
-
-          // Por site
-          const siteKey = item.Meta?.site || 'desconhecido';
-          acc.bySite[siteKey] = (acc.bySite[siteKey] || 0) + 1;
-
-          // Por nó
-          const nodeKey = item.Node || 'desconhecido';
-          acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
-
-          // Tags únicas
-          (item.Tags || []).forEach(tag => acc.uniqueTags.add(tag));
-
-          return acc;
-        },
-        {
-          total: 0,
-          byCategory: {} as Record<string, number>,
-          byCompany: {} as Record<string, number>,
-          bySite: {} as Record<string, number>,
-          byNode: {} as Record<string, number>,
-          uniqueTags: new Set<string>()
-        },
-      );
-      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
-      if (isMountedRef.current) {
-        setSummary(nextSummary);
-      }
-      const summaryEnd = performance.now();
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
-      }
-
-      // ✅ NOVO: Filtrar por keyword (removemos params prop do ProTable)
+      // 2. Busca por keyword (pesquisa global em multiplos campos)
       const keyword = searchValue.trim().toLowerCase();
-      let searchedRows = filteredRows;
       if (keyword) {
-        searchedRows = filteredRows.filter((item) => {
+        processedRows = processedRows.filter((item) => {
           const fields = [
             item.Service,
             item.ID,
@@ -932,71 +865,71 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         });
       }
 
-      // ✅ NOVO: Aplicar ordenação antes de paginar
-      const sortStart = performance.now();
-      let sortedRows = searchedRows;
-      if (sortField && sortOrder) {
-        sortedRows = [...searchedRows].sort((a, b) => {
-          const aValue = getFieldValue(a, sortField);
-          const bValue = getFieldValue(b, sortField);
-
-          let comparison = 0;
-          if (typeof aValue === 'string' && typeof bValue === 'string') {
-            comparison = aValue.localeCompare(bValue);
-          } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-            comparison = aValue - bValue;
-          } else {
-            comparison = String(aValue).localeCompare(String(bValue));
-          }
-
-          return sortOrder === 'ascend' ? comparison : -comparison;
-        });
-      }
-      const sortEnd = performance.now();
-      if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Ordenação em ${(sortEnd - sortStart).toFixed(0)}ms`, 'color: #4caf50; font-weight: bold');
-      }
-
-      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      // 3. Calcular summary para dashboard (agregacoes locais)
+      const summaryStart = performance.now();
+      const nextSummary = processedRows.reduce(
+        (acc, item) => {
+          acc.total += 1;
+          const catKey = item.Meta?.type || 'desconhecido';
+          acc.byCategory[catKey] = (acc.byCategory[catKey] || 0) + 1;
+          const companyKey = item.Meta?.company || 'desconhecido';
+          acc.byCompany[companyKey] = (acc.byCompany[companyKey] || 0) + 1;
+          const siteKey = item.Meta?.site || 'desconhecido';
+          acc.bySite[siteKey] = (acc.bySite[siteKey] || 0) + 1;
+          const nodeKey = item.Node || 'desconhecido';
+          acc.byNode[nodeKey] = (acc.byNode[nodeKey] || 0) + 1;
+          (item.Tags || []).forEach(tag => acc.uniqueTags.add(tag));
+          return acc;
+        },
+        {
+          total: 0,
+          byCategory: {} as Record<string, number>,
+          byCompany: {} as Record<string, number>,
+          bySite: {} as Record<string, number>,
+          byNode: {} as Record<string, number>,
+          uniqueTags: new Set<string>()
+        },
+      );
       if (isMountedRef.current) {
-        setTableSnapshot(sortedRows);
+        setSummary(nextSummary);
       }
-
-      // Paginação
-      const paginationStart = performance.now();
-      const current = params?.current ?? 1;
-      const pageSize = params?.pageSize ?? 50;
-      const start = (current - 1) * pageSize;
-      const paginatedRows = sortedRows.slice(start, start + pageSize);
-      const paginationEnd = performance.now();
+      const summaryEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ⏱️  Paginação em ${(paginationEnd - paginationStart).toFixed(0)}ms`, 'color: #3f51b5; font-weight: bold');
+        console.log(`%c[PERF] Summary LOCAL em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
       }
 
-      // ⏱️ PERFORMANCE LOG: Fim
+      // Salvar snapshot para exportacao CSV
+      if (isMountedRef.current) {
+        setTableSnapshot(processedRows);
+      }
+
+      // Performance log: Fim
       const perfEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
-        console.log(`%c[PERF] ✅ requestHandler COMPLETO em ${(perfEnd - perfStart).toFixed(0)}ms`, 'color: #00ff00; font-weight: bold; font-size: 14px');
+        console.log(`%c[PERF] requestHandler COMPLETO em ${(perfEnd - perfStart).toFixed(0)}ms`, 'color: #00ff00; font-weight: bold; font-size: 14px');
       }
 
+      // Retornar dados - JA vem paginados do servidor
+      // Se aplicamos filtros locais (avancados/keyword), precisamos recalcular
+      const finalData = (advancedConditions.length > 0 || keyword) ? processedRows : rows;
+      const finalTotal = (advancedConditions.length > 0 || keyword) ? processedRows.length : total;
+
       return {
-        data: paginatedRows,
+        data: finalData,
         success: true,
-        total: sortedRows.length
+        total: finalTotal
       };
     } catch (error: any) {
-      // CRÍTICO: Ignorar erros de abort (React 18 Strict Mode double mount)
-      // ✅ SPEC-PERF-002: Tambem ignorar AbortError do AbortController
+      // Ignorar erros de abort (React 18 Strict Mode double mount)
       if (error.code === 'ECONNABORTED' || error.code === 'ERR_CANCELED' || error.name === 'CanceledError' || error.name === 'AbortError') {
-        console.log('[requestHandler] Request aborted (race condition prevention or cleanup)');
+        console.log('[requestHandler] Request aborted (cleanup ou race condition)');
         return {
           data: [],
-          success: true, // ✅ success: true para nao mostrar erro
+          success: true,
           total: 0
         };
       }
 
-      // Debug: console.error('[MONITORING ERROR]', error);
       message.error('Erro ao carregar dados: ' + (error.message || error));
       return {
         data: [],
@@ -1004,7 +937,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         total: 0
       };
     }
-  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, getFieldValue]);
+  }, [category, filters, selectedNode, searchValue, sortField, sortOrder, filterFields, applyAdvancedFilters, advancedConditions, metadataOptionsLoaded]);
 
   // ✅ NOVO: Handler de edição
   const handleEdit = useCallback((record: MonitoringDataItem) => {
@@ -1160,9 +1093,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     // ✅ SPEC-PERF-002: Limpar cache de getFieldValue ao mudar categoria
     fieldValueCacheRef.current = {};
 
-    // ✅ SPEC-PERF-002: Limpar metadataOptions ao mudar categoria
-    setMetadataOptions({});
-    setMetadataOptionsLoaded(false);
+    // ✅ SPEC-PERF-002: Limpar metadataOptions ao mudar categoria (atomico)
+    setMetadataState({ options: {}, loaded: false });
 
     // Reload após resetar estados (chamada única)
     actionRef.current?.reload();
@@ -1464,6 +1396,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             request={requestHandler}
             onChange={handleTableChange}
             search={false}
+            // ✅ SPEC-PERF-002 GAP 4: Virtualizacao para grandes volumes
+            virtual={true}
             pagination={{
               defaultPageSize: 50,
               showSizeChanger: true,
@@ -1472,8 +1406,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               style: { marginBottom: 8 },
             }}
             scroll={{
-              x: 2000, // Força scroll horizontal para fixed columns
-              y: 'calc(100vh - 450px)'
+              x: 2000, // Forca scroll horizontal para fixed columns
+              y: 600    // Altura fixa necessaria para virtualizacao funcionar
             }}
             sticky
             options={{
