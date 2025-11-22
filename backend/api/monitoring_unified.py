@@ -19,7 +19,7 @@ AUTOR: Sistema de Refatoração Skills Eye v2.0
 DATA: 2025-11-13
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
@@ -29,7 +29,9 @@ import time
 from core.consul_kv_config_manager import ConsulKVConfigManager
 from core.consul_manager import ConsulManager
 from core.categorization_rule_engine import CategorizationRuleEngine
-from core.cache_manager import get_cache  # ✅ SPRINT 2: Usar LocalCache global
+from core.cache_manager import get_cache  # SPRINT 2: Usar LocalCache global
+from core.monitoring_cache import get_monitoring_cache  # SPEC-PERF-002: Cache intermediario
+from core.monitoring_filters import process_monitoring_data  # SPEC-PERF-002: Filtros server-side
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/monitoring", tags=["Monitoring Unified"])
@@ -39,10 +41,14 @@ kv_manager = ConsulKVConfigManager(ttl_seconds=300)  # Cache de 5 minutos
 consul_manager = ConsulManager()
 categorization_engine = CategorizationRuleEngine(kv_manager)
 
-# ✅ SPRINT 2 (2025-11-15): Usar LocalCache global para integração com Cache Management
+# SPRINT 2 (2025-11-15): Usar LocalCache global para integracao com Cache Management
 # REMOVIDO: _nodes_cache e _services_cache internos
-# NOVO: Usar get_cache() para cache centralizado e monitorável
+# NOVO: Usar get_cache() para cache centralizado e monitoravel
 cache = get_cache(ttl_seconds=60)
+
+# SPEC-PERF-002: Cache intermediario para paginacao server-side
+# Necessario porque Consul nao suporta paginacao nativa (Issue #9422)
+monitoring_data_cache = get_monitoring_cache(ttl_seconds=30)
 
 
 async def get_nodes_cached(consul_mgr: ConsulManager) -> List[Dict[str, Any]]:
@@ -117,34 +123,55 @@ async def get_services_cached(
 
 @router.get("/data")
 async def get_monitoring_data(
+    request: Request,
     category: str = Query(..., description="Categoria: network-probes, web-probes, etc"),
     company: Optional[str] = Query(None, description="Filtrar por empresa"),
     site: Optional[str] = Query(None, description="Filtrar por site"),
-    env: Optional[str] = Query(None, description="Filtrar por ambiente")
+    env: Optional[str] = Query(None, description="Filtrar por ambiente"),
+    # SPEC-PERF-002: Parametros de paginacao server-side
+    page: Optional[int] = Query(None, ge=1, description="Numero da pagina (1-based)"),
+    page_size: Optional[int] = Query(None, ge=10, le=200, description="Itens por pagina (10-200)"),
+    sort_field: Optional[str] = Query(None, description="Campo para ordenacao"),
+    sort_order: Optional[str] = Query(None, description="Direcao: ascend | descend"),
+    node: Optional[str] = Query(None, description="Filtrar por IP do no")
 ):
     """
-    Endpoint para buscar SERVIÇOS do Consul filtrados por categoria
+    Endpoint para buscar SERVICOS do Consul filtrados por categoria
 
-    SPRINT 2 OTIMIZAÇÃO (2025-11-16):
+    SPEC-PERF-002 FASE 1 (2025-11-22):
+    - Paginacao server-side (page, page_size)
+    - Filtros server-side (node, metadata dinamico)
+    - Ordenacao server-side (sort_field, sort_order)
+    - filterOptions para dropdowns de filtro
+    - Cache intermediario TTL 30s (Consul nao suporta paginacao nativa)
+
+    SPRINT 2 OTIMIZACAO (2025-11-16):
     - Cache COMPLETO do resultado por categoria + filtros (TTL: 30s)
-    - Reduz latência de ~250ms → <20ms (12.5x mais rápido!)
+    - Reduz latencia de ~250ms -> <20ms (12.5x mais rapido!)
 
     FLUXO REFATORADO:
-    1. Busca sites do KV (metadata/sites) - mapeia IP → site code
-    2. Busca campos do KV (metadata/fields) - campos disponíveis
-    3. Busca regras de categorização (categorization/rules)
-    4. Busca TODOS os serviços do Consul
-    5. Aplica categorização usando CategorizationRuleEngine
-    6. Filtra serviços por categoria solicitada
-    7. Adiciona informações do site (code, name) ao serviço
-    8. Aplica filtros adicionais (company, site, env)
-    9. Retorna dados formatados
+    1. Busca sites do KV (metadata/sites) - mapeia IP -> site code
+    2. Busca campos do KV (metadata/fields) - campos disponiveis
+    3. Busca regras de categorizacao (categorization/rules)
+    4. Busca TODOS os servicos do Consul
+    5. Aplica categorizacao usando CategorizationRuleEngine
+    6. Filtra servicos por categoria solicitada
+    7. Adiciona informacoes do site (code, name) ao servico
+    8. Aplica filtros adicionais (company, site, env, node)
+    9. Aplica ordenacao server-side
+    10. Aplica paginacao server-side
+    11. Retorna dados formatados com filterOptions
 
     Args:
         category: Categoria de monitoramento (ex: network-probes)
         company: Filtro de empresa (opcional)
         site: Filtro de site (opcional)
         env: Filtro de ambiente (opcional)
+        page: Numero da pagina, comeca em 1 (opcional - sem paginacao se omitido)
+        page_size: Itens por pagina, 10-200 (opcional - sem paginacao se omitido)
+        sort_field: Campo para ordenacao (opcional)
+        sort_order: Direcao: 'ascend' ou 'descend' (opcional)
+        node: IP do no para filtrar (opcional)
 
     Returns:
         ```json
@@ -158,6 +185,7 @@ async def get_monitoring_data(
                     "Address": "10.0.0.1",
                     "Port": 9115,
                     "Node": "consul-server-1",
+                    "node_ip": "172.16.1.26",
                     "site_code": "palmas",
                     "site_name": "Palmas",
                     "Meta": {
@@ -170,6 +198,13 @@ async def get_monitoring_data(
                 }
             ],
             "total": 150,
+            "page": 1,
+            "pageSize": 50,
+            "filterOptions": {
+                "company": ["Empresa A", "Empresa B"],
+                "env": ["dev", "prod"],
+                "site": ["palmas", "rio"]
+            },
             "available_fields": ["company", "site", "env", "name", ...]
         }
         ```
@@ -384,15 +419,77 @@ async def get_monitoring_data(
             logger.error(f"[MONITORING DATA ERROR] {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
-    
-    # ✅ USAR CACHE - Chama fetch_data() com cache wrapper
-    return await get_services_cached(
+
+    # USAR CACHE - Chama fetch_data() com cache wrapper
+    raw_result = await get_services_cached(
         category=category,
         company=company,
         site=site,
         env=env,
         fetch_function=fetch_data
     )
+
+    # SPEC-PERF-002: Processar dados com paginacao, filtros e ordenacao server-side
+    # Se page e page_size nao forem passados, retorna todos (compatibilidade backward)
+
+    # Extrair filtros dinamicos dos query params (exceto os ja processados)
+    excluded_params = {'category', 'company', 'site', 'env', 'page', 'page_size',
+                       'sort_field', 'sort_order', 'node'}
+    dynamic_filters = {}
+    for key, value in request.query_params.items():
+        if key not in excluded_params and value:
+            dynamic_filters[key] = value
+
+    # Combinar filtros fixos com dinamicos
+    all_filters = {
+        'company': company,
+        'site': site,
+        'env': env,
+        **dynamic_filters
+    }
+
+    # Processar dados server-side
+    processed = process_monitoring_data(
+        data=raw_result.get('data', []),
+        node=node,
+        filters=all_filters,
+        sort_field=sort_field,
+        sort_order=sort_order,
+        page=page,
+        page_size=page_size
+    )
+
+    # Montar resposta final mantendo estrutura compativel
+    response = {
+        "success": True,
+        "category": category,
+        "data": processed["data"],
+        "total": processed["total"],
+        "available_fields": raw_result.get('available_fields', []),
+        "filters_applied": {
+            "company": company,
+            "site": site,
+            "env": env,
+            "node": node,
+            **dynamic_filters
+        },
+        "metadata": raw_result.get('metadata', {})
+    }
+
+    # Adicionar campos de paginacao se foram solicitados
+    if page is not None and page_size is not None:
+        response["page"] = processed["page"]
+        response["pageSize"] = processed["page_size"]
+        response["filterOptions"] = processed["filter_options"]
+
+        # Calcular total de paginas
+        total_pages = (processed["total"] + page_size - 1) // page_size
+        response["totalPages"] = total_pages
+    else:
+        # Sem paginacao - incluir filterOptions mesmo assim para uso futuro
+        response["filterOptions"] = processed["filter_options"]
+
+    return response
 
 
 # ============================================================================
@@ -662,4 +759,77 @@ async def get_monitoring_categories():
 
     except Exception as e:
         logger.error(f"[MONITORING CATEGORIES ERROR] {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ENDPOINT 4: /monitoring/cache - GERENCIAMENTO DO CACHE (SPEC-PERF-002)
+# ============================================================================
+
+@router.get("/cache/stats")
+async def get_monitoring_cache_stats():
+    """
+    Retorna estatisticas do cache de monitoramento.
+
+    SPEC-PERF-002: Permite monitorar eficiencia do cache.
+
+    Returns:
+        ```json
+        {
+            "success": true,
+            "stats": {
+                "requests": 150,
+                "cache_hits": 142,
+                "cache_misses": 8,
+                "hit_rate_percent": 94.67,
+                "ttl_seconds": 30
+            }
+        }
+        ```
+    """
+    try:
+        stats = await monitoring_data_cache.get_stats()
+        return {
+            "success": True,
+            "stats": stats
+        }
+    except Exception as e:
+        logger.error(f"[CACHE STATS ERROR] {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cache/invalidate")
+async def invalidate_monitoring_cache(
+    category: Optional[str] = Query(None, description="Categoria para invalidar (None = todas)")
+):
+    """
+    Invalida cache de monitoramento para forcar refresh.
+
+    SPEC-PERF-002: Util quando dados mudam e usuario quer ver atualizacao imediata.
+
+    Args:
+        category: Categoria especifica para invalidar (opcional)
+
+    Returns:
+        ```json
+        {
+            "success": true,
+            "invalidated_entries": 3,
+            "message": "Cache invalidado para categoria 'network-probes'"
+        }
+        ```
+    """
+    try:
+        count = await monitoring_data_cache.invalidate(category)
+        msg = (
+            f"Cache invalidado para categoria '{category}'"
+            if category else "Todo cache de monitoramento invalidado"
+        )
+        return {
+            "success": True,
+            "invalidated_entries": count,
+            "message": msg
+        }
+    except Exception as e:
+        logger.error(f"[CACHE INVALIDATE ERROR] {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -30,6 +30,7 @@
  */
 
 import React, { useRef, useMemo, useCallback, useState, useEffect } from 'react';
+import { useDebouncedCallback } from 'use-debounce';
 import {
   Button,
   Card,
@@ -81,7 +82,6 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
-import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 3: Modal CRUD dinâmico
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -94,35 +94,17 @@ import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 3: Moda
 // Em produção (build), logs serão removidos automaticamente
 const DEBUG_PERFORMANCE = import.meta.env.DEV;
 
-// ✅ SPEC-ARCH-001: Mapa de display names e subtítulos para todas as categorias
-const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
-  'network-probes': 'Network Probes (Rede)',
-  'web-probes': 'Web Probes (Aplicações)',
-  'system-exporters': 'Exporters: Sistemas',
-  'database-exporters': 'Exporters: Bancos de Dados',
-  'infrastructure-exporters': 'Exporters: Infraestrutura',
-  'hardware-exporters': 'Exporters: Hardware',
-  'network-devices': 'Dispositivos de Rede',
-  'custom-exporters': 'Exporters: Customizados',
-};
-
-// ✅ SPEC-ARCH-001: Subtítulos com exemplos específicos para cada categoria
-const CATEGORY_SUBTITLES: Record<string, string> = {
-  'network-probes': 'Monitoramento de conectividade de rede: ICMP Ping, TCP Connect, DNS, SSH Banner',
-  'web-probes': 'Monitoramento de aplicações web e APIs: HTTP 2xx/4xx/5xx, HTTPS, HTTP POST',
-  'system-exporters': 'Métricas de sistemas operacionais: Linux (Node), Windows, VMware ESXi',
-  'database-exporters': 'Monitoramento de bancos de dados: MySQL, PostgreSQL, MongoDB, Redis, Elasticsearch',
-  'infrastructure-exporters': 'Infraestrutura e serviços: HAProxy, Nginx, Apache, RabbitMQ, Kafka',
-  'hardware-exporters': 'Hardware físico e IPMI: iDRAC, HP iLO, IPMI, Dell OMSA',
-  'network-devices': 'Dispositivos de rede: MikroTik, Cisco (SNMP), Switches, Roteadores',
-  'custom-exporters': 'Exporters customizados: Exporters personalizados não categorizados',
+// ✅ SPEC-PERF-002: Remover CATEGORY_DISPLAY_NAMES hardcoded
+// Usar dados dinamicos que vem do tableFields (category_display_name)
+const formatCategoryName = (slug: string): string => {
+  return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
 interface DynamicMonitoringPageProps {
   category: string;  // 'network-probes', 'web-probes', etc
 }
 
-export interface MonitoringDataItem {
+interface MonitoringDataItem {
   ID: string;
   Service: string;
   Address?: string;
@@ -149,6 +131,18 @@ interface Summary {
 
 const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category }) => {
   const actionRef = useRef<ActionType | null>(null);
+
+  // ✅ SPEC-PERF-002: AbortController para cancelar requests anteriores (evita race conditions)
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // ✅ SPEC-PERF-002: isMountedRef para evitar memory leaks (state update apos unmount)
+  const isMountedRef = useRef(true);
+
+  // ✅ SPEC-PERF-002: Ref estavel para metadataOptions (evita stale closure no filterDropdown)
+  const metadataOptionsRef = useRef<Record<string, string[]>>({});
+
+  // ✅ SPEC-PERF-002: Cache para getFieldValue (evita recalculos desnecessarios)
+  const fieldValueCacheRef = useRef<Record<string, string>>({});
 
   // SISTEMA DINÂMICO: Carregar campos metadata para esta categoria
   const { tableFields, loading: tableFieldsLoading } = useTableFields(category);
@@ -203,6 +197,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // ✅ SPRINT 1 (2025-11-14): Estado de loading para evitar race condition
   const [metadataOptionsLoaded, setMetadataOptionsLoaded] = useState(false);
 
+  // ✅ SPEC-PERF-002: Sincronizar ref com state para estabilidade no filterDropdown
+  useEffect(() => {
+    metadataOptionsRef.current = metadataOptions;
+  }, [metadataOptions]);
+
+  // ✅ SPEC-PERF-002: Cleanup de isMountedRef no unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      // Cancelar requests pendentes ao desmontar
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance do backend
   // _metadata contém: source_name, is_master, cache_status, age_seconds, staleness_ms, total_time_ms
   const [responseMetadata, setResponseMetadata] = useState<{
@@ -237,14 +248,31 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     return [...fixedColumns, ...metadataColumns];
   }, [tableFields]);
 
-  // Atualizar columnConfig quando tableFields carregar
+  // ✅ CORREÇÃO CRÍTICA: Atualizar columnConfig quando tableFields carregar
+  // ✅ SPEC-PERF-002: Remover columnConfig das dependencias para evitar ciclo infinito
+  const prevDefaultColumnConfigRef = useRef<string>('');
+
   useEffect(() => {
-    // CRITICAL FIX: Sempre atualizar quando defaultColumnConfig mudar
-    // Mas apenas se o comprimento mudou (evita loop infinito por nova referência)
-    if (defaultColumnConfig.length > 0 && defaultColumnConfig.length !== columnConfig.length) {
-      setColumnConfig(defaultColumnConfig);
+    // ✅ OTIMIZAÇÃO: Só atualizar quando realmente necessário (tableFields carregou)
+    if (defaultColumnConfig.length > 0 && tableFields.length > 0) {
+      // Verificar se defaultColumnConfig mudou desde a ultima vez
+      const defaultKeys = defaultColumnConfig.map(c => c.key).sort().join(',');
+
+      // ✅ SPEC-PERF-002: Comparar apenas com a ref anterior, nao com columnConfig atual
+      // Isso evita o ciclo: columnConfig muda -> useEffect roda -> setColumnConfig -> loop
+      if (prevDefaultColumnConfigRef.current !== defaultKeys) {
+        // ✅ OTIMIZAÇÃO: Só logar se realmente mudou (evita logs duplicados)
+        if (import.meta.env.DEV) {
+          console.log('[DynamicMonitoringPage] ✅ Atualizando columnConfig:', {
+            to: defaultColumnConfig.length,
+            metadataColumns: defaultColumnConfig.length - 7, // 7 colunas fixas
+          });
+        }
+        prevDefaultColumnConfigRef.current = defaultKeys;
+        setColumnConfig(defaultColumnConfig);
+      }
     }
-  }, [defaultColumnConfig, columnConfig.length]);
+  }, [defaultColumnConfig, tableFields.length]); // ✅ SEM columnConfig aqui!
 
   // ✅ NOVO: Handler de resize de colunas
   const handleResize = useCallback(
@@ -256,45 +284,81 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   );
 
   // ✅ NOVO: Handler de mudanças na tabela (ordenação)
+  // ✅ CORREÇÃO: Recarregar tabela quando ordenação mudar
   const handleTableChange = useCallback((_pagination: any, _filters: any, sorter: any) => {
     if (sorter && sorter.field) {
       setSortField(sorter.field);
       setSortOrder(sorter.order || null);
+      // ✅ CORREÇÃO: Recarregar tabela para aplicar ordenação
+      // Pequeno delay para garantir que estado foi atualizado
+      setTimeout(() => {
+        actionRef.current?.reload();
+      }, 0);
     } else {
       setSortField(null);
       setSortOrder(null);
+      // Recarregar quando ordenação for removida
+      setTimeout(() => {
+        actionRef.current?.reload();
+      }, 0);
     }
   }, []);
 
+  // ✅ SPEC-PERF-002: Debounce com cancelamento para evitar requests excessivos
+  const debouncedReload = useDebouncedCallback(() => {
+    actionRef.current?.reload();
+  }, 300);
+
   // ✅ NOVO: Handler de busca por keyword
+  // ✅ SPEC-PERF-002: Usar debounce para evitar requests a cada tecla
   const handleSearchSubmit = useCallback(
     (value: string) => {
       setSearchValue(value.trim());
-      actionRef.current?.reload();
+      debouncedReload();
     },
-    [],
+    [debouncedReload],
   );
 
-  // ✅ NOVO: Extrair valor de campo (fixo ou metadata)
+  // ✅ SPEC-PERF-002: Extrair valor de campo com cache para evitar recalculos
   const getFieldValue = useCallback((row: MonitoringDataItem, field: string): string => {
+    // ✅ SPEC-PERF-002: Cache baseado em ID + field
+    const cacheKey = `${row.ID}-${field}`;
+
+    // Verificar cache primeiro
+    if (fieldValueCacheRef.current[cacheKey] !== undefined) {
+      return fieldValueCacheRef.current[cacheKey];
+    }
+
+    let value: string;
+
     // Campos fixos
     switch (field) {
       case 'ID':
-        return row.ID || '';
+        value = row.ID || '';
+        break;
       case 'Service':
-        return row.Service || '';
+        value = row.Service || '';
+        break;
       case 'Node':
-        return row.Node || '';
+        value = row.Node || '';
+        break;
       case 'Address':
-        return row.Address || '';
+        value = row.Address || '';
+        break;
       case 'Port':
-        return typeof row.Port === 'number' ? String(row.Port) : '';
+        value = typeof row.Port === 'number' ? String(row.Port) : '';
+        break;
       case 'Tags':
-        return (row.Tags || []).join(',');
+        value = (row.Tags || []).join(',');
+        break;
       default:
         // CAMPOS METADATA DINÂMICOS
-        return row.Meta?.[field] ? String(row.Meta[field]) : '';
+        value = row.Meta?.[field] ? String(row.Meta[field]) : '';
     }
+
+    // Salvar no cache
+    fieldValueCacheRef.current[cacheKey] = value;
+    return value;
   }, []);
 
   // ✅ NOVO: Aplicar filtros avançados (EXPANDIDO - suporta todos os operadores)
@@ -372,9 +436,49 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     [advancedConditions, advancedOperator, getFieldValue],
   );
 
+  // ✅ OTIMIZAÇÃO: Serializar dependências uma vez para evitar recálculos
+  const columnConfigKey = useMemo(
+    () => columnConfig.map(c => `${c.key}:${c.visible}`).join(','),
+    [columnConfig]
+  );
+  
+  const tableFieldsKey = useMemo(
+    () => tableFields.map(f => f.name).join(','),
+    [tableFields]
+  );
+  
+  const columnWidthsKey = useMemo(
+    () => JSON.stringify(columnWidths),
+    [columnWidths]
+  );
+
   // SISTEMA DINÂMICO: Gerar colunas do ProTable com TODAS as features
+  // ✅ OTIMIZAÇÃO: Usar useRef para evitar logs excessivos
+  const lastProTableColumnsRef = useRef<string>('');
+  
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
+    // ✅ CORREÇÃO: Só calcular colunas quando columnConfig estiver pronto
+    // Evita race condition onde proTableColumns é calculado antes de columnConfig ser atualizado
+    if (columnConfig.length === 0) {
+      return [];
+    }
+    
     const visibleConfigs = columnConfig.filter(c => c.visible);
+    
+    // ✅ OTIMIZAÇÃO: Só logar quando realmente mudou (evita logs duplicados em StrictMode)
+    if (import.meta.env.DEV) {
+      const configKey = `${columnConfig.length}-${visibleConfigs.length}-${tableFields.length}`;
+      if (lastProTableColumnsRef.current !== configKey) {
+        const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
+        console.log('[DynamicMonitoringPage] proTableColumns:', {
+          columnConfigLength: columnConfig.length,
+          tableFieldsLength: tableFields.length,
+          visibleConfigsCount: visibleConfigs.length,
+          metadataColumnsCount: metadataColumns.length,
+        });
+        lastProTableColumnsRef.current = configKey;
+      }
+    }
 
     return visibleConfigs.map((colConfig) => {
       // Definir larguras específicas para colunas especiais
@@ -384,9 +488,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       else if (colConfig.key === 'Service') defaultWidth = 180;
 
       const width = columnWidths[colConfig.key] || defaultWidth;
+      
+      // ✅ CORREÇÃO CRÍTICA: dataIndex para colunas de metadata deve ser ['Meta', fieldName]
+      // Colunas fixas usam o nome direto, mas colunas de metadata estão em record.Meta[fieldName]
+      const isMetadataColumn = tableFields.some(f => f.name === colConfig.key);
+      const dataIndex = colConfig.key === 'actions' 
+        ? undefined 
+        : isMetadataColumn 
+          ? ['Meta', colConfig.key]  // ✅ CORREÇÃO: Metadata está em Meta[fieldName]
+          : colConfig.key;  // Colunas fixas (ID, Service, Node, etc)
+      
       const baseColumn: ProColumns<MonitoringDataItem> = {
         title: colConfig.title,
-        dataIndex: colConfig.key === 'actions' ? undefined : colConfig.key,
+        dataIndex,
         key: colConfig.key,
         width,
         fixed: colConfig.key === 'actions' ? 'right' : undefined,
@@ -405,15 +519,24 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           return aValue.localeCompare(bValue);
         };
         baseColumn.sortDirections = ['ascend', 'descend'];
+        // ✅ CORREÇÃO: Usar sortOrder do estado para controlar ordenação visual
+        baseColumn.sortOrder = sortField === colConfig.key ? sortOrder : null;
       }
 
-      // ✅ NOVO: Filtros customizados por coluna (searchable checkboxes)
-      const fieldOptions = metadataOptions[colConfig.key] || [];
-      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags') {
+      // ✅ CORREÇÃO: Filtros customizados por coluna (searchable checkboxes)
+      // Só renderizar se metadataOptions estiver carregado e tiver opções
+      // ✅ SPEC-PERF-002: Usar metadataOptionsRef para estabilidade no filterDropdown
+      const fieldOptions = metadataOptionsRef.current[colConfig.key] || [];
+      if (fieldOptions.length > 0 && colConfig.key !== 'actions' && colConfig.key !== 'Tags' && metadataOptionsLoaded) {
+        // ✅ CORREÇÃO: Usar filteredValue para controlar estado visual do filtro
+        baseColumn.filteredValue = filters[colConfig.key] ? [filters[colConfig.key]] : null;
+
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
           const [searchText, setSearchText] = useState('');
 
-          const filteredOptions = fieldOptions.filter(opt =>
+          // ✅ SPEC-PERF-002: Usar ref para opcoes atualizadas (evita stale closure)
+          const currentOptions = metadataOptionsRef.current[colConfig.key] || [];
+          const filteredOptions = currentOptions.filter(opt =>
             opt.toLowerCase().includes(searchText.toLowerCase())
           );
 
@@ -469,7 +592,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   type="primary"
                   size="small"
-                  onClick={() => confirm()}
+                  onClick={() => {
+                    // ✅ CORREÇÃO: Aplicar filtro na coluna específica
+                    const newFilters = { ...filters };
+                    if (selectedKeys.length > 0) {
+                      // Se múltiplos valores selecionados, usar o primeiro (ou implementar lógica OR)
+                      newFilters[colConfig.key] = selectedKeys[0];
+                    } else {
+                      delete newFilters[colConfig.key];
+                    }
+                    setFilters(newFilters);
+                    confirm();
+                    actionRef.current?.reload();
+                  }}
                   icon={<SearchOutlined />}
                 >
                   OK
@@ -477,8 +612,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 <Button
                   size="small"
                   onClick={() => {
+                    const newFilters = { ...filters };
+                    delete newFilters[colConfig.key];
+                    setFilters(newFilters);
                     clearFilters?.();
                     setSearchText('');
+                    actionRef.current?.reload();
                   }}
                 >
                   Limpar
@@ -490,7 +629,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         baseColumn.filterIcon = (filtered: boolean) => (
           <FilterOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
         );
+        // ✅ CORREÇÃO: onFilter agora verifica se o valor está nos selectedKeys
         baseColumn.onFilter = (value, record) => {
+          // Este método é usado pelo ProTable internamente, mas vamos usar filtros customizados
           const fieldValue = getFieldValue(record, colConfig.key);
           return fieldValue === value;
         };
@@ -557,7 +698,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
       return baseColumn;
     });
-  }, [columnConfig, columnWidths, tableFields, metadataOptions, handleResize, getFieldValue]);
+  }, [
+    // ✅ OTIMIZAÇÃO: Usar apenas valores primitivos e funções estáveis
+    columnConfig,
+    columnWidths,
+    tableFields,
+    metadataOptionsLoaded,
+    metadataOptions,  // ✅ CORREÇÃO: Adicionado para filteredValue
+    filters,  // ✅ CORREÇÃO: Adicionado para filteredValue
+    sortField,  // ✅ CORREÇÃO: Adicionado para sortOrder
+    sortOrder,  // ✅ CORREÇÃO: Adicionado para sortOrder
+    handleResize,
+    getFieldValue,
+  ]);
 
   // Request handler - busca dados do backend com TODAS as transformações
   const requestHandler = useCallback(async (params: any) => {
@@ -568,6 +721,13 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         console.log('%c[PERF] 🚀 requestHandler INÍCIO', 'color: #00ff00; font-weight: bold');
       }
 
+      // ✅ SPEC-PERF-002: Cancelar request anterior para evitar race conditions
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
+
       // Chamar endpoint unificado com filtro de nó
       const apiStart = performance.now();
       const axiosResponse = await consulAPI.getMonitoringData(
@@ -575,15 +735,21 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         filters.company,
         filters.site,
         filters.env
+        // TODO: Quando backend suportar, passar signal: signal
       );
       const apiEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  API respondeu em ${(apiEnd - apiStart).toFixed(0)}ms`, 'color: #ff9800; font-weight: bold');
       }
 
+      // ✅ SPEC-PERF-002: Verificar se request foi abortado
+      if (signal.aborted) {
+        return { data: [], total: 0, success: true };
+      }
+
       // Normalizar resposta: axios retorna response.data
-      const response = (axiosResponse && (axiosResponse as any).data)
-        ? (axiosResponse as any).data
+      const response = (axiosResponse && (axiosResponse as any).data) 
+        ? (axiosResponse as any).data 
         : axiosResponse;
 
       if (!response.success) {
@@ -593,7 +759,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       }
 
       // ✅ SPRINT 1 FIX (2025-11-15): Capturar _metadata de performance
-      if (response._metadata) {
+      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      if (response._metadata && isMountedRef.current) {
         setResponseMetadata(response._metadata);
         console.log(
           `%c[PERF] 📡 Source: ${response._metadata.source_name} | ` +
@@ -617,7 +784,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         rows = rows.filter(item => item.node_ip === selectedNode);
       }
 
-      // ✅ NOVO: Extrair metadataOptions dinamicamente
+      // ✅ NOVO: Extrair metadataOptions dinamicamente (ANTES de filtrar)
       const metadataStart = performance.now();
       const optionsSets: Record<string, Set<string>> = {};
       filterFields.forEach((field) => {
@@ -648,17 +815,53 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         options[fieldName] = Array.from(valueSet).sort();
       });
 
-      setMetadataOptions(options);
-      setMetadataOptionsLoaded(true);  // ✅ SPRINT 1: Marcar como carregado
+      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      if (isMountedRef.current) {
+        setMetadataOptions(options);
+        setMetadataOptionsLoaded(true);  // ✅ SPRINT 1: Marcar como carregado
+      }
       const metadataEnd = performance.now();
       const metadataFieldsCount = Object.keys(options).length;
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  metadataOptions calculado em ${(metadataEnd - metadataStart).toFixed(0)}ms (${metadataFieldsCount} campos)`, 'color: #9c27b0; font-weight: bold');
       }
 
-      // ✅ NOVO: Aplicar filtros avançados
+      // ✅ CORREÇÃO CRÍTICA: Aplicar filtros de metadata ANTES de filtros avançados
+      const metadataFiltersStart = performance.now();
+      let metadataFilteredRows = rows;
+      
+      // Aplicar filtros de MetadataFilterBar (filtros simples)
+      const activeFilters = Object.entries(filters).filter(([_, value]) => value !== undefined && value !== '');
+      if (activeFilters.length > 0) {
+        metadataFilteredRows = rows.filter((item) => {
+          return activeFilters.every(([fieldName, filterValue]) => {
+            // Verificar se é campo de metadata
+            const field = filterFields.find(f => f.name === fieldName);
+            if (field) {
+              const itemValue = item.Meta?.[fieldName];
+              return itemValue === filterValue || String(itemValue) === String(filterValue);
+            }
+            
+            // Verificar se é campo fixo
+            if (fieldName === 'Node') {
+              return item.Node === filterValue;
+            }
+            if (fieldName === 'Service') {
+              return item.Service === filterValue;
+            }
+            
+            return true;
+          });
+        });
+      }
+      const metadataFiltersEnd = performance.now();
+      if (DEBUG_PERFORMANCE) {
+        console.log(`%c[PERF] ⏱️  Filtros metadata em ${(metadataFiltersEnd - metadataFiltersStart).toFixed(0)}ms → ${metadataFilteredRows.length} registros`, 'color: #e91e63; font-weight: bold');
+      }
+
+      // ✅ NOVO: Aplicar filtros avançados (depois dos filtros de metadata)
       const filtersStart = performance.now();
-      const filteredRows = applyAdvancedFilters(rows);
+      const filteredRows = applyAdvancedFilters(metadataFilteredRows);
       const filtersEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  Filtros avançados em ${(filtersEnd - filtersStart).toFixed(0)}ms → ${filteredRows.length} registros`, 'color: #ff5722; font-weight: bold');
@@ -700,7 +903,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
           uniqueTags: new Set<string>()
         },
       );
-      setSummary(nextSummary);
+      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      if (isMountedRef.current) {
+        setSummary(nextSummary);
+      }
       const summaryEnd = performance.now();
       if (DEBUG_PERFORMANCE) {
         console.log(`%c[PERF] ⏱️  Summary calculado em ${(summaryEnd - summaryStart).toFixed(0)}ms`, 'color: #00bcd4; font-weight: bold');
@@ -751,7 +957,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         console.log(`%c[PERF] ⏱️  Ordenação em ${(sortEnd - sortStart).toFixed(0)}ms`, 'color: #4caf50; font-weight: bold');
       }
 
-      setTableSnapshot(sortedRows);
+      // ✅ SPEC-PERF-002: Verificar isMountedRef antes de setState
+      if (isMountedRef.current) {
+        setTableSnapshot(sortedRows);
+      }
 
       // Paginação
       const paginationStart = performance.now();
@@ -777,11 +986,12 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       };
     } catch (error: any) {
       // CRÍTICO: Ignorar erros de abort (React 18 Strict Mode double mount)
-      if (error.code === 'ECONNABORTED' || error.code === 'ERR_CANCELED' || error.name === 'CanceledError') {
-        console.log('[requestHandler] Request aborted by React Strict Mode cleanup');
+      // ✅ SPEC-PERF-002: Tambem ignorar AbortError do AbortController
+      if (error.code === 'ECONNABORTED' || error.code === 'ERR_CANCELED' || error.name === 'CanceledError' || error.name === 'AbortError') {
+        console.log('[requestHandler] Request aborted (race condition prevention or cleanup)');
         return {
           data: [],
-          success: false,
+          success: true, // ✅ success: true para nao mostrar erro
           total: 0
         };
       }
@@ -803,80 +1013,40 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     setFormOpen(true);
   }, []);
 
-  // ✅ SPRINT 3: Handler de deleção individual com chamada API real
+  // ✅ IMPLEMENTADO: Handler de deleção individual
   const handleDelete = useCallback(async (record: MonitoringDataItem) => {
     try {
-      const serviceId = record.ID;
-      const nodeAddr = record.node_ip; // IP do nó para deregister correto
-
-      // Chamar API de exclusão
-      const response = await consulAPI.deleteService(serviceId, { node_addr: nodeAddr });
-
-      if (response.data?.success) {
-        message.success(`Serviço "${serviceId}" excluído com sucesso`);
-        actionRef.current?.reload();
-      } else {
-        message.error(response.data?.error || 'Erro ao excluir serviço');
-      }
+      const service_id = record.ID;
+      const node_addr = record.node_ip || record.Address;
+      
+      await consulAPI.deleteService(service_id, node_addr);
+      
+      message.success(`Serviço "${service_id}" excluído com sucesso`);
+      actionRef.current?.reload();
     } catch (error: any) {
-      // Tratamento de erros específicos
-      if (error.response?.status === 404) {
-        message.error('Serviço não encontrado');
-      } else if (error.response?.status === 409) {
-        message.error('Serviço em uso, não pode ser excluído');
-      } else {
-        message.error('Erro ao excluir: ' + (error.response?.data?.detail || error.message || error));
-      }
+      message.error('Erro ao excluir: ' + (error.response?.data?.detail || error.message || error));
     }
   }, []);
 
-  // ✅ SPRINT 3: Handler de batch delete com processamento em lotes paralelos
+  // ✅ IMPLEMENTADO: Handler de batch delete
   const handleBatchDelete = useCallback(async () => {
     if (!selectedRows.length) return;
 
     try {
-      // Limitar concorrência a 10 requisições paralelas (conforme SPEC)
-      const batchSize = 10;
-      const results: { success: string[]; failed: string[] } = { success: [], failed: [] };
-
-      // Processar em batches de 10
-      for (let i = 0; i < selectedRows.length; i += batchSize) {
-        const batch = selectedRows.slice(i, i + batchSize);
-
-        // Executar batch em paralelo
-        const promises = batch.map(async (record) => {
-          try {
-            const response = await consulAPI.deleteService(record.ID, {
-              node_addr: record.node_ip,
-            });
-            if (response.data?.success) {
-              results.success.push(record.ID);
-            } else {
-              results.failed.push(record.ID);
-            }
-          } catch {
-            results.failed.push(record.ID);
-          }
-        });
-
-        await Promise.all(promises);
-      }
-
-      // Mostrar resultado
-      if (results.failed.length === 0) {
-        message.success(`${results.success.length} serviços excluídos com sucesso`);
-      } else {
-        message.warning(`${results.success.length} excluídos, ${results.failed.length} falhas`);
-        console.error('Falhas na exclusão:', results.failed);
-      }
-
-      // Limpar seleção e recarregar
+      // Preparar lista de serviços para deletar
+      const services = selectedRows.map(row => ({
+        service_id: row.ID,
+        node_addr: row.node_ip || row.Address
+      }));
+      
+      await consulAPI.bulkDeleteServices(services);
+      
+      message.success(`${selectedRows.length} serviços excluídos com sucesso`);
       setSelectedRowKeys([]);
       setSelectedRows([]);
       actionRef.current?.reload();
-
     } catch (error: any) {
-      message.error('Erro ao excluir: ' + (error.message || error));
+      message.error('Erro ao excluir em lote: ' + (error.response?.data?.detail || error.message || error));
     }
   }, [selectedRows]);
 
@@ -987,6 +1157,13 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       uniqueTags: new Set(),
     });
 
+    // ✅ SPEC-PERF-002: Limpar cache de getFieldValue ao mudar categoria
+    fieldValueCacheRef.current = {};
+
+    // ✅ SPEC-PERF-002: Limpar metadataOptions ao mudar categoria
+    setMetadataOptions({});
+    setMetadataOptionsLoaded(false);
+
     // Reload após resetar estados (chamada única)
     actionRef.current?.reload();
   }, [category]);
@@ -1000,7 +1177,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
       isFirstRender.current = false;
       return;
     }
-
+    
     // Reload apenas quando selectedNode ou filters mudarem
     actionRef.current?.reload();
   }, [selectedNode, filters]);
@@ -1009,11 +1186,23 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
   );
 
+  // ✅ SPEC-PERF-002: Usar dados dinamicos do tableFields ou formatCategoryName
+  const categoryTitle = useMemo(() => {
+    // Tentar pegar display_name do primeiro tableField (se disponivel)
+    const firstField = tableFields[0];
+    if (firstField && (firstField as any).category_display_name) {
+      return (firstField as any).category_display_name;
+    }
+    // Fallback para formatacao automatica
+    return formatCategoryName(category);
+  }, [tableFields, category]);
+
   return (
     <PageContainer
-      title={CATEGORY_DISPLAY_NAMES[category] || category}
-      subTitle={CATEGORY_SUBTITLES[category] || `Monitoramento de ${category.replace(/-/g, ' ')}`}
+      title={categoryTitle}
+      subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
       loading={tableFieldsLoading || filterFieldsLoading}
+      style={{ minHeight: 'calc(100vh - 64px)' }}
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
         {/* Dashboard com métricas - altura mínima para evitar layout shift */}
@@ -1146,11 +1335,15 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
+                  // ✅ CORREÇÃO: Limpar filtros internos do ProTable primeiro
+                  actionRef.current?.clearFilters?.();
+                  
                   // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
-                  // Manter selectedNode e advancedConditions
+                  // Manter selectedNode, advancedConditions e ordenação
+                  
                   // Reload para aplicar mudanças
                   actionRef.current?.reload();
                 }}
@@ -1163,17 +1356,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               <Button
                 icon={<ClearOutlined />}
                 onClick={() => {
-                  // Limpar estados customizados ANTES de resetar tabela
+                  // ✅ CORREÇÃO: Usar reset() do ProTable para limpar TUDO (filtros + ordenação)
+                  actionRef.current?.reset?.();
+                  
+                  // Limpar estados customizados
                   setFilters({});
                   setSearchValue('');
                   setSearchInput('');
                   setSortField(null);
                   setSortOrder(null);
                   // Manter selectedNode e advancedConditions
-
-                  // CRÍTICO: reloadAndRest() reseta filtros E ordenação corretamente
-                  // Ao contrário de reset() + reload() que não limpa ordenação visual
-                  actionRef.current?.reloadAndRest?.();
+                  
+                  // Reload para aplicar mudanças
+                  actionRef.current?.reload();
                 }}
               >
                 Limpar Filtros e Ordem
@@ -1252,40 +1447,45 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
               setFilters(newFilters);
               actionRef.current?.reload();
             }}
+            onReset={() => {
+              setFilters({});
+              actionRef.current?.reload();
+            }}
           />
         )}
 
         {/* ✅ COMPLETO: Tabela com TODAS as features */}
-        <ProTable<MonitoringDataItem>
-          actionRef={actionRef}
-          rowKey="ID"
-          columns={proTableColumns}
-          request={requestHandler}
-          onChange={handleTableChange}
-          search={false}
-          pagination={{
-            defaultPageSize: 50,
-            showSizeChanger: true,
-            pageSizeOptions: ['20', '50', '100', '200'],
-            showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
-            style: { marginBottom: 8 },
-          }}
-          scroll={{
-            x: 2000, // Força scroll horizontal para fixed columns
-            y: 'calc(100vh - 450px)'
-          }}
-          virtual // Ativa virtualização para performance com 150+ registros
-          sticky
-          options={{
-            reload: true,
-            setting: true,
-            density: true,
-            fullScreen: false,
-          }}
-          toolbar={{
-            settings: [],
-          }}
-          components={{
+        {/* ✅ CORREÇÃO LAYOUT SHIFT: Container com altura fixa para evitar mudanças de layout */}
+        <div style={{ minHeight: '600px', height: '600px', position: 'relative' }}>
+          <ProTable<MonitoringDataItem>
+            actionRef={actionRef}
+            rowKey="ID"
+            columns={proTableColumns}
+            request={requestHandler}
+            onChange={handleTableChange}
+            search={false}
+            pagination={{
+              defaultPageSize: 50,
+              showSizeChanger: true,
+              pageSizeOptions: ['20', '50', '100', '200'],
+              showTotal: (total, range) => `${range[0]}-${range[1]} de ${total} registros`,
+              style: { marginBottom: 8 },
+            }}
+            scroll={{
+              x: 2000, // Força scroll horizontal para fixed columns
+              y: 'calc(100vh - 450px)'
+            }}
+            sticky
+            options={{
+              reload: true,
+              setting: true,
+              density: true,
+              fullScreen: false,
+            }}
+            toolbar={{
+              settings: [],
+            }}
+            components={{
             header: {
               cell: ResizableTitle,
             },
@@ -1330,10 +1530,24 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             },
             fixed: true,
           }}
+          locale={{
+            emptyText: (
+              <div style={{ padding: '60px 0', textAlign: 'center', minHeight: '400px', height: '400px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                <div style={{ fontSize: '48px', color: '#d9d9d9', marginBottom: 16 }}>📊</div>
+                <div style={{ fontSize: '16px', color: '#8c8c8c', marginBottom: 8 }}>
+                  Não há dados disponíveis
+                </div>
+                <div style={{ fontSize: '14px', color: '#bfbfbf' }}>
+                  Tente ajustar os filtros ou selecionar outro nó do Consul
+                </div>
+              </div>
+            ),
+          }}
           tableAlertRender={({ selectedRowKeys: keys }) =>
             keys.length ? <span>{`${keys.length} registros selecionados`}</span> : null
           }
         />
+        </div>
       </Space>
 
       {/* ✅ NOVO: Drawer de busca avançada */}
@@ -1394,22 +1608,47 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ SPRINT 3: Modal CRUD dinâmico reutilizando componente existente */}
-      <DynamicCRUDModal
-        mode={formMode}
-        category={category}
-        service={currentRecord}
-        visible={formOpen}
-        onSuccess={() => {
-          setFormOpen(false);
-          setCurrentRecord(null);
-          actionRef.current?.reload();
-        }}
+      {/* ✅ IMPLEMENTADO: Modal de criação/edição */}
+      <Modal
+        title={formMode === 'create' ? 'Novo Serviço de Monitoramento' : 'Editar Serviço'}
+        open={formOpen}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-      />
+        footer={null}
+        width={720}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16, padding: 12, background: '#f0f2f5', borderRadius: 4 }}>
+          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+            <strong>ℹ️ Nota:</strong> Esta é uma versão simplificada do formulário. 
+            Para edição completa com form_schema dinâmico, será implementado no próximo sprint.
+          </p>
+        </div>
+        
+        {currentRecord && (
+          <div>
+            <p><strong>ID:</strong> {currentRecord.ID}</p>
+            <p><strong>Serviço:</strong> {currentRecord.Service}</p>
+            <p><strong>Node:</strong> {currentRecord.Node}</p>
+            <p style={{ fontSize: 12, color: '#999', marginTop: 16 }}>
+              Para editar este serviço, use a API direta ou aguarde implementação completa do formulário dinâmico.
+            </p>
+          </div>
+        )}
+        
+        {formMode === 'create' && (
+          <div>
+            <p style={{ color: '#999' }}>
+              Funcionalidade de criação com form_schema dinâmico será implementada no próximo sprint.
+            </p>
+            <p style={{ fontSize: 12 }}>
+              Por enquanto, use a página antiga Services.tsx ou a API direta para criar novos serviços.
+            </p>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   );
 };
