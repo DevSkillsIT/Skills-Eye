@@ -572,7 +572,8 @@ class TestProcessMonitoringDataComplete:
         assert len(result['data']) == 2
         assert result['total'] == 5
         assert result['page'] == 1
-        assert result['page_size'] == 2
+        # CORREÇÃO: Usar camelCase conforme padronizado no backend
+        assert result['pageSize'] == 2
 
 
     def test_process_data_filter_sort_paginate(self, mock_monitoring_data):
@@ -611,7 +612,8 @@ class TestProcessMonitoringDataComplete:
         )
 
         # filterOptions deve refletir apenas dados prod
-        assert result['filter_options']['env'] == ['prod']
+        # CORREÇÃO: Usar camelCase conforme padronizado no backend
+        assert result['filterOptions']['env'] == ['prod']
 
 
     def test_process_data_without_pagination_returns_all(self, mock_monitoring_data):

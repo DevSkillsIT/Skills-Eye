@@ -128,7 +128,7 @@ def apply_sort(
     Args:
         data: Lista de servicos
         field: Campo para ordenacao (ex: 'Service', 'Meta.company')
-        order: Direcao da ordenacao ('ascend' | 'descend')
+        order: Direcao da ordenacao ('ascend' | 'descend' | 'asc' | 'desc')
 
     Returns:
         Lista ordenada de servicos
@@ -136,8 +136,11 @@ def apply_sort(
     if not field or not order:
         return data
 
-    # Determinar direcao da ordenacao
-    reverse = order.lower() == 'descend'
+    # SPEC-PERF-002 FIX: Aceitar AMBOS os formatos de ordenacao
+    # Frontend pode enviar 'desc' ou 'descend', 'asc' ou 'ascend'
+    # Normalizar para um unico formato
+    order_lower = order.lower()
+    reverse = order_lower in ('descend', 'desc')
 
     def get_sort_key(item: Dict[str, Any]) -> Any:
         """
@@ -227,6 +230,62 @@ def apply_pagination(
     return paginated
 
 
+def apply_text_search(
+    data: List[Dict[str, Any]],
+    query: Optional[str]
+) -> List[Dict[str, Any]]:
+    """
+    Aplica busca textual em todos os campos dos servicos.
+
+    SPEC-PERF-002 FIX: Parametro 'q' para busca textual.
+
+    A busca e case-insensitive e procura em:
+    - Campos do nivel raiz (ID, Service, Address, Node, node_ip, site_code)
+    - Campos do Meta (company, site, env, name, module, etc)
+
+    Args:
+        data: Lista de servicos
+        query: Texto para buscar (None ou vazio = sem filtro)
+
+    Returns:
+        Lista filtrada de servicos que contem o texto
+    """
+    if not query or not query.strip():
+        return data
+
+    # Normalizar query para busca case-insensitive
+    query_lower = query.strip().lower()
+
+    filtered = []
+    for item in data:
+        # Verificar campos do nivel raiz
+        root_fields = ['ID', 'Service', 'Address', 'Node', 'node_ip', 'site_code', 'site_name']
+        found = False
+
+        for field in root_fields:
+            value = item.get(field)
+            if value and isinstance(value, str) and query_lower in value.lower():
+                found = True
+                break
+
+        # Se nao encontrou no nivel raiz, verificar no Meta
+        if not found:
+            meta = item.get('Meta', {})
+            for key, value in meta.items():
+                if value and isinstance(value, str) and query_lower in value.lower():
+                    found = True
+                    break
+
+        if found:
+            filtered.append(item)
+
+    logger.debug(
+        f"[TextSearch] query='{query}': {len(data)} -> {len(filtered)} servicos"
+    )
+
+    return filtered
+
+
 def extract_filter_options(
     data: List[Dict[str, Any]],
     fields: Optional[List[str]] = None
@@ -300,26 +359,29 @@ def process_monitoring_data(
     sort_field: Optional[str] = None,
     sort_order: Optional[str] = None,
     page: Optional[int] = None,
-    page_size: Optional[int] = None
+    page_size: Optional[int] = None,
+    search_query: Optional[str] = None  # SPEC-PERF-002 FIX: Busca textual
 ) -> Dict[str, Any]:
     """
     Processa dados de monitoramento aplicando filtros, ordenacao e paginacao.
 
     Esta funcao encapsula todo o processamento server-side:
-    1. Filtro por no (node_ip)
-    2. Filtros por metadata
-    3. Ordenacao
-    4. Paginacao
-    5. Extracao de filterOptions
+    1. Busca textual (search_query)
+    2. Filtro por no (node_ip)
+    3. Filtros por metadata
+    4. Ordenacao
+    5. Paginacao
+    6. Extracao de filterOptions
 
     Args:
         data: Lista completa de servicos
         node: IP do no para filtrar
         filters: Filtros de metadata (campo -> valor)
         sort_field: Campo para ordenacao
-        sort_order: Direcao ('ascend' | 'descend')
+        sort_order: Direcao ('ascend' | 'descend' | 'asc' | 'desc')
         page: Numero da pagina (1-based)
         page_size: Itens por pagina
+        search_query: Texto para busca em todos os campos
 
     Returns:
         Dicionario com:
@@ -327,10 +389,13 @@ def process_monitoring_data(
         - total: Total de servicos apos filtros (antes da paginacao)
         - page: Pagina atual
         - page_size: Tamanho da pagina
-        - filter_options: Opcoes para dropdowns de filtro
+        - filterOptions: Opcoes para dropdowns de filtro (camelCase)
     """
+    # PASSO 0: Aplicar busca textual (se especificado)
+    filtered_data = apply_text_search(data, search_query)
+
     # PASSO 1: Aplicar filtro por no
-    filtered_data = apply_node_filter(data, node)
+    filtered_data = apply_node_filter(filtered_data, node)
 
     # PASSO 2: Aplicar filtros de metadata
     if filters:
@@ -360,10 +425,12 @@ def process_monitoring_data(
         f"page={page}/{(total // page_size) + 1 if page_size else 1}"
     )
 
+    # SPEC-PERF-002 FIX: Padronizar nomenclatura para camelCase
+    # Frontend espera 'filterOptions' (camelCase), nao 'filter_options' (snake_case)
     return {
         "data": paginated_data,
         "total": total,
         "page": page,
-        "page_size": page_size,
-        "filter_options": filter_options
+        "pageSize": page_size,  # camelCase
+        "filterOptions": filter_options  # camelCase
     }

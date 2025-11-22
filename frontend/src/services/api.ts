@@ -923,10 +923,11 @@ export const consulAPI = {
       if (options.page_size) params.page_size = options.page_size;
 
       // Ordenacao
+      // ✅ CORREÇÃO: Backend espera 'ascend'/'descend' diretamente, NÃO converter para 'asc'/'desc'
+      // O backend processa os valores originais do Ant Design ProTable
       if (options.sort_field) params.sort_field = options.sort_field;
       if (options.sort_order) {
-        // Converter 'ascend'/'descend' para 'asc'/'desc' do backend
-        params.sort_order = options.sort_order === 'ascend' ? 'asc' : 'desc';
+        params.sort_order = options.sort_order;  // Passar direto sem conversão
       }
 
       // Filtro por no

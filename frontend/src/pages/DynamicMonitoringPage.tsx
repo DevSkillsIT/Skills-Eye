@@ -150,6 +150,9 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   // ✅ SPEC-PERF-002: Cache para getFieldValue (evita recalculos desnecessarios)
   const fieldValueCacheRef = useRef<Record<string, string>>({});
 
+  // ✅ CORREÇÃO: Ref para persistir estado de busca do filterDropdown (evita reset a cada render)
+  const filterSearchTextRef = useRef<Record<string, string>>({});
+
   // SISTEMA DINÂMICO: Carregar campos metadata para esta categoria
   const { tableFields, loading: tableFieldsLoading } = useTableFields(category);
   const { filterFields, loading: filterFieldsLoading } = useFilterFields(category);
@@ -316,6 +319,11 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
 
   // ✅ SPEC-PERF-002: Debounce com cancelamento para evitar requests excessivos
   const debouncedReload = useDebouncedCallback(() => {
+    // ✅ CORREÇÃO: Cancelar request anterior antes de disparar novo reload
+    // Isso evita race conditions quando usuário digita rápido
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     actionRef.current?.reload();
   }, 300);
 
@@ -467,21 +475,26 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   const lastProTableColumnsRef = useRef<string>('');
   
   const proTableColumns = useMemo<ProColumns<MonitoringDataItem>[]>(() => {
-    // ✅ CORREÇÃO: Só calcular colunas quando columnConfig estiver pronto
-    // Evita race condition onde proTableColumns é calculado antes de columnConfig ser atualizado
-    if (columnConfig.length === 0) {
+    // ✅ CORREÇÃO CRÍTICA: Usar defaultColumnConfig como fallback quando columnConfig estiver vazio
+    // Isso evita race condition onde proTableColumns retorna [] se columnConfig não carregou ainda
+    // O defaultColumnConfig já tem as colunas fixas e será atualizado quando tableFields carregar
+    const configToUse = columnConfig.length > 0 ? columnConfig : defaultColumnConfig;
+
+    // Só retorna vazio se REALMENTE não há configuração disponível
+    if (configToUse.length === 0) {
       return [];
     }
-    
-    const visibleConfigs = columnConfig.filter(c => c.visible);
-    
+
+    // ✅ CORREÇÃO: Usar configToUse ao invés de columnConfig para filtrar visíveis
+    const visibleConfigs = configToUse.filter(c => c.visible);
+
     // ✅ OTIMIZAÇÃO: Só logar quando realmente mudou (evita logs duplicados em StrictMode)
     if (import.meta.env.DEV) {
-      const configKey = `${columnConfig.length}-${visibleConfigs.length}-${tableFields.length}`;
+      const configKey = `${configToUse.length}-${visibleConfigs.length}-${tableFields.length}`;
       if (lastProTableColumnsRef.current !== configKey) {
         const metadataColumns = visibleConfigs.filter(c => tableFields.some(f => f.name === c.key));
         console.log('[DynamicMonitoringPage] proTableColumns:', {
-          columnConfigLength: columnConfig.length,
+          columnConfigLength: configToUse.length,
           tableFieldsLength: tableFields.length,
           visibleConfigsCount: visibleConfigs.length,
           metadataColumnsCount: metadataColumns.length,
@@ -542,7 +555,8 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         baseColumn.filteredValue = filters[colConfig.key] ? [filters[colConfig.key]] : null;
 
         baseColumn.filterDropdown = ({ setSelectedKeys, selectedKeys, confirm, clearFilters }) => {
-          const [searchText, setSearchText] = useState('');
+          // ✅ CORREÇÃO: Usar ref para persistir estado de busca (evita reset a cada render)
+          const [searchText, setSearchText] = useState(filterSearchTextRef.current[colConfig.key] || '');
 
           // ✅ SPEC-PERF-002: Usar ref para opcoes atualizadas (evita stale closure)
           const currentOptions = metadataOptionsRef.current[colConfig.key] || [];
@@ -550,12 +564,19 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             opt.toLowerCase().includes(searchText.toLowerCase())
           );
 
+          // ✅ CORREÇÃO: Atualizar ref quando searchText mudar
+          const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+            const newValue = e.target.value;
+            setSearchText(newValue);
+            filterSearchTextRef.current[colConfig.key] = newValue;
+          };
+
           return (
             <div style={{ padding: 8, width: 300 }}>
               <Input
                 placeholder={`Buscar ${colConfig.title}`}
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={handleSearchChange}
                 style={{ marginBottom: 8, display: 'block' }}
                 prefix={<SearchOutlined />}
               />
@@ -603,17 +624,18 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                   type="primary"
                   size="small"
                   onClick={() => {
-                    // ✅ CORREÇÃO: Aplicar filtro na coluna específica
+                    // ✅ CORREÇÃO: Suportar múltipla seleção - usar array se mais de um valor
                     const newFilters = { ...filters };
                     if (selectedKeys.length > 0) {
-                      // Se múltiplos valores selecionados, usar o primeiro (ou implementar lógica OR)
-                      newFilters[colConfig.key] = selectedKeys[0];
+                      // Se múltiplos valores selecionados, enviar como string separada por vírgula
+                      // O backend deve suportar filtros com múltiplos valores
+                      newFilters[colConfig.key] = selectedKeys.join(',');
                     } else {
                       delete newFilters[colConfig.key];
                     }
                     setFilters(newFilters);
                     confirm();
-                    actionRef.current?.reload();
+                    // ✅ CORREÇÃO: NÃO chamar reload() aqui - o useEffect[filters] já faz isso
                   }}
                   icon={<SearchOutlined />}
                 >
@@ -626,8 +648,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                     delete newFilters[colConfig.key];
                     setFilters(newFilters);
                     clearFilters?.();
+                    // ✅ CORREÇÃO: Limpar ref também
                     setSearchText('');
-                    actionRef.current?.reload();
+                    filterSearchTextRef.current[colConfig.key] = '';
+                    // ✅ CORREÇÃO: NÃO chamar reload() aqui - o useEffect[filters] já faz isso
                   }}
                 >
                   Limpar
@@ -711,6 +735,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
   }, [
     // ✅ OTIMIZAÇÃO: Usar apenas valores primitivos e funções estáveis
     columnConfig,
+    defaultColumnConfig,  // ✅ CORREÇÃO: Adicionado para fallback quando columnConfig vazio
     columnWidths,
     tableFields,
     metadataOptionsLoaded,
@@ -1376,12 +1401,13 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
             value={filters}
             options={metadataOptions}
             onChange={(newFilters) => {
+              // ✅ CORREÇÃO: NÃO chamar reload() aqui - o useEffect[selectedNode, filters] já faz isso
+              // Isso evita requisições duplas (uma do onChange + uma do useEffect)
               setFilters(newFilters);
-              actionRef.current?.reload();
             }}
             onReset={() => {
+              // ✅ CORREÇÃO: NÃO chamar reload() aqui - o useEffect[selectedNode, filters] já faz isso
               setFilters({});
-              actionRef.current?.reload();
             }}
           />
         )}

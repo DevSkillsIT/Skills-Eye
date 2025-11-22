@@ -132,8 +132,10 @@ async def get_monitoring_data(
     page: Optional[int] = Query(None, ge=1, description="Numero da pagina (1-based)"),
     page_size: Optional[int] = Query(None, ge=10, le=200, description="Itens por pagina (10-200)"),
     sort_field: Optional[str] = Query(None, description="Campo para ordenacao"),
-    sort_order: Optional[str] = Query(None, description="Direcao: ascend | descend"),
-    node: Optional[str] = Query(None, description="Filtrar por IP do no")
+    sort_order: Optional[str] = Query(None, description="Direcao: ascend | descend | asc | desc"),
+    node: Optional[str] = Query(None, description="Filtrar por IP do no"),
+    # SPEC-PERF-002 FIX: Parametro de busca textual
+    q: Optional[str] = Query(None, description="Busca textual em todos os campos")
 ):
     """
     Endpoint para buscar SERVICOS do Consul filtrados por categoria
@@ -420,21 +422,64 @@ async def get_monitoring_data(
             raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
 
-    # USAR CACHE - Chama fetch_data() com cache wrapper
-    raw_result = await get_services_cached(
-        category=category,
-        company=company,
-        site=site,
-        env=env,
-        fetch_function=fetch_data
-    )
+    # ==========================================================================
+    # SPEC-PERF-002 FIX: Usar MonitoringDataCache corretamente
+    #
+    # PROBLEMA ANTERIOR: get_services_cached nao usava o MonitoringDataCache
+    # criado especificamente para o SPEC-PERF-002.
+    #
+    # SOLUCAO: Verificar cache do MonitoringDataCache primeiro, se miss,
+    # buscar dados e armazenar no cache.
+    # ==========================================================================
+
+    # Tentar buscar do cache intermediario de monitoramento
+    cached_data = await monitoring_data_cache.get_data(category, node)
+
+    if cached_data is not None:
+        # CACHE HIT - usar dados do cache
+        logger.info(f"[MONITORING DATA] Cache HIT para category='{category}', node='{node}'")
+        raw_result = {
+            "success": True,
+            "category": category,
+            "data": cached_data,
+            "total": len(cached_data),
+            "available_fields": [],  # Sera preenchido abaixo se necessario
+            "metadata": {"cache_hit": True}
+        }
+
+        # Buscar available_fields do cache generico ou KV se necessario
+        from core.kv_manager import KVManager
+        kv = KVManager()
+        fields_data = await kv.get_json('skills/eye/metadata/fields')
+        available_fields = []
+        if fields_data and 'fields' in fields_data:
+            for field in fields_data['fields']:
+                show_in_key = f"show_in_{category.replace('-', '_')}"
+                if field.get(show_in_key, True):
+                    available_fields.append({
+                        'name': field['name'],
+                        'display_name': field.get('display_name', field['name']),
+                        'field_type': field.get('field_type', 'string')
+                    })
+        raw_result["available_fields"] = available_fields
+    else:
+        # CACHE MISS - buscar dados do Consul
+        logger.info(f"[MONITORING DATA] Cache MISS para category='{category}', node='{node}'")
+        raw_result = await fetch_data()
+
+        # Armazenar no cache de monitoramento para proximas requisicoes
+        await monitoring_data_cache.set_data(
+            category=category,
+            data=raw_result.get('data', []),
+            node=node
+        )
 
     # SPEC-PERF-002: Processar dados com paginacao, filtros e ordenacao server-side
     # Se page e page_size nao forem passados, retorna todos (compatibilidade backward)
 
     # Extrair filtros dinamicos dos query params (exceto os ja processados)
     excluded_params = {'category', 'company', 'site', 'env', 'page', 'page_size',
-                       'sort_field', 'sort_order', 'node'}
+                       'sort_field', 'sort_order', 'node', 'q'}
     dynamic_filters = {}
     for key, value in request.query_params.items():
         if key not in excluded_params and value:
@@ -448,7 +493,7 @@ async def get_monitoring_data(
         **dynamic_filters
     }
 
-    # Processar dados server-side
+    # Processar dados server-side (incluindo busca textual)
     processed = process_monitoring_data(
         data=raw_result.get('data', []),
         node=node,
@@ -456,7 +501,8 @@ async def get_monitoring_data(
         sort_field=sort_field,
         sort_order=sort_order,
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        search_query=q  # SPEC-PERF-002 FIX: Busca textual
     )
 
     # Montar resposta final mantendo estrutura compativel
@@ -479,17 +525,235 @@ async def get_monitoring_data(
     # Adicionar campos de paginacao se foram solicitados
     if page is not None and page_size is not None:
         response["page"] = processed["page"]
-        response["pageSize"] = processed["page_size"]
-        response["filterOptions"] = processed["filter_options"]
+        response["pageSize"] = processed["pageSize"]  # camelCase
+        response["filterOptions"] = processed["filterOptions"]  # camelCase
 
         # Calcular total de paginas
         total_pages = (processed["total"] + page_size - 1) // page_size
         response["totalPages"] = total_pages
     else:
         # Sem paginacao - incluir filterOptions mesmo assim para uso futuro
-        response["filterOptions"] = processed["filter_options"]
+        response["filterOptions"] = processed["filterOptions"]  # camelCase
 
     return response
+
+
+# ============================================================================
+# ENDPOINT 1.5: /monitoring/summary - METRICAS AGREGADAS DO DATASET (SPEC-PERF-002)
+# ============================================================================
+
+@router.get("/summary")
+async def get_monitoring_summary(
+    category: str = Query(..., description="Categoria: network-probes, web-probes, etc"),
+    company: Optional[str] = Query(None, description="Filtrar por empresa"),
+    site: Optional[str] = Query(None, description="Filtrar por site"),
+    env: Optional[str] = Query(None, description="Filtrar por ambiente"),
+    node: Optional[str] = Query(None, description="Filtrar por IP do no")
+):
+    """
+    Retorna metricas agregadas sobre TODO o dataset de uma categoria.
+
+    SPEC-PERF-002 FIX: Este endpoint fornece estatisticas sem paginacao,
+    permitindo que o frontend mostre totais e contagens sem carregar todos os dados.
+
+    CASOS DE USO:
+    - Mostrar "150 servicos encontrados" no header da tabela
+    - Exibir contadores por status (online/offline)
+    - Popular dropdowns de filtro sem buscar dados paginados
+    - Dashboard com visao geral da categoria
+
+    Args:
+        category: Categoria de monitoramento
+        company: Filtro de empresa (opcional)
+        site: Filtro de site (opcional)
+        env: Filtro de ambiente (opcional)
+        node: IP do no para filtrar (opcional)
+
+    Returns:
+        ```json
+        {
+            "success": true,
+            "category": "network-probes",
+            "summary": {
+                "total": 150,
+                "byCompany": {"Empresa A": 50, "Empresa B": 100},
+                "byEnv": {"prod": 120, "dev": 30},
+                "bySite": {"palmas": 80, "rio": 70},
+                "byNode": {"172.16.1.26": 100, "172.16.1.27": 50}
+            },
+            "filterOptions": {
+                "company": ["Empresa A", "Empresa B"],
+                "env": ["dev", "prod"],
+                "site": ["palmas", "rio"],
+                "node_ip": ["172.16.1.26", "172.16.1.27"]
+            }
+        }
+        ```
+    """
+    try:
+        logger.info(f"[MONITORING SUMMARY] Buscando resumo da categoria '{category}'")
+
+        # Tentar buscar do cache primeiro
+        cached_data = await monitoring_data_cache.get_data(category, node)
+
+        if cached_data is None:
+            # Cache miss - precisa buscar dados frescos
+            # Reutilizar a logica do endpoint /data (fetch_data interno)
+            from core.kv_manager import KVManager
+            kv = KVManager()
+
+            # Buscar nos do Consul com cache
+            consul_nodes = await get_nodes_cached(consul_manager)
+            nodes_map = {}
+            for n in consul_nodes:
+                node_name = n.get('Node', '')
+                node_address = n.get('Address', '')
+                if node_name and node_address:
+                    nodes_map[node_name] = node_address
+
+            # Buscar sites
+            sites_data = await kv.get_json('skills/eye/metadata/sites')
+            sites_map = {}
+            if sites_data:
+                sites = []
+                if isinstance(sites_data, dict):
+                    if 'data' in sites_data:
+                        inner = sites_data['data']
+                        if isinstance(inner, dict) and 'sites' in inner:
+                            sites = inner['sites']
+                        elif isinstance(inner, list):
+                            sites = inner
+                    elif 'sites' in sites_data:
+                        sites = sites_data['sites']
+
+                for site_item in sites:
+                    if isinstance(site_item, dict):
+                        prometheus_ip = site_item.get('prometheus_instance') or site_item.get('prometheus_host')
+                        if prometheus_ip:
+                            sites_map[prometheus_ip] = site_item
+
+            # Carregar regras
+            await categorization_engine.load_rules()
+
+            # Buscar todos os servicos
+            all_services_dict = await consul_manager.get_all_services_catalog(use_fallback=True)
+            all_services_dict.pop("_metadata", None)
+
+            all_services = []
+            for node_name, services_dict in all_services_dict.items():
+                for service_id, service_data in services_dict.items():
+                    service_data['Node'] = node_name
+                    service_data['ID'] = service_id
+                    all_services.append(service_data)
+
+            # Filtrar por categoria
+            filtered_services = []
+            for svc in all_services:
+                svc_job_name = svc.get('Service', '')
+                svc_module = svc.get('Meta', {}).get('module', '')
+                svc_metrics_path = svc.get('Meta', {}).get('metrics_path', '/metrics')
+                has_metrics_path = 'metrics_path' in svc.get('Meta', {})
+
+                svc_category, _ = categorization_engine.categorize({
+                    'job_name': svc_job_name,
+                    'module': svc_module,
+                    'metrics_path': svc_metrics_path,
+                    '_has_metrics_path': has_metrics_path
+                })
+
+                if svc_category != category:
+                    continue
+
+                # Adicionar node_ip e site info
+                node_name = svc.get('Node', '')
+                node_ip = nodes_map.get(node_name, '')
+                svc['node_ip'] = node_ip
+                site_info = sites_map.get(node_ip)
+                if site_info:
+                    svc['site_code'] = site_info.get('code')
+                else:
+                    svc['site_code'] = svc.get('Meta', {}).get('site')
+
+                filtered_services.append(svc)
+
+            # Armazenar no cache
+            await monitoring_data_cache.set_data(category, filtered_services, node)
+            cached_data = filtered_services
+
+        # Aplicar filtros basicos
+        data = cached_data
+
+        # Filtrar por node se especificado
+        if node and node != 'all':
+            data = [item for item in data if item.get('node_ip') == node]
+
+        # Filtrar por company, site, env
+        if company:
+            data = [item for item in data if item.get('Meta', {}).get('company') == company]
+        if site:
+            data = [item for item in data
+                    if item.get('site_code') == site or item.get('Meta', {}).get('site') == site]
+        if env:
+            data = [item for item in data if item.get('Meta', {}).get('env') == env]
+
+        # Calcular agregacoes
+        by_company = {}
+        by_env = {}
+        by_site = {}
+        by_node = {}
+
+        for item in data:
+            meta = item.get('Meta', {})
+
+            # Por empresa
+            item_company = meta.get('company', 'N/A')
+            by_company[item_company] = by_company.get(item_company, 0) + 1
+
+            # Por ambiente
+            item_env = meta.get('env', 'N/A')
+            by_env[item_env] = by_env.get(item_env, 0) + 1
+
+            # Por site
+            item_site = item.get('site_code') or meta.get('site', 'N/A')
+            by_site[item_site] = by_site.get(item_site, 0) + 1
+
+            # Por node
+            item_node = item.get('node_ip', 'N/A')
+            by_node[item_node] = by_node.get(item_node, 0) + 1
+
+        # Extrair filterOptions
+        filter_options = process_monitoring_data(
+            data=cached_data,  # Usar dados nao filtrados para ter todas opcoes
+            node=None,
+            filters=None,
+            page=None,
+            page_size=None
+        )
+
+        return {
+            "success": True,
+            "category": category,
+            "summary": {
+                "total": len(data),
+                "byCompany": by_company,
+                "byEnv": by_env,
+                "bySite": by_site,
+                "byNode": by_node
+            },
+            "filterOptions": filter_options["filterOptions"],
+            "filtersApplied": {
+                "company": company,
+                "site": site,
+                "env": env,
+                "node": node
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MONITORING SUMMARY ERROR] {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
