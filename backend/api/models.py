@@ -150,41 +150,8 @@ class ErrorResponse(BaseModel):
     detail: Optional[str] = None
 
 
-class BlackboxTarget(BaseModel):
-    """Payload básico de um alvo blackbox"""
-    module: str
-    company: str
-    project: str
-    env: str
-    name: str
-    instance: str
-    group: Optional[str] = Field(None, description="Grupo/categoria do alvo")
-    interval: Optional[str] = Field("30s", description="Intervalo do probe")
-    timeout: Optional[str] = Field("10s", description="Timeout do probe")
-    enabled: bool = Field(True, description="Alvo habilitado")
-    labels: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Rótulos extras (chave/valor) que serão enviados como meta",
-    )
-    notes: Optional[str] = Field(None, description="Notas/observações")
-
-
-class BlackboxUpdateRequest(BaseModel):
-    """Solicitação de atualização: remove um alvo antigo e cria outro"""
-    current: BlackboxTarget
-    replacement: BlackboxTarget
-
-
-class BlackboxDeleteRequest(BaseModel):
-    """
-    Payload de remoção simplificado.
-    Informações necessárias: service_id + service_name + node_addr + node_name + datacenter
-    """
-    service_id: str              # ID único (ex: icmp/Company/Project/Env@Name)
-    service_name: Optional[str] = None  # Nome do serviço no Consul (ex: blackbox_remote_rmd_ldc) - para Método 2
-    node_addr: Optional[str] = None     # IP do agente (ex: 172.16.1.26) - para Método 1
-    node_name: Optional[str] = None     # Nome do node (ex: glpi-grafana-prometheus.skillsit.com.br) - para Método 2
-    datacenter: Optional[str] = None    # Datacenter (ex: dtc-skills-local) - para Método 2
+# NOTA: Models de Blackbox removidos em SPEC-CLEANUP-001 v1.4.0
+# BlackboxTarget, BlackboxUpdateRequest, BlackboxDeleteRequest foram movidos para obsolete/
 
 
 class KVPutRequest(BaseModel):

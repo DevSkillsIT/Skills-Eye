@@ -399,22 +399,16 @@ const Dashboard: React.FC = () => {
             }}
           >
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              {/* NOTA: Botoes de blackbox e services removidos em SPEC-CLEANUP-001 v1.4.0 */}
+              {/* As paginas foram substituidas por DynamicMonitoringPage */}
               <Button
                 type="primary"
                 block
                 icon={<PlusOutlined />}
                 size="large"
-                onClick={() => navigate('/blackbox?create=true')}
+                onClick={() => navigate('/monitoring/network-probes?create=true')}
               >
-                Novo alvo Blackbox
-              </Button>
-              <Button
-                block
-                icon={<PlusOutlined />}
-                size="large"
-                onClick={() => navigate('/services?create=true')}
-              >
-                Registrar servico
+                Novo alvo de monitoramento
               </Button>
               <Button
                 block
@@ -428,9 +422,9 @@ const Dashboard: React.FC = () => {
                 block
                 icon={<BarChartOutlined />}
                 size="large"
-                onClick={() => navigate('/services')}
+                onClick={() => navigate('/service-groups')}
               >
-                Ver todos os servicos
+                Ver grupos de servicos
               </Button>
             </Space>
           </ProCard>

@@ -19,9 +19,10 @@ from core.config import Config
 from api.services import router as services_router
 from api.nodes import router as nodes_router
 from api.config import router as config_router
-from api.blackbox import router as blackbox_router
+# NOTA: blackbox_router e presets_router removidos em SPEC-CLEANUP-001 v1.4.0
+# from api.blackbox import router as blackbox_router
+# from api.presets import router as presets_router
 from api.kv import router as kv_router
-from api.presets import router as presets_router
 from api.search import router as search_router
 from api.consul_insights import router as consul_insights_router
 from api.audit import router as audit_router
@@ -668,9 +669,10 @@ async def root():
 app.include_router(services_router, prefix="/api/v1/services", tags=["Services"])
 app.include_router(nodes_router, prefix="/api/v1/nodes", tags=["Nodes"])
 app.include_router(config_router, prefix="/api/v1/config", tags=["Config"])
-app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["Blackbox"])
+# NOTA: blackbox_router e presets_router removidos em SPEC-CLEANUP-001 v1.4.0
+# app.include_router(blackbox_router, prefix="/api/v1/blackbox", tags=["Blackbox"])
+# app.include_router(presets_router, prefix="/api/v1/presets", tags=["Service Presets"])
 app.include_router(kv_router, prefix="/api/v1/kv", tags=["Key-Value Store"])
-app.include_router(presets_router, prefix="/api/v1/presets", tags=["Service Presets"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["Search"])
 app.include_router(consul_insights_router, prefix="/api/v1/consul", tags=["Consul Insights"])
 app.include_router(audit_router, prefix="/api/v1", tags=["Audit Logs"])

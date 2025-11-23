@@ -77,57 +77,9 @@ export interface MetadataResponse {
   values: string[];
 }
 
-export interface BlackboxTargetPayload {
-  module: string;
-  company: string;
-  project: string;
-  env: string;
-  name: string;
-  instance: string;
-  group?: string;
-  interval?: string;
-  timeout?: string;
-  enabled?: boolean;
-  labels?: Record<string, string>;
-  notes?: string;
-}
-
-export interface BlackboxTargetRecord {
-  service_id: string;
-  service: string;
-  node?: string;
-  tags: string[];
-  address?: string;
-  port?: number;
-  meta: ServiceMeta;
-  kv?: Record<string, any>;
-}
-
-export interface BlackboxTargetEnhanced extends BlackboxTargetPayload {
-  group?: string;
-  labels?: Record<string, string>;
-  interval?: string;
-  timeout?: string;
-  enabled?: boolean;
-  notes?: string;
-}
-
-export interface BlackboxListResponse {
-  success: boolean;
-  services: BlackboxTargetRecord[];
-  module_list?: string[];
-  company_list?: string[];
-  project_list?: string[];
-  env_list?: string[];
-  group_list?: string[];
-  summary?: {
-    total: number;
-    enabled: number;
-    disabled: number;
-    by_module: Record<string, number>;
-    by_group: Record<string, number>;
-  };
-}
+// NOTA: Interfaces de Blackbox removidas em SPEC-CLEANUP-001 v1.4.0
+// BlackboxTargetPayload, BlackboxTargetRecord, BlackboxTargetEnhanced, BlackboxListResponse
+// foram removidas junto com as paginas obsoletas
 
 export interface KVTreeResponse {
   success: boolean;
@@ -141,20 +93,7 @@ export interface KVValueResponse {
   value: any;
 }
 
-export interface BlackboxGroup {
-  id: string;
-  name: string;
-  description?: string;
-  tags?: string[];
-  metadata?: Record<string, any>;
-  created_at?: string;
-  created_by?: string;
-}
-
-export interface BlackboxGroupResponse {
-  success: boolean;
-  group: BlackboxGroup;
-}
+// NOTA: Interfaces BlackboxGroup e BlackboxGroupResponse removidas em SPEC-CLEANUP-001 v1.4.0
 
 /**
  * INTERFACES PARA EDIÇÃO DIRETA DE ARQUIVO
@@ -191,29 +130,7 @@ export interface DirectEditResponse {
   backup_path?: string;
 }
 
-export interface ServicePreset {
-  id: string;
-  name: string;
-  service_name: string;
-  port?: number;
-  tags?: string[];
-  meta_template?: Record<string, string>;
-  checks?: any[];
-  description?: string;
-  category: string;
-}
-
-export interface PresetListResponse {
-  success: boolean;
-  presets: ServicePreset[];
-  total: number;
-}
-
-export interface RegisterFromPreset {
-  preset_id: string;
-  variables: Record<string, string>;
-  node_addr?: string;
-}
+// NOTA: Interfaces ServicePreset, PresetListResponse, RegisterFromPreset removidas em SPEC-CLEANUP-001 v1.4.0
 
 export interface SearchCondition {
   field: string;
@@ -562,15 +479,9 @@ export const consulAPI = {
       }>;
     }>('/prometheus-config/job-names', { params: hostname ? { hostname } : {} }),
 
-  // Services
-  listServices: (params?: ServiceQuery) =>
-    api.get<ServiceListResponse>('/services', { params }),
-
-  getService: (serviceId: string, params?: ServiceQuery) =>
-    api.get(`/services/${encodeURIComponent(serviceId)}`, { params }),
-
-  // Service Catalog - busca nomes de serviços disponíveis no Consul
-  getServiceCatalogNames: () => api.get<{ success: boolean; data: string[]; total: number }>('/services/catalog/names'),
+  // Services - CRUD operations
+  // NOTA: listServices, getService, getServiceCatalogNames removidos em SPEC-CLEANUP-001 v1.4.0
+  // Endpoints GET foram substituidos por monitoring-types/monitoring-data
 
   createService: (serviceData: ServiceCreatePayload) =>
     api.post('/services/', serviceData),
@@ -594,95 +505,17 @@ export const consulAPI = {
       params: { node_addr: params.node_addr },
     }),
 
-  getServiceMetadataValues: (field: string) =>
-    api.get<MetadataResponse>('/services/metadata/unique-values', {
-      params: { field },
-    }),
+  // NOTA: getServiceMetadataValues removido em SPEC-CLEANUP-001 v1.4.0
 
-  // Blackbox Targets
-  listBlackboxTargets: (filters?: MetadataFilters) =>
-    api.get<BlackboxListResponse>('/blackbox', { params: filters }),
+  // NOTA: Metodos de Blackbox Targets removidos em SPEC-CLEANUP-001 v1.4.0
+  // listBlackboxTargets, createBlackboxTarget, createBlackboxTargetEnhanced, updateBlackboxTarget,
+  // deleteBlackboxTarget, importBlackboxTargets, getBlackboxRules, getBlackboxConfig,
+  // getBlackboxPrometheusConfig, createBlackboxGroup, listBlackboxGroups, getBlackboxGroup,
+  // updateBlackboxGroup, deleteBlackboxGroup, searchBlackboxTargets
 
-  createBlackboxTarget: (payload: BlackboxTargetPayload) =>
-    api.post('/blackbox/', payload),
-
-  createBlackboxTargetEnhanced: (payload: BlackboxTargetEnhanced, user = 'web-user') =>
-    api.post('/blackbox/enhanced', payload, { params: { user } }),
-
-  updateBlackboxTarget: (current: BlackboxTargetPayload, replacement: BlackboxTargetPayload) =>
-    api.put('/blackbox/', { current, replacement }),
-
-  deleteBlackboxTarget: (payload: {
-    service_id: string;
-    service_name?: string;
-    node_addr?: string;
-    node_name?: string;
-    datacenter?: string;
-  }) => api.delete('/blackbox/', { data: payload }),
-
-  importBlackboxTargets: (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/blackbox/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-
-  getBlackboxRules: () =>
-    api.get('/blackbox/config/rules', { responseType: 'text' }),
-
-  getBlackboxConfig: () =>
-    api.get('/blackbox/config/blackbox', { responseType: 'text' }),
-
-  getBlackboxPrometheusConfig: (consulServer?: string, consulToken?: string) =>
-    api.get('/blackbox/config/prometheus', {
-      params: { consul_server: consulServer, consul_token: consulToken },
-      responseType: 'text',
-    }),
-
-  // Blackbox Groups
-  createBlackboxGroup: (group: BlackboxGroup, user = 'web-user') =>
-    api.post('/blackbox/groups', group, { params: { user } }),
-
-  listBlackboxGroups: () =>
-    api.get<{ success: boolean; groups: BlackboxGroup[]; total: number }>('/blackbox/groups'),
-
-  getBlackboxGroup: (groupId: string) =>
-    api.get<BlackboxGroupResponse>(`/blackbox/groups/${groupId}`),
-
-  updateBlackboxGroup: (groupId: string, updates: Partial<BlackboxGroup>, user = 'web-user') =>
-    api.put(`/blackbox/groups/${groupId}`, updates, { params: { user } }),
-
-  deleteBlackboxGroup: (groupId: string, user = 'web-user') =>
-    api.delete(`/blackbox/groups/${groupId}`, { params: { user } }),
-
-  searchBlackboxTargets: (params: any) =>
-    api.get('/search/blackbox', { params }),
-
-  // Service Presets
-  createPreset: (preset: ServicePreset, user = 'web-user') =>
-    api.post('/presets/', preset, { params: { user } }),
-
-  listPresets: (category?: string) =>
-    api.get<PresetListResponse>('/presets', { params: { category } }),
-
-  getPreset: (presetId: string) =>
-    api.get<{ success: boolean; preset: ServicePreset }>(`/presets/${presetId}`),
-
-  updatePreset: (presetId: string, updates: Partial<ServicePreset>, user = 'web-user') =>
-    api.put(`/presets/${presetId}`, updates, { params: { user } }),
-
-  deletePreset: (presetId: string, user = 'web-user') =>
-    api.delete(`/presets/${presetId}`, { params: { user } }),
-
-  registerFromPreset: (request: RegisterFromPreset, user = 'web-user') =>
-    api.post('/presets/register', request, { params: { user } }),
-
-  previewPreset: (request: RegisterFromPreset) =>
-    api.post('/presets/preview', request),
-
-  createBuiltinPresets: (user = 'web-user') =>
-    api.post('/presets/builtin/create', null, { params: { user } }),
+  // NOTA: Metodos de Service Presets removidos em SPEC-CLEANUP-001 v1.4.0
+  // createPreset, listPresets, getPreset, updatePreset, deletePreset,
+  // registerFromPreset, previewPreset, createBuiltinPresets
 
   // Advanced Search
   advancedSearch: (request: AdvancedSearchRequest) =>

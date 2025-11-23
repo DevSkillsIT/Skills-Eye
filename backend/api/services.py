@@ -1,6 +1,16 @@
 """
-API endpoints para gerenciamento de serviços
-Conecta ao servidor Consul real e retorna dados de serviços com metadados completos
+API endpoints para gerenciamento de servicos
+Conecta ao servidor Consul real e retorna dados de servicos com metadados completos
+
+NOTA: Refatorado em SPEC-CLEANUP-001 v1.4.0
+- Removidos endpoints GET de listagem (substituidos por monitoring-types/monitoring-data)
+- Mantidos apenas endpoints CRUD (POST, PUT, DELETE) e bulk operations
+- Endpoints removidos:
+  - GET / (list_services)
+  - GET /catalog/names (get_service_catalog_names)
+  - GET /metadata/unique-values (get_unique_metadata_values)
+  - GET /search/by-metadata (search_services)
+  - GET /{service_id} (get_service)
 """
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks, Path
 from typing import Dict, List, Optional, Any
@@ -26,46 +36,46 @@ _catalog_cache = LocalCache(default_ttl_seconds=60)
 
 
 # ============================================================================
-# FUNÇÕES AUXILIARES DE VALIDAÇÃO (SPRINT 2)
+# FUNCOES AUXILIARES DE VALIDACAO (SPRINT 2)
 # ============================================================================
 
 async def validate_monitoring_type(service_name: str, exporter_type: Optional[str] = None, category: Optional[str] = None) -> Dict[str, Any]:
     """
     Valida se o tipo de monitoramento existe no monitoring-types
-    
-    SPRINT 2: Validação crítica - verifica se tipo existe antes de criar serviço
-    
+
+    SPRINT 2: Validacao critica - verifica se tipo existe antes de criar servico
+
     Args:
-        service_name: Nome do serviço (job_name)
-        exporter_type: Tipo do exporter (opcional, para validação mais específica)
-        category: Categoria (opcional, para validação mais específica)
-    
+        service_name: Nome do servico (job_name)
+        exporter_type: Tipo do exporter (opcional, para validacao mais especifica)
+        category: Categoria (opcional, para validacao mais especifica)
+
     Returns:
-        Dict com informações do tipo encontrado
-    
+        Dict com informacoes do tipo encontrado
+
     Raises:
-        HTTPException: Se tipo não encontrado
+        HTTPException: Se tipo nao encontrado
     """
     try:
         from core.kv_manager import KVManager
         kv_manager = KVManager()
-        
+
         # Buscar tipos do KV cache
         types_data = await kv_manager.get_json('skills/eye/monitoring-types')
-        
+
         if not types_data or not types_data.get('all_types'):
             # Se KV vazio, tentar buscar diretamente do endpoint
             logger.warning("[VALIDATE-TYPE] KV vazio, tentando buscar tipos diretamente...")
-            # Por enquanto, permitir criação sem validação se KV vazio (fallback)
+            # Por enquanto, permitir criacao sem validacao se KV vazio (fallback)
             return {
                 "valid": True,
                 "job_name": service_name,
                 "exporter_type": exporter_type or "unknown",
                 "category": category or "unknown"
             }
-        
+
         all_types = types_data.get('all_types', [])
-        
+
         # Buscar tipo correspondente
         matching_type = None
         for type_def in all_types:
@@ -78,22 +88,22 @@ async def validate_monitoring_type(service_name: str, exporter_type: Optional[st
                     continue
                 matching_type = type_def
                 break
-        
+
         if not matching_type:
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message": "Tipo de monitoramento não encontrado",
-                    "detail": f"Tipo '{service_name}' não existe no monitoring-types. Verifique se o tipo está configurado no Prometheus.",
+                    "message": "Tipo de monitoramento nao encontrado",
+                    "detail": f"Tipo '{service_name}' nao existe no monitoring-types. Verifique se o tipo esta configurado no Prometheus.",
                     "service_name": service_name,
                     "exporter_type": exporter_type,
                     "category": category
                 }
             )
-        
+
         return {
             "valid": True,
-            "id": matching_type.get('id'),  # ✅ NOVO: ID do tipo para form_schema
+            "id": matching_type.get('id'),  # ID do tipo para form_schema
             "job_name": matching_type.get('job_name'),
             "exporter_type": matching_type.get('exporter_type'),
             "category": matching_type.get('category'),
@@ -104,8 +114,8 @@ async def validate_monitoring_type(service_name: str, exporter_type: Optional[st
         raise
     except Exception as e:
         logger.error(f"[VALIDATE-TYPE] Erro ao validar tipo: {e}", exc_info=True)
-        # Em caso de erro, permitir criação (não bloquear por falha de validação)
-        logger.warning(f"[VALIDATE-TYPE] Permitindo criação sem validação devido a erro: {e}")
+        # Em caso de erro, permitir criacao (nao bloquear por falha de validacao)
+        logger.warning(f"[VALIDATE-TYPE] Permitindo criacao sem validacao devido a erro: {e}")
         return {
             "valid": True,
             "job_name": service_name,
@@ -116,19 +126,19 @@ async def validate_monitoring_type(service_name: str, exporter_type: Optional[st
 
 async def validate_form_schema_fields(meta: Dict[str, Any], type_id: str, category: Optional[str] = None) -> List[str]:
     """
-    ✅ SOLUÇÃO PRAGMÁTICA: Valida campos obrigatórios do form_schema
+    Valida campos obrigatorios do form_schema
 
-    Busca form_schema diretamente do tipo em skills/eye/monitoring-types (fonte única de verdade)
+    Busca form_schema diretamente do tipo em skills/eye/monitoring-types (fonte unica de verdade)
 
-    SPRINT 2: Validação crítica - verifica campos obrigatórios específicos do tipo
+    SPRINT 2: Validacao critica - verifica campos obrigatorios especificos do tipo
 
     Args:
-        meta: Metadata do serviço
+        meta: Metadata do servico
         type_id: ID do tipo de monitoramento (ex: 'icmp', 'node_exporter')
-        category: Categoria (opcional, não usado mais - mantido para compatibilidade)
+        category: Categoria (opcional, nao usado mais - mantido para compatibilidade)
 
     Returns:
-        Lista de erros encontrados (vazia se válido)
+        Lista de erros encontrados (vazia se valido)
     """
     errors = []
 
@@ -137,11 +147,11 @@ async def validate_form_schema_fields(meta: Dict[str, Any], type_id: str, catego
 
         kv_manager = KVManager()
 
-        # ✅ NOVO: Buscar tipo diretamente de monitoring-types (fonte única)
+        # Buscar tipo diretamente de monitoring-types (fonte unica)
         kv_data = await kv_manager.get_json('skills/eye/monitoring-types')
 
         if not kv_data or not kv_data.get('all_types'):
-            # KV vazio - não validar
+            # KV vazio - nao validar
             return errors
 
         # Buscar tipo por ID
@@ -152,35 +162,35 @@ async def validate_form_schema_fields(meta: Dict[str, Any], type_id: str, catego
                 break
 
         if not type_def:
-            # Tipo não encontrado - não validar
-            logger.warning(f"[VALIDATE-FORM-SCHEMA] Tipo '{type_id}' não encontrado em monitoring-types")
+            # Tipo nao encontrado - nao validar
+            logger.warning(f"[VALIDATE-FORM-SCHEMA] Tipo '{type_id}' nao encontrado em monitoring-types")
             return errors
 
         # Extrair form_schema do tipo
         form_schema = type_def.get('form_schema')
         if not form_schema:
-            # Tipo sem form_schema - não validar
+            # Tipo sem form_schema - nao validar
             return errors
 
-        # Validar campos obrigatórios do form_schema
+        # Validar campos obrigatorios do form_schema
         required_fields = form_schema.get('fields', [])
         for field in required_fields:
             if field.get('required', False):
                 field_name = field.get('name')
                 if field_name and (field_name not in meta or not meta.get(field_name)):
-                    errors.append(f"Campo obrigatório do tipo '{field_name}' não fornecido")
+                    errors.append(f"Campo obrigatorio do tipo '{field_name}' nao fornecido")
 
         # Validar required_metadata
         required_metadata = form_schema.get('required_metadata', [])
         for field_name in required_metadata:
             if field_name not in meta or not meta.get(field_name):
-                errors.append(f"Campo metadata obrigatório '{field_name}' não fornecido")
+                errors.append(f"Campo metadata obrigatorio '{field_name}' nao fornecido")
 
-        logger.info(f"[VALIDATE-FORM-SCHEMA] Validação para tipo '{type_id}': {len(errors)} erros")
+        logger.info(f"[VALIDATE-FORM-SCHEMA] Validacao para tipo '{type_id}': {len(errors)} erros")
 
     except Exception as e:
         logger.error(f"[VALIDATE-FORM-SCHEMA] Erro ao validar form_schema: {e}", exc_info=True)
-        # Não bloquear por erro de validação
+        # Nao bloquear por erro de validacao
         pass
 
     return errors
@@ -188,12 +198,12 @@ async def validate_form_schema_fields(meta: Dict[str, Any], type_id: str, catego
 
 async def invalidate_monitoring_cache(category: Optional[str] = None):
     """
-    Invalida cache após operações CRUD
-    
-    SPRINT 2: Invalidação crítica - garante dados atualizados após CRUD
-    
+    Invalida cache apos operacoes CRUD
+
+    SPRINT 2: Invalidacao critica - garante dados atualizados apos CRUD
+
     Args:
-        category: Categoria do serviço (opcional, para invalidação específica)
+        category: Categoria do servico (opcional, para invalidacao especifica)
     """
     try:
         # Invalidar cache local (LocalCache)
@@ -201,331 +211,14 @@ async def invalidate_monitoring_cache(category: Optional[str] = None):
             await _catalog_cache.invalidate_pattern(f"catalog:*{category}*")
         else:
             await _catalog_cache.invalidate_pattern("catalog:*")
-        
+
         logger.info(f"[CACHE] Cache invalidado para categoria: {category or 'all'}")
     except Exception as e:
         logger.error(f"[CACHE] Erro ao invalidar cache: {e}", exc_info=True)
 
 
 # ============================================================================
-# GET ROUTES - Rotas específicas ANTES de rotas com :path
-# ============================================================================
-
-@router.get("/", include_in_schema=True)
-@router.get("")
-async def list_services(
-    node_addr: Optional[str] = Query(None, description="Endereço do nó específico ou 'ALL' para todos os nós"),
-    module: Optional[str] = Query(None, description="Filtrar por módulo (icmp, http_2xx, etc)"),
-    company: Optional[str] = Query(None, description="Filtrar por empresa"),
-    project: Optional[str] = Query(None, description="Filtrar por projeto"),
-    env: Optional[str] = Query(None, description="Filtrar por ambiente (prod, dev, etc)")
-):
-    """
-    Lista serviços do Consul com todos os metadados
-
-    - **node_addr**: Endereço IP do nó específico, ou 'ALL' para todos os nós, ou None para o servidor principal
-    - **module**: Filtrar por módulo de monitoramento
-    - **company**: Filtrar por empresa
-    - **project**: Filtrar por projeto
-    - **env**: Filtrar por ambiente
-
-    Retorna todos os serviços com seus metadados completos incluindo:
-    module, company, project, env, name, instance, localizacao, tipo, etc.
-    """
-    try:
-        consul = ConsulManager()
-
-        if node_addr == "ALL":
-            # Listar de todos os nós do cluster
-            # ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
-            logger.info("Listando serviços de todos os nós do cluster")
-            all_services = await consul.get_all_services_catalog(use_fallback=True)
-
-            # Extrair metadata de fallback
-            metadata_info = all_services.pop("_metadata", None)
-            if metadata_info:
-                logger.info(
-                    f"[Services] Dados obtidos via {metadata_info.get('source_name', 'unknown')} "
-                    f"em {metadata_info.get('total_time_ms', 0)}ms"
-                )
-                if not metadata_info.get('is_master', True):
-                    logger.warning(f"⚠️ [Services] Master offline! Usando fallback")
-
-            # Aplicar filtros se especificados
-            if any([module, company, project, env]):
-                filtered_services = {}
-                for node_name, services in all_services.items():
-                    filtered_node_services = {}
-                    for service_id, service_data in services.items():
-                        meta = service_data.get("Meta", {})
-
-                        # Verificar cada filtro
-                        if module and meta.get("module") != module:
-                            continue
-                        if company and meta.get("company") != company:
-                            continue
-                        if project and meta.get("project") != project:
-                            continue
-                        if env and meta.get("env") != env:
-                            continue
-
-                        filtered_node_services[service_id] = service_data
-
-                    if filtered_node_services:
-                        filtered_services[node_name] = filtered_node_services
-
-                all_services = filtered_services
-
-            total_services = sum(len(services) for services in all_services.values())
-
-            return {
-                "success": True,
-                "data": all_services,
-                "total": total_services,
-                "nodes_count": len(all_services),
-                "message": f"Listados {total_services} serviços de {len(all_services)} nós"
-            }
-        else:
-            # Listar de um nó específico (ou servidor principal se node_addr=None)
-            target = node_addr or Config.MAIN_SERVER
-            logger.info(f"Listando serviços do nó: {target}")
-
-            services = await consul.get_services(node_addr)
-
-            # Aplicar filtros se especificados
-            if any([module, company, project, env]):
-                filtered_services = {}
-                for service_id, service_data in services.items():
-                    meta = service_data.get("Meta", {})
-
-                    # Verificar cada filtro
-                    if module and meta.get("module") != module:
-                        continue
-                    if company and meta.get("company") != company:
-                        continue
-                    if project and meta.get("project") != project:
-                        continue
-                    if env and meta.get("env") != env:
-                        continue
-
-                    filtered_services[service_id] = service_data
-
-                services = filtered_services
-
-            return {
-                "success": True,
-                "data": services,
-                "total": len(services),
-                "node": target,
-                "message": f"Listados {len(services)} serviços do nó {target}"
-            }
-
-    except Exception as e:
-        logger.error(f"Erro ao listar serviços: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erro ao conectar com Consul em {Config.MAIN_SERVER}:{Config.CONSUL_PORT} - {str(e)}"
-        )
-
-
-@router.get("/catalog/names", include_in_schema=True)
-async def get_service_catalog_names():
-    """
-    Retorna lista de nomes de serviços disponíveis no catálogo do Consul
-
-    Útil para popular dropdown de tipos de serviços na criação/edição de exporters.
-    Retorna apenas nomes únicos de serviços registrados no Consul (ex: selfnode_exporter,
-    node_exporter, windows_exporter, etc.)
-    """
-    try:
-        consul = ConsulManager()
-
-        logger.info("Obtendo nomes de serviços do catálogo Consul")
-        service_names = await consul.get_service_names()
-
-        return {
-            "success": True,
-            "data": service_names,
-            "total": len(service_names)
-        }
-
-    except Exception as e:
-        logger.error(f"Erro ao obter nomes de serviços: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/metadata/unique-values", include_in_schema=True)
-async def get_unique_metadata_values(
-    field: str = Query(..., description="Campo de metadados (module, company, project, env, etc)")
-):
-    """
-    Obtém valores únicos de um campo de metadados
-
-    Útil para popular dropdowns e filtros na interface
-    """
-    try:
-        consul = ConsulManager()
-
-        logger.info(f"Obtendo valores únicos para campo: {field}")
-        values = await consul.get_unique_values(field)
-
-        return {
-            "success": True,
-            "field": field,
-            "values": sorted(list(values)),
-            "total": len(values)
-        }
-
-    except Exception as e:
-        logger.error(f"Erro ao obter valores únicos: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/search/by-metadata", include_in_schema=True)
-async def search_services(
-    module: Optional[str] = Query(None, description="Módulo"),
-    company: Optional[str] = Query(None, description="Empresa"),
-    project: Optional[str] = Query(None, description="Projeto"),
-    env: Optional[str] = Query(None, description="Ambiente"),
-    name: Optional[str] = Query(None, description="Nome"),
-    instance: Optional[str] = Query(None, description="Instance"),
-    node_addr: Optional[str] = Query(None, description="Buscar em nó específico")
-):
-    """
-    Busca serviços por filtros de metadados
-
-    Todos os parâmetros são opcionais. Retorna serviços que correspondem a TODOS os filtros especificados.
-    """
-    try:
-        consul = ConsulManager()
-
-        # Construir filtros
-        filters = {}
-        if module:
-            filters["module"] = module
-        if company:
-            filters["company"] = company
-        if project:
-            filters["project"] = project
-        if env:
-            filters["env"] = env
-        if name:
-            filters["name"] = name
-        if instance:
-            filters["instance"] = instance
-
-        if not filters:
-            raise HTTPException(
-                status_code=400,
-                detail="Pelo menos um filtro deve ser especificado"
-            )
-
-        # Buscar com filtros
-        logger.info(f"Buscando serviços com filtros: {filters}")
-
-        if node_addr:
-            # Buscar em nó específico
-            all_services = await consul.get_services(node_addr)
-            filtered = {}
-
-            for service_id, service_data in all_services.items():
-                meta = service_data.get("Meta", {})
-                matches = all(meta.get(k) == v for k, v in filters.items())
-                if matches:
-                    filtered[service_id] = service_data
-
-            return {
-                "success": True,
-                "data": filtered,
-                "total": len(filtered),
-                "filters": filters,
-                "node": node_addr
-            }
-        else:
-            # Buscar em todos os nós
-            # ✅ SPRINT 1 CORREÇÃO (2025-11-15): Catalog API com fallback
-            all_services = await consul.get_all_services_catalog(use_fallback=True)
-
-            # Extrair metadata de fallback
-            metadata_info = all_services.pop("_metadata", None)
-            if metadata_info:
-                logger.info(
-                    f"[Services Search] Dados via {metadata_info.get('source_name', 'unknown')} "
-                    f"em {metadata_info.get('total_time_ms', 0)}ms"
-                )
-                if not metadata_info.get('is_master', True):
-                    logger.warning(f"⚠️ [Services Search] Master offline! Usando fallback")
-
-            filtered = {}
-
-            for node_name, services in all_services.items():
-                node_filtered = {}
-                for service_id, service_data in services.items():
-                    meta = service_data.get("Meta", {})
-                    matches = all(meta.get(k) == v for k, v in filters.items())
-                    if matches:
-                        node_filtered[service_id] = service_data
-
-                if node_filtered:
-                    filtered[node_name] = node_filtered
-
-            total = sum(len(services) for services in filtered.values())
-
-            return {
-                "success": True,
-                "data": filtered,
-                "total": total,
-                "filters": filters
-            }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao buscar serviços: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{service_id:path}", include_in_schema=True)
-async def get_service(
-    service_id: str = Path(..., description="ID do serviço"),
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde buscar")
-):
-    """
-    Obtém detalhes de um serviço específico pelo ID
-
-    IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
-
-    Retorna todos os dados do serviço incluindo metadados completos
-    """
-    try:
-        consul = ConsulManager()
-
-        # CRITICAL: Sanitizar o service_id recebido da URL
-        service_id = ConsulManager.sanitize_service_id(service_id)
-
-        service = await consul.get_service_by_id(service_id, node_addr)
-
-        if not service:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
-            )
-
-        return {
-            "success": True,
-            "data": service,
-            "service_id": service_id
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Erro ao obter serviço {service_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# POST ROUTES - Rotas específicas ANTES de rotas com :path
+# POST ROUTES - Criar servicos
 # ============================================================================
 
 @router.post("/", include_in_schema=True)
@@ -535,14 +228,14 @@ async def create_service(
     background_tasks: BackgroundTasks
 ):
     """
-    Cria um novo serviço no Consul com validações completas
+    Cria um novo servico no Consul com validacoes completas
 
     Valida:
-    - Campos obrigatórios (module, company, project, env, name, instance)
-    - Formato correto do instance baseado no módulo
-    - Duplicatas (mesma combinação de module/company/project/env/name)
+    - Campos obrigatorios (module, company, project, env, name, instance)
+    - Formato correto do instance baseado no modulo
+    - Duplicatas (mesma combinacao de module/company/project/env/name)
 
-    Retorna o ID do serviço criado
+    Retorna o ID do servico criado
     """
     try:
         consul = ConsulManager()
@@ -556,48 +249,48 @@ async def create_service(
             service_data['id'] = ConsulManager.sanitize_service_id(service_data['id'])
             logger.info(f"ID sanitizado para: {service_data['id']}")
 
-        # ✅ SPRINT 2: Validar tipo de monitoramento (CRÍTICO)
+        # SPRINT 2: Validar tipo de monitoramento (CRITICO)
         meta = service_data.get("Meta", {})
         service_name = service_data.get("service") or service_data.get("name", "")
         exporter_type = meta.get("exporter_type")
         category = meta.get("category")
-        type_id = None  # ✅ NOVO: ID do tipo para validação de form_schema
+        type_id = None  # ID do tipo para validacao de form_schema
 
         if service_name:
             try:
                 type_info = await validate_monitoring_type(service_name, exporter_type, category)
-                type_id = type_info.get('id')  # ✅ NOVO: Capturar ID do tipo
+                type_id = type_info.get('id')  # Capturar ID do tipo
                 logger.info(f"[VALIDATE-TYPE] Tipo validado: {type_info.get('display_name')} ({type_info.get('id')})")
             except HTTPException as e:
-                # Re-raise HTTPException (tipo não encontrado)
+                # Re-raise HTTPException (tipo nao encontrado)
                 raise e
             except Exception as e:
-                logger.warning(f"[VALIDATE-TYPE] Erro ao validar tipo (permitindo criação): {e}")
+                logger.warning(f"[VALIDATE-TYPE] Erro ao validar tipo (permitindo criacao): {e}")
 
-        # ✅ SPRINT 2: Validar campos obrigatórios do form_schema (SOLUÇÃO PRAGMÁTICA)
+        # SPRINT 2: Validar campos obrigatorios do form_schema (SOLUCAO PRAGMATICA)
         if type_id:
             form_schema_errors = await validate_form_schema_fields(meta, type_id, category)
             if form_schema_errors:
                 raise HTTPException(
                     status_code=400,
                     detail={
-                        "message": "Erros de validação do form_schema",
+                        "message": "Erros de validacao do form_schema",
                         "errors": form_schema_errors
                     }
                 )
-        
-        # Validar dados do serviço (validação genérica)
+
+        # Validar dados do servico (validacao generica)
         is_valid, errors = await consul.validate_service_data(service_data)
         if not is_valid:
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message": "Erros de validação encontrados",
+                    "message": "Erros de validacao encontrados",
                     "errors": errors
                 }
             )
 
-        # ✅ CORREÇÃO: Gerar ID dinamicamente se não fornecido
+        # CORRECAO: Gerar ID dinamicamente se nao fornecido
         if 'id' not in service_data or not service_data.get('id'):
             meta = service_data.get("Meta", {})
             try:
@@ -607,111 +300,112 @@ async def create_service(
                 raise HTTPException(
                     status_code=400,
                     detail={
-                        "message": "Erro ao gerar ID do serviço",
+                        "message": "Erro ao gerar ID do servico",
                         "error": str(e)
                     }
                 )
-        
-        # ✅ CORREÇÃO: Verificar duplicatas usando campos obrigatórios do KV
+
+        # CORRECAO: Verificar duplicatas usando campos obrigatorios do KV
         is_duplicate = await consul.check_duplicate_service(
             meta=meta,
             target_node_addr=service_data.get("node_addr")
         )
 
         if is_duplicate:
-            # Buscar campos obrigatórios para mensagem de erro
+            # Buscar campos obrigatorios para mensagem de erro
             required_fields = Config.get_required_fields()
             fields_str = "/".join(required_fields + ['name'])
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "message": "Serviço duplicado",
-                    "detail": f"Já existe um serviço com a mesma combinação de campos obrigatórios ({fields_str})"
+                    "message": "Servico duplicado",
+                    "detail": f"Ja existe um servico com a mesma combinacao de campos obrigatorios ({fields_str})"
                 }
             )
 
-        # MULTI-SITE SUPPORT: Adicionar tag automática baseado no campo "site"
-        # Se o metadata contém campo "site", adicionar como tag para filtros no prometheus.yml
+        # MULTI-SITE SUPPORT: Adicionar tag automatica baseado no campo "site"
+        # Se o metadata contem campo "site", adicionar como tag para filtros no prometheus.yml
         site = meta.get("site")
         if site:
             tags = service_data.get("Tags", service_data.get("tags", []))
             if not isinstance(tags, list):
                 tags = []
 
-            # Adicionar tag do site se não existir
+            # Adicionar tag do site se nao existir
             if site not in tags:
                 tags.append(site)
-                logger.info(f"Adicionada tag automática para site: {site}")
+                logger.info(f"Adicionada tag automatica para site: {site}")
 
-            # Garantir que o campo Tags está correto (Consul usa "Tags" com T maiúsculo)
+            # Garantir que o campo Tags esta correto (Consul usa "Tags" com T maiusculo)
             service_data["Tags"] = tags
             if "tags" in service_data:
                 del service_data["tags"]
 
-        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opção 2)
+        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opcao 2)
         # Se NAMING_STRATEGY=option2 e site != DEFAULT_SITE, adiciona sufixo _site
-        # Exemplo: selfnode_exporter + site=rio → selfnode_exporter_rio
+        # Exemplo: selfnode_exporter + site=rio -> selfnode_exporter_rio
         if "name" in service_data and service_data["name"]:
             original_name = service_data["name"]
             site = extract_site_from_metadata(meta)
             cluster = meta.get("cluster")
 
-            # Aplicar sufixo baseado na configuração
+            # Aplicar sufixo baseado na configuracao
             suffixed_name = apply_site_suffix(original_name, site=site, cluster=cluster)
 
             if suffixed_name != original_name:
                 service_data["name"] = suffixed_name
-                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} → {suffixed_name} (site={site})")
+                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} -> {suffixed_name} (site={site})")
 
-        # Registrar serviço
-        logger.info(f"Registrando novo serviço: {service_data.get('id')}")
+        # Registrar servico
+        logger.info(f"Registrando novo servico: {service_data.get('id')}")
         success = await consul.register_service(
             service_data,
             service_data.get("node_addr")
         )
 
         if success:
-            # ✅ SPRINT 2: Invalidar cache após criação
+            # SPRINT 2: Invalidar cache apos criacao
             background_tasks.add_task(
                 invalidate_monitoring_cache,
                 category
             )
-            
-            # Log assíncrono
+
+            # Log assincrono
             background_tasks.add_task(
                 log_action,
-                f"Serviço criado: {service_data.get('id')} - {meta.get('name')}"
+                f"Servico criado: {service_data.get('id')} - {meta.get('name')}"
             )
 
             return {
                 "success": True,
-                "message": "Serviço criado com sucesso",
+                "message": "Servico criado com sucesso",
                 "service_id": service_data.get("id"),
                 "data": service_data
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail="Falha ao registrar serviço no Consul"
+                detail="Falha ao registrar servico no Consul"
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Erro ao criar serviço: {e}", exc_info=True)
+        logger.error(f"Erro ao criar servico: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/bulk/register", include_in_schema=True)
 async def bulk_register_services(
     services: List[ServiceCreateRequest],
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde registrar"),
+    node_addr: Optional[str] = Query(None, description="Endereco do no onde registrar"),
     background_tasks: BackgroundTasks = None
 ):
     """
-    Registra múltiplos serviços em lote
+    Registra multiplos servicos em lote
 
-    Retorna resultado individual para cada serviço
+    Preservado para importacao em massa e automacao futura.
+    Retorna resultado individual para cada servico.
     """
     try:
         consul = ConsulManager()
@@ -721,7 +415,7 @@ async def bulk_register_services(
             if node_addr:
                 service_data["node_addr"] = node_addr
 
-        logger.info(f"Registrando {len(services_data)} serviços em lote")
+        logger.info(f"Registrando {len(services_data)} servicos em lote")
         results = await consul.bulk_register_services(services_data, node_addr)
 
         success_count = sum(1 for v in results.values() if v)
@@ -734,7 +428,7 @@ async def bulk_register_services(
 
         return {
             "success": True,
-            "message": f"Registrados {success_count}/{len(results)} serviços",
+            "message": f"Registrados {success_count}/{len(results)} servicos",
             "results": results,
             "summary": {
                 "total": len(results),
@@ -749,23 +443,23 @@ async def bulk_register_services(
 
 
 # ============================================================================
-# PUT ROUTES - Rotas com :path
+# PUT ROUTES - Atualizar servicos
 # ============================================================================
 
 @router.put("/{service_id:path}", include_in_schema=True)
 async def update_service(
-    service_id: str = Path(..., description="ID do serviço a atualizar"),
+    service_id: str = Path(..., description="ID do servico a atualizar"),
     request: ServiceUpdateRequest = None,
     background_tasks: BackgroundTasks = None
 ):
     """
-    Atualiza um serviço existente
+    Atualiza um servico existente
 
     IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
 
-    Nota: Consul não tem endpoint de update nativo, então fazemos:
-    1. Deregister do serviço antigo
-    2. Register do serviço com novos dados
+    Nota: Consul nao tem endpoint de update nativo, entao fazemos:
+    1. Deregister do servico antigo
+    2. Register do servico com novos dados
     """
     try:
         consul = ConsulManager()
@@ -773,9 +467,9 @@ async def update_service(
         # CRITICAL: Sanitizar o service_id recebido da URL
         # Garante que mesmo IDs com caracteres especiais sejam normalizados
         service_id = ConsulManager.sanitize_service_id(service_id)
-        logger.info(f"Atualizando serviço com ID sanitizado: {service_id}")
+        logger.info(f"Atualizando servico com ID sanitizado: {service_id}")
 
-        # Buscar serviço existente
+        # Buscar servico existente
         existing_service = await consul.get_service_by_id(
             service_id,
             request.node_addr if request else None
@@ -784,7 +478,7 @@ async def update_service(
         if not existing_service:
             raise HTTPException(
                 status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
+                detail=f"Servico '{service_id}' nao encontrado"
             )
 
         # Mesclar dados existentes com novos dados
@@ -807,7 +501,7 @@ async def update_service(
                     consul_key = field_mapping.get(key, key)
                     updated_service[consul_key] = value
 
-        # MULTI-SITE SUPPORT: Atualizar tag automática baseado no campo "site"
+        # MULTI-SITE SUPPORT: Atualizar tag automatica baseado no campo "site"
         meta = updated_service.get("Meta", {})
         site = meta.get("site")
         if site:
@@ -815,39 +509,39 @@ async def update_service(
             if not isinstance(tags, list):
                 tags = []
 
-            # Adicionar tag do site se não existir
+            # Adicionar tag do site se nao existir
             if site not in tags:
                 tags.append(site)
-                logger.info(f"Adicionada tag automática para site: {site}")
+                logger.info(f"Adicionada tag automatica para site: {site}")
 
             updated_service["Tags"] = tags
 
-        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opção 2)
+        # MULTI-SITE SUPPORT: Aplicar sufixo ao service name (Opcao 2)
         # Se NAMING_STRATEGY=option2 e site != DEFAULT_SITE, adiciona sufixo _site
         if "Name" in updated_service and updated_service["Name"]:
             original_name = updated_service["Name"]
             site = extract_site_from_metadata(meta)
             cluster = meta.get("cluster")
 
-            # Aplicar sufixo baseado na configuração
+            # Aplicar sufixo baseado na configuracao
             suffixed_name = apply_site_suffix(original_name, site=site, cluster=cluster)
 
             if suffixed_name != original_name:
                 updated_service["Name"] = suffixed_name
-                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} → {suffixed_name} (site={site})")
+                logger.info(f"[MULTI-SITE] Service name alterado: {original_name} -> {suffixed_name} (site={site})")
 
-        # ✅ CORREÇÃO FASE 0: Validar dados do serviço antes de atualizar (usando validação dinâmica)
+        # CORRECAO FASE 0: Validar dados do servico antes de atualizar (usando validacao dinamica)
         is_valid, errors = await consul.validate_service_data(updated_service)
         if not is_valid:
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message": "Erros de validação encontrados",
+                    "message": "Erros de validacao encontrados",
                     "errors": errors
                 }
             )
 
-        # ✅ CORREÇÃO FASE 0: Verificar duplicatas usando campos obrigatórios do KV (excluindo o próprio serviço)
+        # CORRECAO FASE 0: Verificar duplicatas usando campos obrigatorios do KV (excluindo o proprio servico)
         is_duplicate = await consul.check_duplicate_service(
             meta=meta,
             exclude_sid=service_id,
@@ -855,19 +549,19 @@ async def update_service(
         )
 
         if is_duplicate:
-            # Buscar campos obrigatórios para mensagem de erro
+            # Buscar campos obrigatorios para mensagem de erro
             required_fields = Config.get_required_fields()
             fields_str = "/".join(required_fields + ['name'])
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "message": "Serviço duplicado",
-                    "detail": f"Já existe outro serviço com a mesma combinação de campos obrigatórios ({fields_str})"
+                    "message": "Servico duplicado",
+                    "detail": f"Ja existe outro servico com a mesma combinacao de campos obrigatorios ({fields_str})"
                 }
             )
 
-        # Atualizar serviço
-        logger.info(f"Atualizando serviço: {service_id}")
+        # Atualizar servico
+        logger.info(f"Atualizando servico: {service_id}")
         success = await consul.update_service(
             service_id,
             updated_service,
@@ -875,57 +569,58 @@ async def update_service(
         )
 
         if success:
-            # ✅ SPRINT 2: Invalidar cache após atualização
+            # SPRINT 2: Invalidar cache apos atualizacao
             meta = updated_service.get("Meta", {})
             category = meta.get("category")
             background_tasks.add_task(
                 invalidate_monitoring_cache,
                 category
             )
-            
+
             background_tasks.add_task(
                 log_action,
-                f"Serviço atualizado: {service_id}"
+                f"Servico atualizado: {service_id}"
             )
 
             return {
                 "success": True,
-                "message": "Serviço atualizado com sucesso",
+                "message": "Servico atualizado com sucesso",
                 "service_id": service_id,
                 "data": updated_service
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail="Falha ao atualizar serviço no Consul"
+                detail="Falha ao atualizar servico no Consul"
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Erro ao atualizar serviço {service_id}: {e}", exc_info=True)
+        logger.error(f"Erro ao atualizar servico {service_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
-# DELETE ROUTES - Rotas específicas ANTES de rotas com :path
+# DELETE ROUTES - Remover servicos
 # ============================================================================
 
 @router.delete("/bulk/deregister", include_in_schema=True)
 async def bulk_deregister_services(
     service_ids: List[str],
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde remover"),
+    node_addr: Optional[str] = Query(None, description="Endereco do no onde remover"),
     background_tasks: BackgroundTasks = None
 ):
     """
-    Remove múltiplos serviços em lote
+    Remove multiplos servicos em lote
 
-    Retorna resultado individual para cada serviço
+    Preservado para limpeza em massa e automacao futura.
+    Retorna resultado individual para cada servico.
     """
     try:
         consul = ConsulManager()
 
-        logger.info(f"Removendo {len(service_ids)} serviços em lote")
+        logger.info(f"Removendo {len(service_ids)} servicos em lote")
         results = await consul.bulk_deregister_services(service_ids, node_addr)
 
         success_count = sum(1 for v in results.values() if v)
@@ -933,12 +628,12 @@ async def bulk_deregister_services(
 
         background_tasks.add_task(
             log_action,
-            f"Remoção em lote: {success_count} sucessos, {failed_count} falhas"
+            f"Remocao em lote: {success_count} sucessos, {failed_count} falhas"
         )
 
         return {
             "success": True,
-            "message": f"Removidos {success_count}/{len(results)} serviços",
+            "message": f"Removidos {success_count}/{len(results)} servicos",
             "results": results,
             "summary": {
                 "total": len(results),
@@ -948,18 +643,18 @@ async def bulk_deregister_services(
         }
 
     except Exception as e:
-        logger.error(f"Erro na remoção em lote: {e}", exc_info=True)
+        logger.error(f"Erro na remocao em lote: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{service_id:path}", include_in_schema=True)
 async def delete_service(
-    service_id: str = Path(..., description="ID do serviço a remover"),
-    node_addr: Optional[str] = Query(None, description="Endereço do nó onde remover"),
+    service_id: str = Path(..., description="ID do servico a remover"),
+    node_addr: Optional[str] = Query(None, description="Endereco do no onde remover"),
     background_tasks: BackgroundTasks = None
 ):
     """
-    Remove um serviço do Consul
+    Remove um servico do Consul
 
     IMPORTANTE: O service_id pode conter caracteres especiais (/, @) que devem ser codificados na URL
     """
@@ -969,49 +664,49 @@ async def delete_service(
         # CRITICAL: Sanitizar o service_id recebido da URL
         # Garante que mesmo IDs com caracteres especiais sejam normalizados
         service_id = ConsulManager.sanitize_service_id(service_id)
-        logger.info(f"Removendo serviço com ID sanitizado: {service_id}")
+        logger.info(f"Removendo servico com ID sanitizado: {service_id}")
 
-        # Verificar se serviço existe
+        # Verificar se servico existe
         existing_service = await consul.get_service_by_id(service_id, node_addr)
         if not existing_service:
             raise HTTPException(
                 status_code=404,
-                detail=f"Serviço '{service_id}' não encontrado"
+                detail=f"Servico '{service_id}' nao encontrado"
             )
 
-        # Remover serviço
-        logger.info(f"Removendo serviço: {service_id}")
+        # Remover servico
+        logger.info(f"Removendo servico: {service_id}")
         success = await consul.deregister_service(service_id, node_addr)
 
         if success:
-            # ✅ SPRINT 2: Invalidar cache após exclusão
+            # SPRINT 2: Invalidar cache apos exclusao
             meta = existing_service.get("Meta", {})
             category = meta.get("category")
             background_tasks.add_task(
                 invalidate_monitoring_cache,
                 category
             )
-            
+
             background_tasks.add_task(
                 log_action,
-                f"Serviço removido: {service_id}"
+                f"Servico removido: {service_id}"
             )
 
             return {
                 "success": True,
-                "message": "Serviço removido com sucesso",
+                "message": "Servico removido com sucesso",
                 "service_id": service_id
             }
         else:
             raise HTTPException(
                 status_code=500,
-                detail="Falha ao remover serviço do Consul"
+                detail="Falha ao remover servico do Consul"
             )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Erro ao remover serviço {service_id}: {e}", exc_info=True)
+        logger.error(f"Erro ao remover servico {service_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

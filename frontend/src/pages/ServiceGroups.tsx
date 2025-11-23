@@ -15,7 +15,7 @@ import { PageContainer, ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import ResizableTitle from '../components/ResizableTitle';
 import { consulAPI } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+// NOTA: useNavigate removido em SPEC-CLEANUP-001 v1.4.0 - ServiceGroups nao navega mais ao clicar em servico
 
 interface ServiceGroupItem {
   name: string;
@@ -30,7 +30,7 @@ interface ServiceGroupItem {
 const ServiceGroups: React.FC = () => {
   const { message } = App.useApp();
   const actionRef = useRef<ActionType>();
-  const navigate = useNavigate();
+  // NOTA: navigate removido em SPEC-CLEANUP-001 v1.4.0 - ServiceGroups nao navega mais ao clicar em servico
   const [summary, setSummary] = useState({ total: 0, totalInstances: 0, healthy: 0, unhealthy: 0 });
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
 
@@ -90,10 +90,8 @@ const ServiceGroups: React.FC = () => {
     }
   };
 
-  const handleServiceClick = (serviceName: string) => {
-    // Navegar para página de Services com filtro
-    navigate(`/services?service=${encodeURIComponent(serviceName)}`);
-  };
+  // NOTA: handleServiceClick removido em SPEC-CLEANUP-001 v1.4.0
+  // A pagina Services foi removida, entao nao ha mais destino para navegacao
 
   const handleResize = React.useCallback(
     (columnKey: string) =>
@@ -105,19 +103,16 @@ const ServiceGroups: React.FC = () => {
 
   const baseColumns: ProColumns<ServiceGroupItem>[] = [
     {
-      title: 'Grupo de Serviço',
+      title: 'Grupo de Servico',
       dataIndex: 'name',
       key: 'name',
       width: 250,
       fixed: 'left',
+      // NOTA: Navegacao removida em SPEC-CLEANUP-001 v1.4.0 - pagina Services foi removida
       render: (name) => (
-        <Button
-          type="link"
-          onClick={() => handleServiceClick(name as string)}
-          style={{ padding: 0, height: 'auto' }}
-        >
+        <span style={{ fontWeight: 500 }}>
           {name}
-        </Button>
+        </span>
       ),
       sorter: (a, b) => a.name.localeCompare(b.name),
     },

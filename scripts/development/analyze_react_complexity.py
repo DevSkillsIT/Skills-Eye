@@ -1,34 +1,38 @@
 """
-Analisa complexidade e diferenças entre BlackboxTargets e Services
-Identifica o que pode estar deixando Services mais lenta
+Analisa complexidade de componentes React
+Identifica potenciais problemas de performance
+
+NOTA: Este script foi atualizado em SPEC-CLEANUP-001 v1.4.0
+Os arquivos BlackboxTargets.tsx e Services.tsx foram removidos
+como parte da limpeza de paginas obsoletas.
+Agora o script analisa DynamicMonitoringPage como referencia.
 """
 import re
 from pathlib import Path
 
 print("=" * 80)
-print("ANALISE DE COMPLEXIDADE REACT: BlackboxTargets vs Services")
+print("ANALISE DE COMPLEXIDADE REACT: DynamicMonitoringPage")
 print("=" * 80)
 print()
 
 frontend_dir = Path("frontend/src/pages")
 
-# Ler arquivos
-blackbox_file = frontend_dir / "BlackboxTargets.tsx"
-services_file = frontend_dir / "Services.tsx"
+# Ler arquivo de referencia (DynamicMonitoringPage substituiu as paginas obsoletas)
+dynamic_file = frontend_dir / "DynamicMonitoringPage.tsx"
 
-blackbox_content = blackbox_file.read_text(encoding='utf-8')
-services_content = services_file.read_text(encoding='utf-8')
+if not dynamic_file.exists():
+    print("ERRO: DynamicMonitoringPage.tsx nao encontrado!")
+    print("Verifique se o arquivo existe em frontend/src/pages/")
+    exit(1)
+
+dynamic_content = dynamic_file.read_text(encoding='utf-8')
 
 # ============================================================================
 # METRICA 1: Tamanho de arquivo
 # ============================================================================
 print("METRICA 1: Tamanho de arquivo")
 print("-" * 80)
-print(f"BlackboxTargets: {len(blackbox_content):,} caracteres ({len(blackbox_content.splitlines()):,} linhas)")
-print(f"Services:        {len(services_content):,} caracteres ({len(services_content.splitlines()):,} linhas)")
-diff_chars = len(services_content) - len(blackbox_content)
-diff_lines = len(services_content.splitlines()) - len(blackbox_content.splitlines())
-print(f"Diferença:       +{diff_chars:,} caracteres (+{diff_lines:,} linhas)")
+print(f"DynamicMonitoringPage: {len(dynamic_content):,} caracteres ({len(dynamic_content.splitlines()):,} linhas)")
 print()
 
 # ============================================================================
@@ -39,56 +43,32 @@ print("-" * 80)
 
 hooks_pattern = r'\b(useState|useEffect|useMemo|useCallback|useRef|useContext)\('
 
-blackbox_hooks = re.findall(hooks_pattern, blackbox_content)
-services_hooks = re.findall(hooks_pattern, services_content)
-
 from collections import Counter
 
-blackbox_hook_counts = Counter(blackbox_hooks)
-services_hook_counts = Counter(services_hooks)
+dynamic_hooks = re.findall(hooks_pattern, dynamic_content)
+dynamic_hook_counts = Counter(dynamic_hooks)
 
-print(f"BlackboxTargets:")
-for hook, count in sorted(blackbox_hook_counts.items()):
+print(f"DynamicMonitoringPage:")
+for hook, count in sorted(dynamic_hook_counts.items()):
     print(f"  {hook}: {count}x")
-print(f"  TOTAL: {len(blackbox_hooks)} hooks")
-print()
-
-print(f"Services:")
-for hook, count in sorted(services_hook_counts.items()):
-    print(f"  {hook}: {count}x")
-print(f"  TOTAL: {len(services_hooks)} hooks")
-print()
-
-print(f"Diferença: Services tem {len(services_hooks) - len(blackbox_hooks)} hooks a MAIS")
+print(f"  TOTAL: {len(dynamic_hooks)} hooks")
 print()
 
 # ============================================================================
-# METRICA 3: Iterações pesadas (map, forEach, reduce)
+# METRICA 3: Iteracoes pesadas (map, forEach, reduce)
 # ============================================================================
 print("METRICA 3: Iteracoes pesadas")
 print("-" * 80)
 
 iterations_pattern = r'\.(map|forEach|reduce|filter)\('
 
-blackbox_iterations = re.findall(iterations_pattern, blackbox_content)
-services_iterations = re.findall(iterations_pattern, services_content)
+dynamic_iterations = re.findall(iterations_pattern, dynamic_content)
+dynamic_iter_counts = Counter(dynamic_iterations)
 
-blackbox_iter_counts = Counter(blackbox_iterations)
-services_iter_counts = Counter(services_iterations)
-
-print(f"BlackboxTargets:")
-for method, count in sorted(blackbox_iter_counts.items()):
+print(f"DynamicMonitoringPage:")
+for method, count in sorted(dynamic_iter_counts.items()):
     print(f"  .{method}(): {count}x")
-print(f"  TOTAL: {len(blackbox_iterations)} iterações")
-print()
-
-print(f"Services:")
-for method, count in sorted(services_iter_counts.items()):
-    print(f"  .{method}(): {count}x")
-print(f"  TOTAL: {len(services_iterations)} iterações")
-print()
-
-print(f"Diferença: Services tem {len(services_iterations) - len(blackbox_iterations)} iterações a MAIS")
+print(f"  TOTAL: {len(dynamic_iterations)} iteracoes")
 print()
 
 # ============================================================================
@@ -97,27 +77,19 @@ print()
 print("METRICA 4: Componentes JSX")
 print("-" * 80)
 
-# Contar tags JSX (aproximação)
+# Contar tags JSX (aproximacao)
 jsx_pattern = r'<([A-Z][a-zA-Z0-9.]*)'
 
-blackbox_components = re.findall(jsx_pattern, blackbox_content)
-services_components = re.findall(jsx_pattern, services_content)
+dynamic_components = re.findall(jsx_pattern, dynamic_content)
+dynamic_comp_counts = Counter(dynamic_components)
 
-blackbox_comp_counts = Counter(blackbox_components)
-services_comp_counts = Counter(services_components)
-
-print(f"BlackboxTargets: {len(blackbox_components)} componentes renderizados")
-print(f"Services:        {len(services_components)} componentes renderizados")
-print(f"Diferença:       +{len(services_components) - len(blackbox_components)} componentes")
+print(f"DynamicMonitoringPage: {len(dynamic_components)} componentes renderizados")
 print()
 
-# Top 5 componentes mais usados em Services (que não estão em Blackbox)
-print("Top 5 componentes EXTRAS em Services:")
-for comp, count in services_comp_counts.most_common(10):
-    blackbox_count = blackbox_comp_counts.get(comp, 0)
-    diff = count - blackbox_count
-    if diff > 0:
-        print(f"  {comp}: {count}x (Blackbox: {blackbox_count}x, diff: +{diff})")
+# Top 10 componentes mais usados
+print("Top 10 componentes mais usados:")
+for comp, count in dynamic_comp_counts.most_common(10):
+    print(f"  {comp}: {count}x")
 print()
 
 # ============================================================================
@@ -126,20 +98,15 @@ print()
 print("METRICA 5: useMemo complexity")
 print("-" * 80)
 
-# Encontrar useMemo e contar dependências
+# Encontrar useMemo e contar dependencias
 usememo_pattern = r'useMemo\([^)]+\),\s*\[([^\]]*)\]'
 
-blackbox_memos = re.findall(usememo_pattern, blackbox_content, re.DOTALL)
-services_memos = re.findall(usememo_pattern, services_content, re.DOTALL)
+dynamic_memos = re.findall(usememo_pattern, dynamic_content, re.DOTALL)
+dynamic_memo_deps = [len([d.strip() for d in deps.split(',') if d.strip()]) for deps in dynamic_memos]
 
-blackbox_memo_deps = [len([d.strip() for d in deps.split(',') if d.strip()]) for deps in blackbox_memos]
-services_memo_deps = [len([d.strip() for d in deps.split(',') if d.strip()]) for deps in services_memos]
+dynamic_avg_deps = sum(dynamic_memo_deps) / len(dynamic_memo_deps) if dynamic_memo_deps else 0
 
-blackbox_avg_deps = sum(blackbox_memo_deps) / len(blackbox_memo_deps) if blackbox_memo_deps else 0
-services_avg_deps = sum(services_memo_deps) / len(services_memo_deps) if services_memo_deps else 0
-
-print(f"BlackboxTargets: {len(blackbox_memos)} useMemo, média de {blackbox_avg_deps:.1f} dependências")
-print(f"Services:        {len(services_memos)} useMemo, média de {services_avg_deps:.1f} dependências")
+print(f"DynamicMonitoringPage: {len(dynamic_memos)} useMemo, media de {dynamic_avg_deps:.1f} dependencias")
 print()
 
 # ============================================================================
@@ -151,26 +118,28 @@ print("=" * 80)
 
 issues = []
 
-if diff_lines > 100:
-    issues.append(f"⚠️ Services tem {diff_lines} linhas a MAIS - código mais complexo")
+total_lines = len(dynamic_content.splitlines())
+if total_lines > 500:
+    issues.append(f"Arquivo grande: {total_lines} linhas - considerar dividir em componentes menores")
 
-if len(services_hooks) > len(blackbox_hooks) + 5:
-    issues.append(f"⚠️ Services tem {len(services_hooks) - len(blackbox_hooks)} hooks a MAIS - mais re-renders")
+if len(dynamic_hooks) > 15:
+    issues.append(f"Muitos hooks: {len(dynamic_hooks)} - pode causar re-renders excessivos")
 
-if len(services_iterations) > len(blackbox_iterations) + 10:
-    issues.append(f"⚠️ Services tem {len(services_iterations) - len(blackbox_iterations)} iterações a MAIS - processamento pesado")
+if len(dynamic_iterations) > 20:
+    issues.append(f"Muitas iteracoes: {len(dynamic_iterations)} - processamento potencialmente pesado")
 
-if len(services_components) > len(blackbox_components) + 20:
-    issues.append(f"⚠️ Services renderiza {len(services_components) - len(blackbox_components)} componentes a MAIS - DOM maior")
+if len(dynamic_components) > 100:
+    issues.append(f"Muitos componentes JSX: {len(dynamic_components)} - DOM potencialmente grande")
 
-if services_avg_deps > blackbox_avg_deps + 1:
-    issues.append(f"⚠️ useMemo em Services tem mais dependências - recalcula mais vezes")
+if dynamic_avg_deps > 5:
+    issues.append(f"useMemo com muitas dependencias (media: {dynamic_avg_deps:.1f}) - recalcula frequentemente")
 
 if issues:
+    print("Pontos de atencao:")
     for issue in issues:
-        print(issue)
+        print(f"  - {issue}")
 else:
-    print("✓ Complexidade similar!")
+    print("Sem problemas de complexidade identificados")
 
 print()
 print("=" * 80)

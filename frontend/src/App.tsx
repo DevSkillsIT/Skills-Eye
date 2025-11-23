@@ -24,15 +24,12 @@ import {
   SettingOutlined,
 } from '@ant-design/icons';
 import Dashboard from './pages/Dashboard';
-import Services from './pages/Services';
+// NOTA: Imports de paginas obsoletas removidos em SPEC-CLEANUP-001 v1.4.0
+// Removidos: Services, Exporters, BlackboxTargets, BlackboxGroups, ServicePresets
 import ServiceGroups from './pages/ServiceGroups';
 import Hosts from './pages/Hosts';
-import Exporters from './pages/Exporters';
-import BlackboxTargets from './pages/BlackboxTargets';
 import Installer from './pages/Installer';
 import KvBrowser from './pages/KvBrowser';
-import ServicePresets from './pages/ServicePresets';
-import BlackboxGroups from './pages/BlackboxGroups';
 import AuditLog from './pages/AuditLog';
 import PrometheusConfig from './pages/PrometheusConfig';
 import MetadataFields from './pages/MetadataFields';
@@ -60,14 +57,11 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
       name: 'Monitoramento',
       icon: <RadarChartOutlined />,
       children: [
-        {
-          path: '/services',
-          name: 'Services',
-          icon: <DatabaseOutlined />,
-        },
+        // NOTA: Itens obsoletos removidos em SPEC-CLEANUP-001 v1.4.0
+        // Removidos: Services, Exporters, Alvos Blackbox, Grupos Blackbox, Presets de Servicos
         {
           path: '/service-groups',
-          name: 'Grupos de Serviços',
+          name: 'Grupos de Servicos',
           icon: <AppstoreOutlined />,
         },
         {
@@ -75,27 +69,7 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
           name: 'Hosts',
           icon: <HddOutlined />,
         },
-        {
-          path: '/exporters',
-          name: 'Exporters',
-          icon: <CloudServerOutlined />,
-        },
-        {
-          path: '/blackbox',
-          name: 'Alvos Blackbox',
-          icon: <RadarChartOutlined />,
-        },
-        {
-          path: '/blackbox-groups',
-          name: 'Grupos Blackbox',
-          icon: <AppstoreAddOutlined />,
-        },
-        {
-          path: '/presets',
-          name: 'Presets de Serviços',
-          icon: <AppstoreOutlined />,
-        },
-        // ⭐ NOVAS PÁGINAS DINÂMICAS - v2.0 (2025-11-13)
+        // PAGINAS DINAMICAS - v2.0 (2025-11-13)
         {
           path: '/monitoring/network-probes',
           name: 'Network Probes',
@@ -243,13 +217,10 @@ const AppContent: React.FC<{ darkMode: boolean; setDarkMode: (value: boolean) =>
       >
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/services" element={<Services />} />
+          {/* NOTA: Rotas de paginas obsoletas removidas em SPEC-CLEANUP-001 v1.4.0 */}
+          {/* Removidos: /services, /exporters, /blackbox, /blackbox-groups, /presets */}
           <Route path="/service-groups" element={<ServiceGroups />} />
           <Route path="/hosts" element={<Hosts />} />
-          <Route path="/exporters" element={<Exporters />} />
-          <Route path="/blackbox" element={<BlackboxTargets />} />
-          <Route path="/blackbox-groups" element={<BlackboxGroups />} />
-          <Route path="/presets" element={<ServicePresets />} />
           <Route path="/kv-browser" element={<KvBrowser />} />
           <Route path="/prometheus-config" element={<PrometheusConfig />} />
           <Route path="/metadata-fields" element={<MetadataFields />} />
