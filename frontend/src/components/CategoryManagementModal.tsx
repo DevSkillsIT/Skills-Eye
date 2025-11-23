@@ -218,7 +218,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
         onCancel={onCancel}
         width={1000}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <ProTable<CategoryInfo>
           columns={columns}
@@ -305,7 +305,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
         onOpenChange={setCreateModalOpen}
         onFinish={handleCreateCategory}
         modalProps={{
-          destroyOnClose: true,
+          destroyOnHidden: true,
         }}
       >
         <ProFormText
@@ -364,7 +364,7 @@ const CategoryManagementModal: React.FC<CategoryManagementModalProps> = ({ open,
         onOpenChange={setEditModalOpen}
         onFinish={handleUpdateCategory}
         modalProps={{
-          destroyOnClose: true,
+          destroyOnHidden: true,
         }}
         initialValues={editingCategory || undefined}
       >

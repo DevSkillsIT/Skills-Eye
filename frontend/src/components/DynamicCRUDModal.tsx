@@ -1088,7 +1088,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       onCancel={onCancel}
       width={900}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
     >
       {/* Stepper Visual */}

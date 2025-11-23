@@ -676,7 +676,7 @@ const KvBrowser: React.FC = () => {
         initialValues={{ key: editorKey, value: editorValue }}
         onFinish={handleSave}
         modalProps={{
-          destroyOnClose: true,
+          destroyOnHidden: true,
           onCancel: () => setEditorOpen(false),
         }}
       >

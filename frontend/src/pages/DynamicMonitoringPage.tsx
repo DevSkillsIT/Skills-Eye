@@ -1899,7 +1899,7 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         cancelText="Cancelar"
         cancelButtonProps={{ disabled: exportLoading }}
         width={600}
-        destroyOnClose
+        destroyOnHidden
         closable={!exportLoading}
         maskClosable={!exportLoading}
       >
