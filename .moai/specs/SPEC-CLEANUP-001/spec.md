@@ -1,9 +1,9 @@
 ---
 id: SPEC-CLEANUP-001
-version: "1.3.0"
+version: "1.4.0"
 status: draft
 created: 2025-11-21
-updated: 2025-11-21
+updated: 2025-11-22
 author: Claude Code
 priority: MEDIUM
 ---
@@ -16,6 +16,7 @@ priority: MEDIUM
 | 1.1.0  | 2025-11-21 | Claude Code | Alterar para delecao completa  |
 | 1.2.0  | 2025-11-21 | Claude Code | Analise completa de dependencias - services.py refatorado, BlackboxGroups adicionado |
 | 1.3.0  | 2025-11-21 | Claude Code | Correcoes criticas auditoria: testes, Dashboard.tsx, scripts diagnostico, caminho models.py, bulkDeleteServices |
+| 1.4.0  | 2025-11-22 | Claude Code | Preservar funcoes bulk (register/deregister), corrigir caminhos Tests/, remover referencia diagnostico.ps1 |
 
 ---
 
@@ -25,7 +26,7 @@ priority: MEDIUM
 
 Este SPEC define o processo de remocao completa das paginas estaticas obsoletas do projeto Skills-Eye (Services, Exporters, BlackboxTargets, BlackboxGroups, ServicePresets, TestMonitoringTypes) que foram substituidas pelo sistema dinamico `DynamicMonitoringPage`. O processo garante que nenhuma dependencia seja quebrada e que os arquivos sejam completamente removidos do projeto.
 
-**MUDANCAS v1.3.0**: Adiciona preparacao de testes/scripts, remocao de atalhos Dashboard.tsx, corrige caminho models.py, e inclui remocao de bulkDeleteServices no api.ts.
+**MUDANCAS v1.4.0**: Preservar endpoints bulk (register/deregister) para uso futuro, manter bulkDeleteServices no api.ts, corrigir caminhos dos testes em Tests/, remover referencia a diagnostico.ps1 (arquivo inexistente).
 
 ## Contexto e Motivacao
 
@@ -78,6 +79,8 @@ O projeto Skills-Eye passou por uma migracao arquitetural onde 6 paginas estatic
 - `POST /` - createService (usado por DynamicCRUDModal)
 - `PUT /{service_id}` - updateService (usado por DynamicCRUDModal)
 - `DELETE /{service_id}` - deleteService (usado por DynamicMonitoringPage)
+- `POST /bulk/register` - bulkRegister (preservado para importacao em massa futura)
+- `DELETE /bulk/deregister` - bulkDeregister (preservado para limpeza em massa futura)
 
 **Endpoints a REMOVER**:
 - `GET /` - listServices
@@ -85,8 +88,6 @@ O projeto Skills-Eye passou por uma migracao arquitetural onde 6 paginas estatic
 - `GET /metadata/unique-values` - getMetadataUniqueValues
 - `GET /search/by-metadata` - searchByMetadata
 - `GET /{service_id}` - getService
-- `POST /bulk/register` - bulkRegister
-- `DELETE /bulk/deregister` - bulkDeregister
 
 ### Analise de Dependencias
 
@@ -116,23 +117,21 @@ const handleServiceClick = (serviceName: string) => {
 
 #### IMPACTO CRITICO - Testes em Tests/ (v1.3.0)
 
-A pasta `Tests/` na raiz contem scripts de integracao que importam BlackboxManager e ServicePresetManager:
-- `Tests/test_phase1.py`
-- `Tests/test_audit_fix.py`
-- Outros scripts em Tests/
+A pasta `Tests/` contem scripts de integracao que importam BlackboxManager e ServicePresetManager:
+- `Tests/integration/test_phase1.py`
+- `Tests/integration/test_phase2.py`
+- `Tests/metadata/test_audit_fix.py`
 
 **ACAO REQUERIDA**: Atualizar ou remover testes ANTES de mover modulos para obsolete/.
 
-#### IMPACTO CRITICO - Scripts de Diagnostico (v1.3.0)
+#### IMPACTO CRITICO - Scripts de Diagnostico (v1.4.0)
 
-**diagnostico.ps1** (linhas 5-25, 79):
-- Valida existencia de ServicePresets.tsx, BlackboxGroups.tsx
-- Testa endpoint GET /api/v1/services
-
-**analyze_react_complexity.py** (linhas 13-21):
+**scripts/development/analyze_react_complexity.py** (linhas 16-17):
 - Le diretamente BlackboxTargets.tsx e Services.tsx
 
-**ACAO REQUERIDA**: Atualizar ou aposentar estes utilitarios.
+**ACAO REQUERIDA**: Atualizar este utilitario para nao referenciar arquivos deletados.
+
+**NOTA v1.4.0**: Referencia a `diagnostico.ps1` removida - arquivo nao existe no projeto.
 
 #### Componentes COMPARTILHADOS (NAO remover)
 
@@ -257,14 +256,16 @@ const handleServiceClick = (serviceName: string) => {
 
 ### FR-007: REFATORAR services.py (NAO remover completamente!)
 
-**EARS Format**: O sistema **DEVE** refatorar o arquivo `backend/api/services.py` mantendo apenas endpoints CRUD usados por paginas ativas.
+**EARS Format**: O sistema **DEVE** refatorar o arquivo `backend/api/services.py` mantendo endpoints CRUD e bulk usados ou preservados para uso futuro.
 
 **IMPORTANTE**: Este arquivo NAO pode ser movido para obsolete/ porque eh usado por DynamicMonitoringPage e DynamicCRUDModal!
 
 **Endpoints a MANTER**:
-- `POST /` - createService
-- `PUT /{service_id}` - updateService
-- `DELETE /{service_id}` - deleteService
+- `POST /` - createService (usado por DynamicCRUDModal)
+- `PUT /{service_id}` - updateService (usado por DynamicCRUDModal)
+- `DELETE /{service_id}` - deleteService (usado por DynamicMonitoringPage)
+- `POST /bulk/register` - bulkRegister (preservado para importacao em massa futura)
+- `DELETE /bulk/deregister` - bulkDeregister (preservado para limpeza em massa futura)
 
 **Endpoints a REMOVER**:
 - `GET /` - listServices
@@ -272,10 +273,8 @@ const handleServiceClick = (serviceName: string) => {
 - `GET /metadata/unique-values` - getMetadataUniqueValues
 - `GET /search/by-metadata` - searchByMetadata
 - `GET /{service_id}` - getService
-- `POST /bulk/register` - bulkRegister
-- `DELETE /bulk/deregister` - bulkDeregister
 
-**Justificativa**: Manter funcionalidade CRUD usada pelo sistema dinamico.
+**Justificativa**: Manter funcionalidade CRUD e bulk para uso atual e futuro do sistema dinamico.
 
 ### FR-008: Mover APIs Backend para obsolete/
 
@@ -318,7 +317,7 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 
 ### FR-010: Atualizar api.ts do Frontend
 
-**EARS Format**: O sistema **DEVE** remover metodos nao utilizados da API frontend.
+**EARS Format**: O sistema **DEVE** remover metodos nao utilizados da API frontend, preservando CRUD e bulk.
 
 **Metodos a REMOVER**:
 - Todos os metodos de blackbox (createBlackboxGroup, listBlackboxGroups, etc)
@@ -330,6 +329,7 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 - updateService
 - deleteService
 - deregisterService
+- bulkDeleteServices (preservado para operacoes em massa futuras)
 
 ### FR-011: Atualizar models.py do Backend
 
@@ -346,14 +346,14 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 - ServiceCreateRequest (usado por createService)
 - ServiceUpdateRequest (usado por updateService)
 
-### FR-012: Atualizar Testes em Tests/ (v1.3.0)
+### FR-012: Atualizar Testes em Tests/ (v1.4.0)
 
 **EARS Format**: O sistema **DEVE** atualizar ou remover testes que dependem de modulos obsoletos ANTES de mover para obsolete/.
 
 **Detalhes**:
-- Atualizar ou remover `Tests/test_phase1.py` (importa BlackboxManager)
-- Atualizar ou remover `Tests/test_audit_fix.py` (importa ServicePresetManager)
-- Verificar outros scripts em Tests/ que dependem de modulos obsoletos
+- Atualizar ou remover `Tests/integration/test_phase1.py` (importa BlackboxManager)
+- Atualizar ou remover `Tests/integration/test_phase2.py` (importa BlackboxManager, ServicePresetManager)
+- Atualizar ou remover `Tests/metadata/test_audit_fix.py` (importa ServicePresetManager)
 
 **Justificativa**: Evitar quebra de testes ao mover modulos para obsolete/.
 
@@ -372,27 +372,20 @@ app.include_router(services_router, prefix="/api/v1/services", tags=["Services"]
 
 **Justificativa**: Evitar navegacao para rotas que nao existem mais.
 
-### FR-014: Atualizar Scripts de Diagnostico (v1.3.0)
+### FR-014: Atualizar Scripts de Diagnostico (v1.4.0)
 
 **EARS Format**: O sistema **DEVE** atualizar scripts de diagnostico para nao referenciar arquivos removidos.
 
 **Scripts a atualizar**:
-- `diagnostico.ps1`: Remover validacao de ServicePresets.tsx, BlackboxGroups.tsx e endpoint GET /api/v1/services
-- `analyze_react_complexity.py`: Remover leitura de BlackboxTargets.tsx e Services.tsx
+- `scripts/development/analyze_react_complexity.py`: Remover leitura de BlackboxTargets.tsx e Services.tsx
+
+**NOTA v1.4.0**: Referencia a `diagnostico.ps1` removida - arquivo nao existe no projeto.
 
 **Justificativa**: Evitar falha de scripts ao procurar arquivos deletados.
 
-### FR-015: Remover bulkDeleteServices do api.ts (v1.3.0)
+### FR-015: REMOVIDO (v1.4.0)
 
-**EARS Format**: O sistema **DEVE** remover o metodo bulkDeleteServices do api.ts do frontend.
-
-**Metodo a REMOVER**:
-```typescript
-bulkDeleteServices: (services: Array<{service_id: string; node_addr?: string}>) =>
-  api.delete('/services/bulk/deregister', {...})
-```
-
-**Justificativa**: Endpoint DELETE /services/bulk/deregister sera removido de services.py.
+**NOTA**: Este requisito foi removido na v1.4.0. O metodo `bulkDeleteServices` sera MANTIDO no api.ts para permitir operacoes em massa futuras, ja que os endpoints bulk tambem serao preservados em services.py.
 
 ---
 
@@ -545,16 +538,16 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 | `frontend/src/App.tsx` | Remover 5 imports, 5 rotas e 5 menu items | Medio |
 | `frontend/src/pages/ServiceGroups.tsx` | REMOVER handleServiceClick completamente | Medio |
 | `frontend/src/pages/Dashboard.tsx` | REMOVER botoes que navegam para /blackbox e /services | Medio |
-| `frontend/src/services/api.ts` | Remover metodos nao utilizados + bulkDeleteServices | Baixo |
+| `frontend/src/services/api.ts` | Remover metodos nao utilizados (manter bulkDeleteServices) | Baixo |
 
-### Testes e Scripts - Modificacoes (v1.3.0)
+### Testes e Scripts - Modificacoes (v1.4.0)
 
 | Arquivo | Modificacao | Risco |
 |---------|-------------|-------|
-| `Tests/test_phase1.py` | Atualizar/remover imports de BlackboxManager | Alto |
-| `Tests/test_audit_fix.py` | Atualizar/remover imports de ServicePresetManager | Alto |
-| `diagnostico.ps1` | Remover validacao de arquivos deletados | Baixo |
-| `analyze_react_complexity.py` | Remover leitura de arquivos deletados | Baixo |
+| `Tests/integration/test_phase1.py` | Atualizar/remover imports de BlackboxManager | Alto |
+| `Tests/integration/test_phase2.py` | Atualizar/remover imports de BlackboxManager/ServicePresetManager | Alto |
+| `Tests/metadata/test_audit_fix.py` | Atualizar/remover imports de ServicePresetManager | Alto |
+| `scripts/development/analyze_react_complexity.py` | Remover leitura de arquivos deletados | Baixo |
 
 ### Frontend - DELETAR (6 paginas + 1 hook)
 
@@ -630,34 +623,35 @@ O sistema **DEVE** manter a funcionalidade CRUD de services para o DynamicMonito
 
 ## Notas de Implementacao
 
-1. **Ordem de execucao v1.3.0**: Preparar testes/scripts PRIMEIRO, depois REFATORAR services.py, limpar Dashboard.tsx e App.tsx, DELETAR arquivos frontend, MOVER backend APIs
+1. **Ordem de execucao v1.4.0**: Preparar testes/scripts PRIMEIRO, depois REFATORAR services.py, limpar Dashboard.tsx e App.tsx, DELETAR arquivos frontend, MOVER backend APIs
 2. **Commits atomicos**: Um commit por fase para facilitar rollback
 3. **Build continuo**: Validar build apos cada modificacao
 4. **DELETAR completamente**: NAO usar .old-deprecated, DELETAR do frontend
 5. **Backend services.py**: REFATORAR, NAO mover para obsolete/
-6. **Testar CRUD**: Verificar createService, updateService, deleteService apos refatoracao
+6. **Testar CRUD e Bulk**: Verificar createService, updateService, deleteService, bulkRegister, bulkDeregister apos refatoracao
 7. **Caminho models.py**: Usar `backend/api/models.py`, NAO `backend/models.py`
-8. **Remover bulkDeleteServices**: Incluir na limpeza do api.ts
+8. **MANTER bulkDeleteServices**: Preservar no api.ts para operacoes em massa futuras
+9. **Caminhos Tests/**: Usar caminhos corretos em Tests/integration/ e Tests/metadata/
 
 ---
 
 ## Tags de Rastreabilidade
 
 <!-- TAG_BLOCK_START -->
-- [SPEC-CLEANUP-001] Especificacao de remocao de paginas obsoletas
+- [SPEC-CLEANUP-001] Especificacao de remocao de paginas obsoletas v1.4.0
 - [FR-001] DELETAR paginas obsoletas do frontend (6 paginas + 1 hook)
 - [FR-002] Remover imports no App.tsx (5 imports)
 - [FR-003] Remover rotas no App.tsx (5 rotas)
 - [FR-004] Remover itens de menu (5 items)
 - [FR-005] REMOVER navegacao ServiceGroups
 - [FR-006] Preservar componentes compartilhados
-- [FR-007] REFATORAR services.py (manter CRUD)
+- [FR-007] REFATORAR services.py (manter CRUD + bulk)
 - [FR-008] Mover APIs backend para obsolete
 - [FR-009] Atualizar app.py do backend
-- [FR-010] Atualizar api.ts do frontend
+- [FR-010] Atualizar api.ts do frontend (manter bulkDeleteServices)
 - [FR-011] Atualizar backend/api/models.py
-- [FR-012] Atualizar testes em Tests/ (v1.3.0)
-- [FR-013] Remover atalhos Dashboard.tsx (v1.3.0)
-- [FR-014] Atualizar scripts de diagnostico (v1.3.0)
-- [FR-015] Remover bulkDeleteServices do api.ts (v1.3.0)
+- [FR-012] Atualizar testes em Tests/ (v1.4.0 - caminhos corrigidos)
+- [FR-013] Remover atalhos Dashboard.tsx
+- [FR-014] Atualizar scripts de diagnostico (v1.4.0 - sem diagnostico.ps1)
+- [FR-015] REMOVIDO (bulkDeleteServices sera mantido)
 <!-- TAG_BLOCK_END -->

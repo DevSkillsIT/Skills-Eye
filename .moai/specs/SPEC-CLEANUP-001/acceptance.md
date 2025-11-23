@@ -1,9 +1,9 @@
 ---
 id: SPEC-CLEANUP-001
-version: "1.3.0"
+version: "1.4.0"
 status: draft
 created: 2025-11-21
-updated: 2025-11-21
+updated: 2025-11-22
 author: Claude Code
 type: acceptance-criteria
 ---
@@ -14,11 +14,13 @@ type: acceptance-criteria
 
 Este documento define os criterios de aceitacao detalhados para a remocao completa das paginas obsoletas do projeto Skills-Eye, com cenarios de teste em formato Given-When-Then. **MUDANCA CRITICA v1.2.0**: services.py deve ser REFATORADO (nao removido) e BlackboxGroups.tsx foi adicionado a lista de remocao.
 
-**MUDANCAS v1.3.0**:
-- Cenario 16: Testes nao quebram (Tests/)
-- Cenario 17: Dashboard sem atalhos quebrados
-- Cenario 18: Scripts de diagnostico funcionam
-- Cenario 19: bulkDeleteServices removido do api.ts
+**MUDANCAS v1.4.0**:
+- Endpoints bulk (POST /bulk/register, DELETE /bulk/deregister) agora serao MANTIDOS
+- bulkDeleteServices no api.ts sera MANTIDO para operacoes em massa futuras
+- Cenario 14 atualizado: endpoints bulk NAO devem retornar 404
+- Cenario 18 atualizado: diagnostico.ps1 removido (nao existe)
+- Cenario 19 atualizado: validar que bulkDeleteServices esta MANTIDO
+- Caminhos de testes corrigidos para Tests/integration/ e Tests/metadata/
 
 ---
 
@@ -381,14 +383,21 @@ E o service deve ser removido do Consul
 
 ---
 
-### Cenario 14: Endpoints Removidos de services.py Retornam 404
+### Cenario 14: Endpoints GET Removidos de services.py Retornam 404, Bulk Funciona [v1.4.0]
 
-**Objetivo**: Validar que endpoints removidos nao estao mais acessiveis
+**Objetivo**: Validar que endpoints GET foram removidos e bulk permanece funcional
 
 ```gherkin
-DADO que endpoints de listagem foram removidos de services.py
+DADO que endpoints de listagem GET foram removidos de services.py
 QUANDO acessar GET /api/v1/services/
 ENTAO deve retornar 404 ou erro de rota nao encontrada
+```
+
+```gherkin
+DADO que endpoints bulk foram MANTIDOS em services.py [v1.4.0]
+QUANDO acessar POST /api/v1/services/bulk/register
+ENTAO deve retornar sucesso (200/201)
+E o endpoint deve estar funcional
 ```
 
 **Endpoints a testar (devem retornar 404)**:
@@ -397,17 +406,25 @@ ENTAO deve retornar 404 ou erro de rota nao encontrada
 - `GET /api/v1/services/metadata/unique-values` - getMetadataUniqueValues
 - `GET /api/v1/services/search/by-metadata` - searchByMetadata
 - `GET /api/v1/services/{id}` - getService
-- `POST /api/v1/services/bulk/register` - bulkRegister
-- `DELETE /api/v1/services/bulk/deregister` - bulkDeregister
+
+**Endpoints a testar (devem FUNCIONAR) [v1.4.0]**:
+- `POST /api/v1/services/bulk/register` - bulkRegister (preservado)
+- `DELETE /api/v1/services/bulk/deregister` - bulkDeregister (preservado)
 
 **Passos de teste**:
 ```bash
-# Testar endpoints removidos
+# Testar endpoints GET removidos
 curl -X GET http://localhost:8000/api/v1/services/ | jq
 # Esperado: 404 ou {"detail": "Not Found"}
+
+# Testar endpoints bulk MANTIDOS [v1.4.0]
+curl -X POST http://localhost:8000/api/v1/services/bulk/register -d '[]' -H "Content-Type: application/json"
+# Esperado: 200 ou 201 (endpoint funcional)
+curl -X DELETE http://localhost:8000/api/v1/services/bulk/deregister -d '[]' -H "Content-Type: application/json"
+# Esperado: 200 ou 201 (endpoint funcional)
 ```
 
-**Resultado esperado**: Todos endpoints removidos retornam 404
+**Resultado esperado**: Endpoints GET retornam 404, endpoints bulk funcionam
 
 ---
 
@@ -447,7 +464,7 @@ grep "deleteService" frontend/src/services/api.ts && echo "OK"
 
 ---
 
-### Cenario 16: Testes Nao Quebram [v1.3.0]
+### Cenario 16: Testes Nao Quebram [v1.4.0]
 
 **Objetivo**: Validar que testes em Tests/ funcionam apos mover modulos para obsolete/
 
@@ -457,6 +474,11 @@ QUANDO executar os testes em Tests/
 ENTAO nenhum teste deve falhar por import error
 E todos os testes atualizados devem passar
 ```
+
+**Arquivos de teste a verificar [v1.4.0]**:
+- `Tests/integration/test_phase1.py` (importa BlackboxManager)
+- `Tests/integration/test_phase2.py` (importa BlackboxManager, ServicePresetManager)
+- `Tests/metadata/test_audit_fix.py` (importa ServicePresetManager)
 
 **Passos de teste**:
 ```bash
@@ -496,60 +518,52 @@ OU os botoes devem redirecionar para fluxos validos
 
 ---
 
-### Cenario 18: Scripts de Diagnostico Funcionam [v1.3.0]
+### Cenario 18: Scripts de Diagnostico Funcionam [v1.4.0]
 
 **Objetivo**: Validar que scripts de diagnostico nao falham por arquivo nao encontrado
 
 ```gherkin
-DADO que os arquivos Services.tsx, BlackboxTargets.tsx, etc foram deletados
-QUANDO executar diagnostico.ps1
-ENTAO o script NAO deve falhar por arquivo nao encontrado
-E NAO deve validar existencia de arquivos deletados
-```
-
-```gherkin
 DADO que os arquivos Services.tsx, BlackboxTargets.tsx foram deletados
-QUANDO executar analyze_react_complexity.py
+QUANDO executar scripts/development/analyze_react_complexity.py
 ENTAO o script NAO deve falhar por arquivo nao encontrado
 E NAO deve tentar ler arquivos deletados
 ```
 
+**NOTA v1.4.0**: Referencia a `diagnostico.ps1` removida - arquivo nao existe no projeto.
+
 **Passos de teste**:
 ```bash
-# Testar diagnostico.ps1 (Windows)
-powershell -File diagnostico.ps1
-
 # Testar analyze_react_complexity.py
-python analyze_react_complexity.py
+python scripts/development/analyze_react_complexity.py
 ```
 
-**Resultado esperado**: Scripts executam sem erros de arquivo nao encontrado
+**Resultado esperado**: Script executa sem erros de arquivo nao encontrado
 
 ---
 
-### Cenario 19: bulkDeleteServices Removido do api.ts [v1.3.0]
+### Cenario 19: bulkDeleteServices MANTIDO no api.ts [v1.4.0]
 
-**Objetivo**: Validar que metodo bulkDeleteServices foi removido do api.ts
+**Objetivo**: Validar que metodo bulkDeleteServices foi MANTIDO no api.ts para operacoes em massa futuras
 
 ```gherkin
-DADO que api.ts foi atualizado
+DADO que api.ts foi atualizado preservando funcoes bulk [v1.4.0]
 QUANDO buscar por bulkDeleteServices
-ENTAO NAO deve existir o metodo bulkDeleteServices
-E NAO deve haver referencias a /services/bulk/deregister
+ENTAO DEVE existir o metodo bulkDeleteServices
+E DEVE haver referencia a /services/bulk/deregister
 ```
 
 **Passos de teste**:
 ```bash
-# Verificar que metodo foi removido
+# Verificar que metodo foi MANTIDO
 grep "bulkDeleteServices" frontend/src/services/api.ts
-# Esperado: nenhum resultado
+# Esperado: encontrar o metodo
 
-# Verificar que endpoint foi removido
+# Verificar que endpoint foi MANTIDO
 grep "bulk/deregister" frontend/src/services/api.ts
-# Esperado: nenhum resultado
+# Esperado: encontrar a referencia
 ```
 
-**Resultado esperado**: Metodo e endpoint completamente removidos
+**Resultado esperado**: Metodo bulkDeleteServices mantido e funcional para uso futuro
 
 ---
 
@@ -567,10 +581,11 @@ grep "bulk/deregister" frontend/src/services/api.ts
 - [ ] Backend inicia sem erros
 - [ ] ServiceGroups nao navega ao clicar
 - [ ] **CRITICO**: CRUD de services funciona
-- [ ] **v1.3.0**: Testes em Tests/ passam
-- [ ] **v1.3.0**: Dashboard sem atalhos quebrados
-- [ ] **v1.3.0**: Scripts de diagnostico funcionam
-- [ ] **v1.3.0**: bulkDeleteServices removido
+- [ ] **CRITICO v1.4.0**: Endpoints bulk funcionam
+- [ ] Testes em Tests/ passam
+- [ ] Dashboard sem atalhos quebrados
+- [ ] Scripts de diagnostico funcionam
+- [ ] **v1.4.0**: bulkDeleteServices MANTIDO no api.ts
 
 ### Gate 2: Pre-Deploy
 
@@ -581,8 +596,9 @@ grep "bulk/deregister" frontend/src/services/api.ts
 - [ ] Revisao de PR aprovada
 - [ ] Nenhuma regressao identificada
 - [ ] CRUD de services testado em staging
-- [ ] **v1.3.0**: Testes em Tests/ executados em staging
-- [ ] **v1.3.0**: Scripts de diagnostico testados
+- [ ] **v1.4.0**: Endpoints bulk testados em staging
+- [ ] Testes em Tests/ executados em staging
+- [ ] Scripts de diagnostico testados
 
 ---
 
@@ -597,9 +613,9 @@ grep "bulk/deregister" frontend/src/services/api.ts
 | ESLint | `npm run lint` | Zero erros |
 | Testes frontend | `npm test` | Todos passam |
 | Backend | `python app.py` | Inicia sem erros |
-| Testes Tests/ [v1.3.0] | `python -m pytest Tests/ -v` | Todos passam |
-| diagnostico.ps1 [v1.3.0] | `powershell -File diagnostico.ps1` | Exit code 0 |
-| analyze_react [v1.3.0] | `python analyze_react_complexity.py` | Exit code 0 |
+| Testes Tests/ | `python -m pytest Tests/ -v` | Todos passam |
+| analyze_react [v1.4.0] | `python scripts/development/analyze_react_complexity.py` | Exit code 0 |
+| Endpoints bulk [v1.4.0] | `curl POST/DELETE bulk endpoints` | Status 200/201 |
 
 ### Manuais
 
@@ -617,11 +633,13 @@ grep "bulk/deregister" frontend/src/services/api.ts
 ## Definition of Done
 
 ### Para services.py (REFATORADO):
-- [ ] Apenas endpoints CRUD existem
+- [ ] Endpoints CRUD e bulk existem [v1.4.0]
 - [ ] POST / funciona
 - [ ] PUT /{id} funciona
 - [ ] DELETE /{id} funciona
-- [ ] Endpoints removidos retornam 404
+- [ ] POST /bulk/register funciona [v1.4.0]
+- [ ] DELETE /bulk/deregister funciona [v1.4.0]
+- [ ] Endpoints GET removidos retornam 404
 - [ ] DynamicMonitoringPage funciona
 - [ ] DynamicCRUDModal funciona
 
@@ -655,17 +673,18 @@ grep "bulk/deregister" frontend/src/services/api.ts
 - [ ] Metodos de blackbox removidos
 - [ ] Metodos de presets removidos
 - [ ] Metodos de listagem de services removidos
-- [ ] bulkDeleteServices removido [v1.3.0]
+- [ ] bulkDeleteServices MANTIDO [v1.4.0]
 - [ ] createService mantido
 - [ ] updateService mantido
 - [ ] deleteService mantido
+- [ ] deregisterService mantido
 
-### Para Testes e Scripts [v1.3.0]:
-- [ ] Tests/test_phase1.py atualizado/removido
-- [ ] Tests/test_audit_fix.py atualizado/removido
+### Para Testes e Scripts [v1.4.0]:
+- [ ] Tests/integration/test_phase1.py atualizado/removido
+- [ ] Tests/integration/test_phase2.py atualizado/removido
+- [ ] Tests/metadata/test_audit_fix.py atualizado/removido
 - [ ] Nenhum teste importa modulos obsoletos
-- [ ] diagnostico.ps1 atualizado
-- [ ] analyze_react_complexity.py atualizado
+- [ ] scripts/development/analyze_react_complexity.py atualizado
 - [ ] Todos scripts executam sem erros
 
 ### Para Dashboard [v1.3.0]:
@@ -721,8 +740,9 @@ git reset --hard <commit-hash>
 | Tamanho do bundle | Reduzido ~10% | Comparar antes/depois |
 | Arquivos removidos | 11 (6 paginas + 1 hook + 4 backend) | Contagem manual |
 | CRUD services | 100% funcional | Teste manual |
-| Testes Tests/ [v1.3.0] | 100% passando | `python -m pytest Tests/` |
-| Scripts diagnostico [v1.3.0] | 0 erros | Execucao manual |
+| Endpoints bulk [v1.4.0] | 100% funcional | Teste curl |
+| Testes Tests/ | 100% passando | `python -m pytest Tests/` |
+| Scripts diagnostico | 0 erros | Execucao manual |
 | Cenarios de teste | 19/19 passando | Contagem manual |
 
 ---
@@ -732,15 +752,16 @@ git reset --hard <commit-hash>
 ### Prioridade de Validacao
 
 1. **CRITICO**: CRUD de services funciona
-2. **CRITICO**: Build passa
-3. **CRITICO**: Backend inicia
-4. **CRITICO**: ServiceGroups NAO navega
-5. **CRITICO [v1.3.0]**: Testes em Tests/ passam
-6. **ALTO**: Menu correto
-7. **ALTO**: Console limpo
-8. **ALTO [v1.3.0]**: Dashboard sem atalhos quebrados
-9. **MEDIO**: Arquivos realmente deletados
-10. **MEDIO [v1.3.0]**: Scripts de diagnostico funcionam
+2. **CRITICO v1.4.0**: Endpoints bulk funcionam
+3. **CRITICO**: Build passa
+4. **CRITICO**: Backend inicia
+5. **CRITICO**: ServiceGroups NAO navega
+6. **CRITICO**: Testes em Tests/ passam
+7. **ALTO**: Menu correto
+8. **ALTO**: Console limpo
+9. **ALTO**: Dashboard sem atalhos quebrados
+10. **MEDIO**: Arquivos realmente deletados
+11. **MEDIO**: Scripts de diagnostico funcionam
 
 ### Dicas para Tester
 
@@ -749,22 +770,24 @@ git reset --hard <commit-hash>
 - Verificar console ANTES e DEPOIS de cada navegacao
 - Documentar qualquer comportamento inesperado
 - **CRITICO**: Testar CRUD de services em DynamicMonitoringPage
+- **CRITICO v1.4.0**: Testar endpoints bulk com curl
 - **IMPORTANTE**: Confirmar que clique em servico no ServiceGroups NAO faz nada
 - **IMPORTANTE**: Verificar que services.py existe e foi refatorado (nao movido)
-- **IMPORTANTE v1.3.0**: Executar testes em Tests/ apos CADA milestone
-- **IMPORTANTE v1.3.0**: Verificar Dashboard apos remocao de rotas
-- **IMPORTANTE v1.3.0**: Caminho correto eh `backend/api/models.py`
+- **IMPORTANTE**: Executar testes em Tests/ apos CADA milestone
+- **IMPORTANTE**: Verificar Dashboard apos remocao de rotas
+- **IMPORTANTE**: Caminho correto eh `backend/api/models.py`
+- **IMPORTANTE v1.4.0**: Verificar que bulkDeleteServices existe no api.ts
 
 ---
 
 ## Tags de Rastreabilidade
 
 <!-- TAG_BLOCK_START -->
-- [SPEC-CLEANUP-001] Criterios de aceitacao v1.3.0
+- [SPEC-CLEANUP-001] Criterios de aceitacao v1.4.0
 - [TEST-001] Menu sem paginas desativadas (5 items)
 - [TEST-002] ServiceGroups NAO navega ao clicar
 - [TEST-003] Build sem erros
-- [TEST-004] Rotas 404 (5 rotas)
+- [TEST-004] Rotas 404 (5 rotas GET)
 - [TEST-005] Arquivos DELETADOS completamente (6 paginas)
 - [TEST-006] Hook exclusivo DELETADO
 - [TEST-007] Console limpo
@@ -774,10 +797,10 @@ git reset --hard <commit-hash>
 - [TEST-011] APIs backend movidas (exceto services.py)
 - [TEST-012] Backend inicia sem erros
 - [TEST-013] CRUD de services funciona (CRITICO)
-- [TEST-014] Endpoints removidos retornam 404
+- [TEST-014] Endpoints GET removidos 404, bulk funciona (v1.4.0)
 - [TEST-015] api.ts atualizado
-- [TEST-016] Testes nao quebram - Tests/ (v1.3.0)
-- [TEST-017] Dashboard sem atalhos quebrados (v1.3.0)
-- [TEST-018] Scripts de diagnostico funcionam (v1.3.0)
-- [TEST-019] bulkDeleteServices removido do api.ts (v1.3.0)
+- [TEST-016] Testes nao quebram - Tests/
+- [TEST-017] Dashboard sem atalhos quebrados
+- [TEST-018] Scripts de diagnostico funcionam (v1.4.0)
+- [TEST-019] bulkDeleteServices MANTIDO no api.ts (v1.4.0)
 <!-- TAG_BLOCK_END -->
