@@ -1514,20 +1514,25 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
                 </div>
               </div>
             </div>
+
+            {/* ✅ SPRINT 2: Performance Indicators - Alinhado à direita no dashboard */}
+            {responseMetadata && (
+              <div style={{
+                marginLeft: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end',
+                alignSelf: 'center',
+                gap: 4
+              }}>
+                <Typography.Text type="secondary" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
+                  Performance
+                </Typography.Text>
+                <BadgeStatus metadata={responseMetadata} />
+              </div>
+            )}
           </div>
         </Card>
-
-        {/* ✅ SPRINT 2: Performance Indicators - Mostra status do cache, fallback, staleness */}
-        {responseMetadata && (
-          <Card size="small" styles={{ body: { padding: '8px 16px' } }}>
-            <Space align="center" size="small">
-              <Typography.Text type="secondary" style={{ fontSize: '12px', marginRight: 8 }}>
-                Performance:
-              </Typography.Text>
-              <BadgeStatus metadata={responseMetadata} />
-            </Space>
-          </Card>
-        )}
 
         {/* ✅ NOVO: Barra de ações completa - altura mínima para evitar layout shift */}
         <Card size="small" styles={{ body: { minHeight: '60px' } }}>

@@ -299,8 +299,8 @@ async def get_monitoring_data(
             # ==================================================================
             all_services_dict = await consul_manager.get_all_services_catalog(use_fallback=True)
 
-            # Remover _metadata se existir (não usado aqui)
-            all_services_dict.pop("_metadata", None)
+            # Capturar _metadata de performance para retornar ao frontend
+            response_metadata = all_services_dict.pop("_metadata", None)
 
             # Converter estrutura aninhada para lista plana
             all_services = []
@@ -412,7 +412,8 @@ async def get_monitoring_data(
                 "metadata": {
                     "total_sites": len(sites),
                     "categorization_engine": "loaded"
-                }
+                },
+                "_metadata": response_metadata
             }
             
         except HTTPException:
@@ -451,7 +452,13 @@ async def get_monitoring_data(
             "data": cached_data,
             "total": len(cached_data),
             "available_fields": [],  # Sera preenchido abaixo
-            "metadata": {"cache_hit": True}
+            "metadata": {"cache_hit": True},
+            "_metadata": {
+                "source_name": "Cache Local",
+                "is_master": True,
+                "cache_status": "local_hit",
+                "total_time_ms": 1  # Cache local é instantâneo
+            }
         }
 
         # Buscar available_fields do KV
@@ -537,7 +544,8 @@ async def get_monitoring_data(
             "node": node,
             **dynamic_filters
         },
-        "metadata": raw_result.get('metadata', {})
+        "metadata": raw_result.get('metadata', {}),
+        "_metadata": raw_result.get('_metadata')
     }
 
     # Adicionar campos de paginacao se foram solicitados

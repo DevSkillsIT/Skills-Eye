@@ -19,6 +19,7 @@ import {
   ClockCircleOutlined,
   CloudServerOutlined,
   DatabaseOutlined,
+  SaveOutlined,
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
@@ -92,7 +93,7 @@ export const BadgeStatus: React.FC<BadgeStatusProps> = ({
     total_time_ms,
   } = metadata;
 
-  // BADGE 1: Master vs Fallback
+  // BADGE 1: Master vs Fallback (sempre compacto - só ícone)
   const renderMasterBadge = () => {
     if (is_master === undefined) return null;
 
@@ -107,47 +108,44 @@ export const BadgeStatus: React.FC<BadgeStatusProps> = ({
         <Tag
           icon={<CloudServerOutlined />}
           color={is_master ? 'green' : 'orange'}
-        >
-          {compact ? '' : (is_master ? 'Master' : 'Fallback')}
-        </Tag>
+        />
       </Tooltip>
     );
   };
 
-  // BADGE 2: Cache Status
+  // BADGE 2: Cache Status (sempre compacto - só ícone)
   const renderCacheBadge = () => {
     if (!cache_status || cache_status === 'disabled') return null;
 
-    const isHit = cache_status === 'hit';
-    const ageText = age_seconds !== undefined
-      ? ` (${age_seconds < 60 ? `${age_seconds}s` : `${Math.floor(age_seconds / 60)}m`})`
-      : '';
+    const isLocalHit = cache_status === 'local_hit';
+    const isConsulHit = cache_status === 'hit';
+
+    let icon = <ThunderboltOutlined />;
+    let color = 'default';
+    let title = 'Cache MISS - Dados buscados do Consul';
+
+    if (isLocalHit) {
+      icon = <SaveOutlined />;
+      color = 'cyan';
+      title = 'Cache Local HIT - Dados do cache da aplicação (30s TTL)';
+    } else if (isConsulHit) {
+      icon = <DatabaseOutlined />;
+      color = 'blue';
+      title = `Cache Consul HIT - Dados em cache há ${age_seconds}s`;
+    }
 
     return (
-      <Tooltip
-        title={
-          isHit
-            ? `Cache HIT - Dados em cache há ${age_seconds}s`
-            : 'Cache MISS - Dados buscados do Consul'
-        }
-      >
-        <Tag
-          icon={isHit ? <DatabaseOutlined /> : <ThunderboltOutlined />}
-          color={isHit ? 'blue' : 'default'}
-        >
-          {compact ? '' : `Cache ${isHit ? 'HIT' : 'MISS'}${isHit ? ageText : ''}`}
-        </Tag>
+      <Tooltip title={title}>
+        <Tag icon={icon} color={color} />
       </Tooltip>
     );
   };
 
-  // BADGE 3: Staleness Warning
+  // BADGE 3: Staleness Warning (sempre compacto - só ícone)
   const renderStalenessBadge = () => {
     if (!showStalenessWarning || staleness_ms === undefined) return null;
 
     const isStale = staleness_ms > stalenessThreshold;
-    if (!isStale && compact) return null; // Não exibir se tudo OK no modo compacto
-
     const staleSec = (staleness_ms / 1000).toFixed(1);
 
     return (
@@ -161,14 +159,12 @@ export const BadgeStatus: React.FC<BadgeStatusProps> = ({
         <Tag
           icon={isStale ? <WarningOutlined /> : <CheckCircleOutlined />}
           color={isStale ? 'red' : 'green'}
-        >
-          {compact ? '' : `Staleness: ${staleSec}s`}
-        </Tag>
+        />
       </Tooltip>
     );
   };
 
-  // BADGE 4: Performance (tempo total)
+  // BADGE 4: Performance (tempo total) - sempre mostra texto
   const renderPerformanceBadge = () => {
     if (total_time_ms === undefined) return null;
 
@@ -187,7 +183,7 @@ export const BadgeStatus: React.FC<BadgeStatusProps> = ({
           icon={<ClockCircleOutlined />}
           color={color}
         >
-          {compact ? '' : timeText}
+          {timeText}
         </Tag>
       </Tooltip>
     );
