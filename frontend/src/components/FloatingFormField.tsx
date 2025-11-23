@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Tooltip } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
-import './FloatingFormField.css';
+import '../styles/FloatingFormField.css';
 
 interface FloatingFormFieldProps {
     name: string;

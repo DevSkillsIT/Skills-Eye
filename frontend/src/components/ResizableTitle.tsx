@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Resizable, ResizeCallbackData } from 'react-resizable';
 import 'react-resizable/css/styles.css';
-import './ResizableTitle.css';
+import '../styles/ResizableTitle.css';
 
 interface ResizableTitleProps {
   onResize?: (e: React.SyntheticEvent, data: ResizeCallbackData) => void;
