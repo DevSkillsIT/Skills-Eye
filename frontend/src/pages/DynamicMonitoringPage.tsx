@@ -84,6 +84,7 @@ import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance in
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
 import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 3: Modal CRUD dinâmico
+import type { MonitoringDataItem } from '../types/monitoring'; // Tipos compartilhados
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -124,17 +125,8 @@ interface DynamicMonitoringPageProps {
   category: string;  // 'network-probes', 'web-probes', etc
 }
 
-export interface MonitoringDataItem {
-  ID: string;
-  Service: string;
-  Address?: string;
-  Port?: number;
-  Tags: string[];
-  Meta: Record<string, any>;
-  Node?: string;
-  node_ip?: string;  // ✅ NOVO: IP do nó para filtro (vem do backend)
-  [key: string]: any;  // Campos dinâmicos
-}
+// ✅ Re-exportar MonitoringDataItem de types/monitoring para compatibilidade
+export type { MonitoringDataItem } from '../types/monitoring';
 
 interface Summary {
   total: number;

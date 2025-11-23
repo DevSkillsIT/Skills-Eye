@@ -221,6 +221,25 @@ export interface MonitoringData {
   [key: string]: any;
 }
 
+/**
+ * MonitoringDataItem - Estrutura de dados de um item de monitoramento do Consul
+ *
+ * Usada em:
+ * - DynamicMonitoringPage.tsx (tabela principal)
+ * - DynamicCRUDModal.tsx (criação/edição)
+ */
+export interface MonitoringDataItem {
+  ID: string;
+  Service: string;
+  Address?: string;
+  Port?: number;
+  Tags: string[];
+  Meta: Record<string, any>;
+  Node?: string;
+  node_ip?: string;  // IP do nó para filtro (vem do backend)
+  [key: string]: any;  // Campos dinâmicos
+}
+
 export interface NetworkProbeData extends MonitoringData {
   target: string;
   module: string;

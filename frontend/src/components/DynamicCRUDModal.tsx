@@ -63,7 +63,7 @@ import FormFieldRenderer from './FormFieldRenderer';
 import TagsInput from './TagsInput';
 import { NodeSelector } from './NodeSelector';
 import FloatingFormField from './FloatingFormField';
-import type { MonitoringDataItem } from '../pages/DynamicMonitoringPage';
+import type { MonitoringDataItem } from '../types/monitoring';
 
 const { Text } = Typography;
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
@@ -619,15 +619,24 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
 
   // Renderizar campos do form_schema (exporter_fields) em layout de 2 colunas
   const renderExporterFields = useMemo(() => {
-    console.log('[DynamicCRUDModal] renderExporterFields useMemo executando, formSchema:', formSchema);
+    // ✅ OTIMIZAÇÃO: Não executar logs quando modal está fechado
+    if (!visible) return null;
+
+    if (import.meta.env.DEV) {
+      console.log('[DynamicCRUDModal] renderExporterFields useMemo executando, formSchema:', formSchema);
+    }
 
     if (!formSchema || !formSchema.fields || formSchema.fields.length === 0) {
-      console.log('[DynamicCRUDModal] renderExporterFields retornando null (sem campos)');
+      if (import.meta.env.DEV) {
+        console.log('[DynamicCRUDModal] renderExporterFields retornando null (sem campos)');
+      }
       return null;
     }
 
-    console.log('[DynamicCRUDModal] renderExporterFields renderizando', formSchema.fields.length, 'campos');
-    console.log('[DynamicCRUDModal] Campos a renderizar:', formSchema.fields);
+    if (import.meta.env.DEV) {
+      console.log('[DynamicCRUDModal] renderExporterFields renderizando', formSchema.fields.length, 'campos');
+      console.log('[DynamicCRUDModal] Campos a renderizar:', formSchema.fields);
+    }
 
     const fieldItems = formSchema.fields.map((field) => {
 
@@ -808,11 +817,14 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     });
 
     return <div className="form-grid-layout">{fieldItems}</div>;
-  }, [formSchema]);
+  }, [formSchema, visible]);
 
   // Renderizar campos metadata genéricos em layout de 2 colunas
   // ✅ FILTRAR: Excluir campos que já estão no form_schema (evitar duplicação)
   const renderMetadataFields = useMemo(() => {
+    // ✅ OTIMIZAÇÃO: Não executar quando modal está fechado
+    if (!visible) return null;
+
     // Criar Set com nomes dos campos do form_schema
     const formSchemaFieldNames = new Set<string>();
     if (formSchema && formSchema.fields) {
@@ -824,13 +836,15 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     // Filtrar formFields: excluir campos que estão no form_schema
     const filteredFields = formFields.filter((field) => {
       const isInFormSchema = formSchemaFieldNames.has(field.name);
-      if (isInFormSchema) {
+      if (isInFormSchema && import.meta.env.DEV) {
         console.log(`[DynamicCRUDModal] ⚠️ Campo '${field.name}' excluído de metadata (já está no form_schema)`);
       }
       return !isInFormSchema;
     });
 
-    console.log(`[DynamicCRUDModal] 📊 Metadata fields: ${formFields.length} total, ${filteredFields.length} após filtro (${formFields.length - filteredFields.length} excluídos)`);
+    if (import.meta.env.DEV) {
+      console.log(`[DynamicCRUDModal] 📊 Metadata fields: ${formFields.length} total, ${filteredFields.length} após filtro (${formFields.length - filteredFields.length} excluídos)`);
+    }
 
     const fieldItems = filteredFields.map((field) => {
       // Determinar span baseado no tipo: text/textarea ocupa linha inteira
@@ -850,7 +864,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
     });
 
     return <div className="form-grid-layout">{fieldItems}</div>;
-  }, [formFields, formSchema, mode]);
+  }, [formFields, formSchema, mode, visible]);
 
   // Determinar título do modal
   const modalTitle = mode === 'create' ? 'Criar Novo Serviço' : 'Editar Serviço';
@@ -858,13 +872,17 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
   // Determinar botão de submit
   const submitButtonText = mode === 'create' ? 'Criar Serviço' : 'Atualizar Serviço';
 
-  // Debug: log do step atual
+  // Debug: log do step atual - APENAS em DEV e quando modal está visível
   useEffect(() => {
-    console.log('[DynamicCRUDModal] Step atual:', step, 'Mode:', mode, 'Visible:', visible);
+    if (import.meta.env.DEV && visible) {
+      console.log('[DynamicCRUDModal] Step atual:', step, 'Mode:', mode, 'Visible:', visible);
+    }
   }, [step, mode, visible]);
 
-  // Debug: log do formSchema
+  // Debug: log do formSchema - APENAS em DEV e quando modal está visível
   useEffect(() => {
+    if (!import.meta.env.DEV || !visible) return;
+
     console.log('[DynamicCRUDModal] formSchema atualizado:', formSchema);
     if (formSchema) {
       console.log('[DynamicCRUDModal] formSchema.fields:', formSchema.fields?.length, 'campos');
@@ -879,10 +897,12 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
         );
       }
     }
-  }, [formSchema]);
+  }, [formSchema, visible]);
 
-  // Debug: log quando step muda para 'exporter' ou 'metadata'
+  // Debug: log quando step muda para 'exporter' ou 'metadata' - APENAS em DEV e quando modal está visível
   useEffect(() => {
+    if (!import.meta.env.DEV || !visible) return;
+
     if (step === 'exporter') {
       console.log('[DynamicCRUDModal] 🎯 STEP=exporter - Campos do form_schema:');
       console.log('[DynamicCRUDModal]   - formSchema existe:', !!formSchema);
@@ -892,7 +912,7 @@ const DynamicCRUDModal: React.FC<DynamicCRUDModalProps> = ({
       console.log('[DynamicCRUDModal] 🎯 STEP=metadata - Campos genéricos do KV');
       console.log('[DynamicCRUDModal]   - formFields.length:', formFields.length);
     }
-  }, [step, formSchema, formFields]);
+  }, [step, formSchema, formFields, visible]);
 
   // Efeito para validar campos do passo atual em tempo real
   useEffect(() => {
