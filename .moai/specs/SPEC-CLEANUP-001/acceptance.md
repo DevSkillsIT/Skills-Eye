@@ -1,7 +1,7 @@
 ---
 id: SPEC-CLEANUP-001
 version: "1.4.0"
-status: draft
+status: completed
 created: 2025-11-21
 updated: 2025-11-22
 author: Claude Code
