@@ -83,6 +83,7 @@ import type { SearchCondition } from '../components/AdvancedSearchPanel';
 import BadgeStatus from '../components/BadgeStatus'; // SPRINT 2: Performance indicators
 import ResizableTitle from '../components/ResizableTitle';
 import { NodeSelector } from '../components/NodeSelector';
+import DynamicCRUDModal from '../components/DynamicCRUDModal'; // SPRINT 3: Modal CRUD dinâmico
 
 // const { Search } = Input; // Não usado
 // const { Text } = Typography; // Não usado
@@ -95,17 +96,35 @@ import { NodeSelector } from '../components/NodeSelector';
 // Em produção (build), logs serão removidos automaticamente
 const DEBUG_PERFORMANCE = import.meta.env.DEV;
 
-// ✅ SPEC-PERF-002: Remover CATEGORY_DISPLAY_NAMES hardcoded
-// Usar dados dinamicos que vem do tableFields (category_display_name)
-const formatCategoryName = (slug: string): string => {
-  return slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+// ✅ SPEC-ARCH-001: Mapa de display names para todas as categorias
+const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  'network-probes': 'Network Probes (Rede)',
+  'web-probes': 'Web Probes (Aplicações)',
+  'system-exporters': 'Exporters: Sistemas',
+  'database-exporters': 'Exporters: Bancos de Dados',
+  'infrastructure-exporters': 'Exporters: Infraestrutura',
+  'hardware-exporters': 'Exporters: Hardware',
+  'network-devices': 'Dispositivos de Rede',
+  'custom-exporters': 'Exporters: Customizados',
+};
+
+// ✅ SPEC-ARCH-001: Subtítulos com exemplos específicos para cada categoria
+const CATEGORY_SUBTITLES: Record<string, string> = {
+  'network-probes': 'Monitoramento de conectividade de rede: ICMP Ping, TCP Connect, DNS, SSH Banner',
+  'web-probes': 'Monitoramento de aplicações web e APIs: HTTP 2xx/4xx/5xx, HTTPS, HTTP POST',
+  'system-exporters': 'Métricas de sistemas operacionais: Linux (Node), Windows, VMware ESXi',
+  'database-exporters': 'Monitoramento de bancos de dados: MySQL, PostgreSQL, MongoDB, Redis, Elasticsearch',
+  'infrastructure-exporters': 'Infraestrutura e serviços: HAProxy, Nginx, Apache, RabbitMQ, Kafka',
+  'hardware-exporters': 'Hardware físico e IPMI: iDRAC, HP iLO, IPMI, Dell OMSA',
+  'network-devices': 'Dispositivos de rede: MikroTik, Cisco (SNMP), Switches, Roteadores',
+  'custom-exporters': 'Exporters customizados: Exporters personalizados não categorizados',
 };
 
 interface DynamicMonitoringPageProps {
   category: string;  // 'network-probes', 'web-probes', etc
 }
 
-interface MonitoringDataItem {
+export interface MonitoringDataItem {
   ID: string;
   Service: string;
   Address?: string;
@@ -1434,21 +1453,10 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
     (condition) => condition.field && condition.value !== undefined && condition.value !== '',
   );
 
-  // ✅ SPEC-PERF-002: Usar dados dinamicos do tableFields ou formatCategoryName
-  const categoryTitle = useMemo(() => {
-    // Tentar pegar display_name do primeiro tableField (se disponivel)
-    const firstField = tableFields[0];
-    if (firstField && (firstField as any).category_display_name) {
-      return (firstField as any).category_display_name;
-    }
-    // Fallback para formatacao automatica
-    return formatCategoryName(category);
-  }, [tableFields, category]);
-
   return (
     <PageContainer
-      title={categoryTitle}
-      subTitle={`Monitoramento de ${category.replace(/-/g, ' ')}`}
+      title={CATEGORY_DISPLAY_NAMES[category] || category}
+      subTitle={CATEGORY_SUBTITLES[category] || `Monitoramento de ${category.replace(/-/g, ' ')}`}
       loading={tableFieldsLoading || filterFieldsLoading}
       style={{ minHeight: 'calc(100vh - 64px)' }}
     >
@@ -1859,47 +1867,22 @@ const DynamicMonitoringPage: React.FC<DynamicMonitoringPageProps> = ({ category 
         )}
       </Drawer>
 
-      {/* ✅ IMPLEMENTADO: Modal de criação/edição */}
-      <Modal
-        title={formMode === 'create' ? 'Novo Serviço de Monitoramento' : 'Editar Serviço'}
-        open={formOpen}
+      {/* ✅ SPRINT 3: Modal CRUD dinâmico reutilizando componente existente */}
+      <DynamicCRUDModal
+        mode={formMode}
+        category={category}
+        service={currentRecord}
+        visible={formOpen}
+        onSuccess={() => {
+          setFormOpen(false);
+          setCurrentRecord(null);
+          actionRef.current?.reload();
+        }}
         onCancel={() => {
           setFormOpen(false);
           setCurrentRecord(null);
         }}
-        footer={null}
-        width={720}
-        destroyOnClose
-      >
-        <div style={{ marginBottom: 16, padding: 12, background: '#f0f2f5', borderRadius: 4 }}>
-          <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
-            <strong>ℹ️ Nota:</strong> Esta é uma versão simplificada do formulário. 
-            Para edição completa com form_schema dinâmico, será implementado no próximo sprint.
-          </p>
-        </div>
-        
-        {currentRecord && (
-          <div>
-            <p><strong>ID:</strong> {currentRecord.ID}</p>
-            <p><strong>Serviço:</strong> {currentRecord.Service}</p>
-            <p><strong>Node:</strong> {currentRecord.Node}</p>
-            <p style={{ fontSize: 12, color: '#999', marginTop: 16 }}>
-              Para editar este serviço, use a API direta ou aguarde implementação completa do formulário dinâmico.
-            </p>
-          </div>
-        )}
-        
-        {formMode === 'create' && (
-          <div>
-            <p style={{ color: '#999' }}>
-              Funcionalidade de criação com form_schema dinâmico será implementada no próximo sprint.
-            </p>
-            <p style={{ fontSize: 12 }}>
-              Por enquanto, use a página antiga Services.tsx ou a API direta para criar novos serviços.
-            </p>
-          </div>
-        )}
-      </Modal>
+      />
 
       {/* ✅ PERF-002 FIX: Modal de confirmação de exportação CSV com preview */}
       <Modal
